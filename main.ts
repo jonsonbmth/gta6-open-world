@@ -1,12 +1,10 @@
-// SOLMAR BAY — gta6-01 entrypoint (Node 22, standard library only).
-// Hands the game in: copies game/ and screenshots/ beside this file to
-// /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes the dossier
-// the judge reads, with the kit's vendored library.
+// SOLMAR BAY V5 — gta6-01 entry program (Node 22, standard library only).
+// The game is the static files under game/ (three.js, vendored, fully offline).
+// This program hands it in: it copies game/ and screenshots/ beside this file
+// into /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes the
+// dossier the judge reads with the kit's own buildDossier library.
 //
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-//
-// The run is deterministic: the same repository always writes the same bytes,
-// because buildDossier sorts the files it reads and the game ships no clocks.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,8 +21,8 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The gate's caps (reference/gate.json): only text_max_bytes shapes the bytes;
-// the others refuse an entry the scorer would refuse.
+// The program is deterministic: same repository, same bytes, every run —
+// the grader runs it twice and compares the outputs byte for byte.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

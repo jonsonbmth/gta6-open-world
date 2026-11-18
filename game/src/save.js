@@ -1,41 +1,32 @@
-// Save / load: localStorage slot for money, REP, mission, day, owned cars.
-import { S } from './state.js';
+// Save/load + garage shop, kept separate from the render loop.
+import { saveGame, loadSave } from './state.js';
 
-const KEY = 'solmar-bay-save-v1';
+export function autosave(state) {
+  return saveGame(state);
+}
 
 export function hasSave() {
-  try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+  return loadSave() !== null;
 }
 
-export function saveGame() {
-  try {
-    const data = {
-      v: 1, day: S.day, money: S.money, rep: S.rep, respect: S.respect,
-      health: S.health, armour: S.armour, mission: S.mission, stage: S.stage,
-      time: S.time, ammo: S.ammo.slice(1), radio: S.radio,
-      px: S.player.x, pz: S.player.z,
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch (e) { return false; }
+export function garageItems(state) {
+  return [
+    { key: '1', name: 'Engine tune', desc: `Level ${state.upgrades.engine + 1} — more top speed`, price: 1500 + state.upgrades.engine * 1200, can: state.money >= 1500 + state.upgrades.engine * 1200 },
+    { key: '2', name: 'Armour plating', desc: `Level ${state.upgrades.armour + 1} — tougher car`, price: 1200 + state.upgrades.armour * 1000, can: state.money >= 1200 + state.upgrades.armour * 1000 },
+    { key: '3', name: 'Respray', desc: 'Fresh paint — rotate the colour', price: 400, can: state.money >= 400 },
+    { key: '4', name: 'Lose the heat', desc: 'Lena calls in a favour — wanted level cleared', price: 800, can: state.money >= 800 && state.wanted > 0 },
+  ];
 }
 
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (d.v !== 1) return null;
-    S.day = d.day; S.money = d.money; S.rep = d.rep; S.respect = d.respect;
-    S.health = d.health; S.armour = d.armour; S.mission = d.mission; S.stage = d.stage;
-    S.time = d.time; S.radio = d.radio || 0;
-    if (Array.isArray(d.ammo)) for (let i = 0; i < d.ammo.length; i++) S.ammo[i + 1] = d.ammo[i];
-    S.player.x = d.px ?? 0; S.player.z = d.pz ?? 40;
-    return d;
-  } catch (e) { return null; }
-}
-
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch (e) { /* noop */ }
+export function buyGarageItem(state, key) {
+  const items = garageItems(state);
+  const item = items.find((i) => i.key === key);
+  if (!item || !item.can) return null;
+  state.money -= item.price;
+  if (key === '1') state.upgrades.engine += 1;
+  if (key === '2') { state.upgrades.armour += 1; state.carCondition = 100; }
+  if (key === '3') state.paint = (state.paint + 1) % 4;
+  if (key === '4') state.wanted = 0;
+  saveGame(state);
+  return item;
 }

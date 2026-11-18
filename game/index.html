@@ -3,129 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOLMAR BAY — Night Rain | Open-World Crime Game</title>
+<title>SOLMAR BAY — Night Rain | An Open-World Crime Story</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<canvas id="gl"></canvas>
-<div id="rain-vignette"></div>
+<div id="game-root"></div>
 
-<!-- ============ HUD ============ -->
+<!-- HUD -->
 <div id="hud" class="hidden">
-  <!-- top-left: mission + police response -->
-  <div id="mission-panel" class="panel">
-    <div class="mp-head"><span id="mp-chapter" class="badge">CH 1</span><span id="mp-title">THE GETAWAY DRIVER</span></div>
-    <div id="mp-desc">Lena needs the Comet out of the impound lot.<br>Get it back to the garage in one piece.</div>
-    <div class="mp-stage"><span id="mp-stage">STAGE 1/4</span><div id="mp-bar" class="segbar"><i></i><i></i><i></i><i></i></div></div>
-    <div id="mp-next">NEXT &rarr; Reach the impound lot</div>
-  </div>
-  <div id="police-panel" class="panel hidden">
-    <div class="pp-head">SOLMAR BAY PD &mdash; RESPONDING</div>
-    <div id="pp-units"></div>
-  </div>
-
-  <!-- top-right: status + weapons -->
-  <div id="status-panel" class="panel">
-    <div id="sp-day">DAY 1 &nbsp;|&nbsp; 22:47</div>
-    <div id="sp-money">$42,780</div>
-    <div id="sp-stars">★★★☆☆</div>
-    <div id="sp-wanted">WANTED</div>
-    <div id="sp-pursuit">PURSUIT ACTIVE</div>
-  </div>
-  <div id="weapon-panel" class="panel">
-    <div class="wp-slot" data-w="0"><b>1</b> FISTS</div>
-    <div class="wp-slot active" data-w="1"><b>2</b> PISTOL <span id="wp-ammo">24</span></div>
-    <div class="wp-slot" data-w="2"><b>3</b> SMG <span>90</span></div>
-    <div class="wp-slot" data-w="3"><b>4</b> SHOTGUN <span>12</span></div>
-    <div class="wp-slot" data-w="4"><b>5</b> RIFLE <span>60</span></div>
+  <div id="hud-tl">
+    <div id="mission-panel" class="panel">
+      <div class="mission-head"><span id="mission-chapter" class="badge">CH 1</span><span id="mission-title">THE GETAWAY DRIVER</span></div>
+      <div id="mission-desc" class="mission-desc">Lena needs the Comet out of the impound lot. Get it back to the garage in one piece.</div>
+      <div class="mission-stage"><span id="mission-stage-label">STAGE 1/4</span><div class="segbar" id="mission-segments"></div></div>
+      <div class="mission-next">NEXT &rarr; <span id="mission-next">Reach the impound lot</span></div>
+    </div>
+    <div id="police-panel" class="panel">
+      <div class="police-head">SOLMAR BAY PD &mdash; RESPONDING</div>
+      <div id="police-rows"></div>
+    </div>
   </div>
 
-  <!-- bottom-left: minimap + vitals -->
-  <div id="minimap-wrap">
+  <div id="hud-tr">
+    <div id="status-panel" class="panel">
+      <div id="clock">DAY 1 &nbsp;|&nbsp; 22:46</div>
+      <div id="money">$42,780</div>
+      <div id="stars">★★★☆☆</div>
+      <div id="wanted-label">WANTED</div>
+      <div id="pursuit-label">PURSUIT ACTIVE</div>
+    </div>
+    <div id="weapons-panel" class="panel">
+      <div class="wpn" data-w="0"><span>1</span> FISTS</div>
+      <div class="wpn active" data-w="1"><span>2</span> PISTOL <b>24</b></div>
+      <div class="wpn" data-w="2"><span>3</span> SMG <b>90</b></div>
+      <div class="wpn" data-w="3"><span>4</span> SHOTGUN <b>12</b></div>
+      <div class="wpn" data-w="4"><span>5</span> RIFLE <b>60</b></div>
+    </div>
+  </div>
+
+  <div id="hud-bl">
     <canvas id="minimap" width="220" height="220"></canvas>
-    <div id="mm-district">LUMEN AVENUE</div>
-    <div id="mm-respect">RESPECT 3 <div class="rbar"><i id="mm-repbar" style="width:32%"></i></div> 320 / 1000</div>
-  </div>
-  <div id="vitals" class="panel">
-    <div class="vit"><label>HEALTH</label><div class="vbar"><i id="vit-hp" style="width:82%"></i></div><span id="vit-hp-n">82</span></div>
-    <div class="vit"><label>ARMOUR</label><div class="vbar blue"><i id="vit-ar" style="width:45%"></i></div><span id="vit-ar-n">45</span></div>
-    <div class="vit"><label>REP</label><div class="vbar gold"><i id="vit-rp" style="width:32%"></i></div><span id="vit-rp-n">320</span></div>
-  </div>
-
-  <!-- bottom-center: dialogue -->
-  <div id="dialogue" class="panel hidden">
-    <canvas id="dlg-portrait" width="72" height="72"></canvas>
-    <div class="dlg-body"><div id="dlg-name">LENA</div><div id="dlg-text"></div></div>
+    <div id="district-pill">LUMEN AVENUE</div>
+    <div class="bars">
+      <div class="bar-row"><label>HEALTH</label><div class="bar"><div id="health-bar" class="fill health"></div></div></div>
+      <div class="bar-row"><label>ARMOUR</label><div class="bar"><div id="armour-bar" class="fill armour"></div></div></div>
+      <div class="bar-row"><label>REP</label><div class="bar"><div id="rep-bar" class="fill rep"></div></div><span id="rep-text">320 / 1000</span></div>
+    </div>
+    <div id="respect-label">RESPECT 3</div>
   </div>
 
-  <!-- bottom-right: radio + speedometer -->
-  <div id="vehicle-panel" class="panel">
-    <div id="vp-radio"><span id="vp-station">WAVEFORM 88.1</span><span id="vp-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
-    <div id="vp-song">Glass Harbour &mdash; Midnight Static</div>
-    <div id="vp-car">VULPINE S</div>
-    <div class="vp-cond"><label>CONDITION</label><div class="vbar green"><i id="vp-condbar" style="width:95%"></i></div><span id="vp-cond-n">95%</span></div>
-    <div id="vp-speed"><span id="vp-speed-n">172</span><small>KM/H</small></div>
-    <div id="vp-gear">GEAR 5 &nbsp;·&nbsp; <span id="vp-hint">E exit &nbsp; R radio &nbsp; M map</span></div>
+  <div id="hud-bc">
+    <div id="dialogue" class="panel">
+      <canvas id="portrait" width="72" height="72"></canvas>
+      <div><div id="dialogue-name">LENA &ldquo;WRENCH&rdquo; ORTIZ</div><div id="dialogue-text">Lose them before the bridge, Rico. The Comet is worth more than my freedom &mdash; barely.</div></div>
+    </div>
   </div>
 
-  <!-- floating action text -->
-  <div id="floaters"></div>
-  <div id="crosshair" class="hidden">+</div>
-  <div id="toast" class="hidden"></div>
-  <div id="controls-hint">WASD move/drive &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; 1-5 weapons &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M map &nbsp;·&nbsp; P pause &nbsp;·&nbsp; G garage</div>
+  <div id="hud-br">
+    <div id="vehicle-panel" class="panel">
+      <div id="radio-line"><span id="radio-station">WAVEFORM 88.1</span> <span id="radio-eq">▁▂▃▅▃▂▁</span></div>
+      <div id="radio-song">Glass Harbour &mdash; Midnight Static</div>
+      <div id="car-name">VULPINE S</div>
+      <div class="cond-row"><label>CONDITION</label><div class="bar"><div id="cond-bar" class="fill cond"></div></div><span id="cond-text">95%</span></div>
+      <div id="speedo"><span id="speed-num">167</span><span class="unit">KM/H</span></div>
+      <div id="gear-line">GEAR 5 &middot; E exit &nbsp; R radio &nbsp; M map</div>
+    </div>
+  </div>
+
+  <div id="floater"></div>
+  <div id="help-bar">WASD move/drive &middot; E enter car &middot; F punch &middot; Click shoot &middot; 1-5 weapons &middot; R radio &middot; M map &middot; P pause &middot; G garage</div>
+  <div id="toast"></div>
 </div>
 
-<!-- ============ TITLE ============ -->
+<!-- Title screen -->
 <div id="title-screen">
-  <div class="ts-logo">SOLMAR<span>BAY</span></div>
-  <div class="ts-sub">NIGHT RAIN &nbsp;·&nbsp; AN OPEN-WORLD CRIME STORY</div>
-  <div class="ts-tag">One driver. Seven jobs. A city that never dries.</div>
-  <div class="ts-press">PRESS ENTER TO PLAY</div>
-  <div class="ts-save" id="ts-save"></div>
-  <div class="ts-foot">WASD drive &amp; walk &nbsp;·&nbsp; E steal a car &nbsp;·&nbsp; M map &nbsp;·&nbsp; P pause &nbsp;·&nbsp; An original game — no Rockstar content</div>
-</div>
-
-<!-- ============ PAUSE ============ -->
-<div id="pause-menu" class="overlay hidden">
-  <div class="ov-box">
-    <h2>PAUSED</h2>
-    <p id="pm-stats">DAY 1 &nbsp;·&nbsp; $42,780 &nbsp;·&nbsp; REP 320 &nbsp;·&nbsp; JOB 1/7</p>
-    <button id="pm-resume">RESUME</button>
-    <button id="pm-save">SAVE GAME</button>
-    <button id="pm-map">CITY MAP</button>
-    <button id="pm-restart">RESTART DAY</button>
-    <p class="ov-note">Progress autosaves after every job. Save slots live in this browser only.</p>
+  <div class="title-inner">
+    <h1>SOLMAR<span>BAY</span></h1>
+    <div class="title-sub">NIGHT RAIN &nbsp;&middot;&nbsp; AN OPEN-WORLD CRIME STORY</div>
+    <div class="title-tag">One driver. Seven jobs. A city that never dries.</div>
+    <div class="title-press">PRESS ENTER TO PLAY</div>
+    <div id="title-save" class="title-save"></div>
+    <div class="title-foot">WASD drive &amp; walk &middot; E steal a car &middot; M map &middot; P pause &nbsp;&middot;&nbsp; An original game &mdash; no Rockstar content</div>
   </div>
 </div>
 
-<!-- ============ MAP ============ -->
+<!-- Pause -->
+<div id="pause-screen" class="overlay hidden">
+  <div class="overlay-box">
+    <h2>PAUSED</h2>
+    <div class="pause-stats" id="pause-stats"></div>
+    <div class="menu-hint">P resume &middot; M map &middot; G garage &middot; R radio &middot; ENTER continue</div>
+  </div>
+</div>
+
+<!-- City map -->
 <div id="map-screen" class="overlay hidden">
-  <div class="ov-box wide">
+  <div class="map-box">
     <h2>SOLMAR BAY &mdash; CITY MAP</h2>
     <canvas id="bigmap" width="760" height="520"></canvas>
-    <p class="ov-note">◆ mission &nbsp; ● garage &nbsp; ★ safehouse &nbsp; — M or ESC to close</p>
+    <div class="menu-hint">Green dashed line = GPS route to the mission &nbsp;&mdash;&nbsp; M or ESC to close</div>
   </div>
 </div>
 
-<!-- ============ GARAGE ============ -->
-<div id="garage-menu" class="overlay hidden">
-  <div class="ov-box">
+<!-- Garage -->
+<div id="garage-screen" class="overlay hidden">
+  <div class="overlay-box">
     <h2>LENA'S GARAGE</h2>
-    <p id="gm-car">VULPINE S &nbsp;·&nbsp; CONDITION 95%</p>
-    <div id="gm-items"></div>
-    <p class="ov-note">G or ESC to leave. Upgrades stay on this car.</p>
+    <div id="garage-list"></div>
+    <div class="menu-hint">1-4 buy &middot; G or ESC to leave</div>
   </div>
 </div>
 
-<!-- ============ END SCREEN ============ -->
-<div id="end-screen" class="overlay hidden">
-  <div class="ov-box">
-    <h2 id="end-title">BUSTED</h2>
-    <p id="end-text">The SBPD caught up with Rico. Bail: $500.</p>
-    <button id="end-retry">TRY AGAIN</button>
+<!-- Game over -->
+<div id="gameover-screen" class="overlay hidden">
+  <div class="overlay-box">
+    <h2 id="gameover-title">BUSTED</h2>
+    <div id="gameover-text" class="gameover-text"></div>
+    <div class="menu-hint">ENTER retry &middot; The city forgets nothing.</div>
   </div>
 </div>
 

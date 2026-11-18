@@ -1,233 +1,246 @@
-// Vehicles: procedural low-poly cars, arcade driving, traffic AI.
+// Vehicles: REAL car silhouettes, not boxes. Every body is an extruded side
+// profile (low nose, sloped hood, raked windshield, fastback tail) with
+// bevelled edges, plus a glass canopy, fender arches and rounded bumpers.
 import * as THREE from 'three';
-import { rng, clamp, lerp, TAU, CITY } from './state.js';
-import { glowTexture } from './util.js';
-import { resolveCollision } from './city.js';
+import { makeGlow, roadStreak, lightPool, extrudeProfile } from './util.js';
 
-const GLOW = glowTexture();
+// Side profiles: [x = length, front = +x, y = height]. Read as a car outline.
+const SPORT_BODY = [[-2.3, 0.36], [-2.3, 0.78], [-1.7, 0.84], [1.3, 0.8], [2.3, 0.6], [2.3, 0.36]];
+const SPORT_CANOPY = [[-1.75, 0.78], [-1.05, 1.12], [0.25, 1.14], [1.25, 0.78]];
+const SPORT_ROOF = [[-1.05, 1.1], [0.25, 1.12], [0.25, 1.18], [-1.05, 1.16]];
+const SEDAN_BODY = [[-2.2, 0.36], [-2.2, 0.86], [-1.3, 0.9], [1.5, 0.88], [2.2, 0.66], [2.2, 0.36]];
+const SEDAN_CANOPY = [[-1.45, 0.86], [-0.75, 1.28], [0.5, 1.28], [1.35, 0.86]];
+const VAN_BODY = [[-2.2, 0.36], [-2.2, 1.68], [1.15, 1.68], [2.2, 0.95], [2.2, 0.36]];
+const VAN_GLASS = [[1.1, 1.62], [2.12, 0.98], [2.12, 1.28], [1.1, 1.68]];
+const CAB_BODY = [[-0.95, 0.36], [-0.95, 2.0], [0.3, 2.0], [0.95, 1.15], [0.95, 0.36]];
 
-export const CAR_TYPES = {
-  sports: { name: 'VULPINE S', len: 4.6, wid: 2.0, top: 62, accel: 26, grip: 8.5, color: 0xe62129 },
-  sedan: { name: 'MERIDIAN', len: 4.8, wid: 1.9, top: 42, accel: 16, grip: 7, color: 0x8a93b8 },
-  taxi: { name: 'CABRIO TAXI', len: 4.7, wid: 1.9, top: 44, accel: 17, grip: 7, color: 0xffc61a },
-  van: { name: 'HAULER VAN', len: 5.4, wid: 2.1, top: 36, accel: 12, grip: 6, color: 0x5a6e8a },
-  truck: { name: 'DRAY TRUCK', len: 6.4, wid: 2.3, top: 33, accel: 10, grip: 5.5, color: 0x7a4a22 },
-  police: { name: 'SBPD CRUISER', len: 4.9, wid: 2.0, top: 55, accel: 22, grip: 8, color: 0x14161e },
-};
+const WHEEL_GEO = new THREE.CylinderGeometry(0.42, 0.42, 0.34, 14);
+const WHEEL_MAT = new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: 0.85 });
+const HUB_MAT = new THREE.MeshStandardMaterial({ color: 0xd8dce8, roughness: 0.25, metalness: 0.9 });
+const ARCH_MAT = new THREE.MeshStandardMaterial({ color: 0x101018, roughness: 0.9 });
+const GLASS_MAT = new THREE.MeshStandardMaterial({ color: 0x0a1626, roughness: 0.05, metalness: 0.95, envMapIntensity: 2.0 });
 
-function glow(x, y, z, color, scale, opacity = 0.85) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
-  s.position.set(x, y, z); s.scale.setScalar(scale); return s;
+// Wheels + fender arches: a half-torus over each wheel reads as a real arch.
+function wheels(group, w, l) {
+  const archGeo = new THREE.TorusGeometry(0.52, 0.09, 8, 14, Math.PI);
+  for (const [x, z] of [[-w / 2, l / 3], [w / 2, l / 3], [-w / 2, -l / 3], [w / 2, -l / 3]]) {
+    const wheel = new THREE.Mesh(WHEEL_GEO, WHEEL_MAT);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.42, z);
+    group.add(wheel);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.36, 10), HUB_MAT);
+    hub.rotation.z = Math.PI / 2;
+    hub.position.set(x, 0.42, z);
+    group.add(hub);
+    const arch = new THREE.Mesh(archGeo, ARCH_MAT);
+    arch.rotation.y = Math.PI / 2;
+    arch.position.set(x + (x < 0 ? -0.02 : 0.02), 0.42, z);
+    group.add(arch);
+  }
 }
 
-// Build a car mesh. `hero` gets the full-width taillight bar + spoiler + clearcoat paint.
-export function makeCarMesh(type, colorHex) {
-  const t = CAR_TYPES[type];
+// Rounded bumpers: horizontal cylinders, not slabs.
+function bumpers(group, width, length, mat) {
+  const geo = new THREE.CylinderGeometry(0.15, 0.15, width - 0.15, 10);
+  for (const z of [length / 2 - 0.05, -length / 2 + 0.05]) {
+    const b = new THREE.Mesh(geo, mat);
+    b.rotation.z = Math.PI / 2;
+    b.position.set(0, 0.44, z);
+    group.add(b);
+  }
+}
+
+// Full-width LED taillight bar: emissive + big red glow, the hero's signature.
+function tailBar(group, width, y, z) {
+  const bar = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.22, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2a18, emissiveIntensity: 3.2 }),
+  );
+  bar.position.set(0, y, z);
+  group.add(bar);
+  const glow = makeGlow(0xff3020, 5.5, 0.85);
+  glow.position.set(0, y, z - 0.4);
+  group.add(glow);
+}
+
+function headlights(group, width, y, z) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff6d8, emissiveIntensity: 5 });
+  for (const x of [-width / 2 + 0.35, width / 2 - 0.35]) {
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.1), mat);
+    h.position.set(x, y, z);
+    group.add(h);
+    const g = makeGlow(0xfff2c0, 3.2, 0.8);
+    g.position.set(x, y, z + 0.4);
+    group.add(g);
+  }
+}
+
+// Hero: VULPINE S — vivid red, clearcoat, strong rim light, big spoiler.
+export function makeHeroCar(paintColor = 0xff2020) {
   const g = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color: colorHex ?? t.color, roughness: 0.25, metalness: 0.65,
-    emissive: type === 'sports' ? 0x2a0505 : 0x000000, emissiveIntensity: 1 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x05070f, roughness: 0.05, metalness: 0.9 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x0c0e16, roughness: 0.6, metalness: 0.4 });
-  const L = t.len, W = t.wid;
-  // body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(W, 0.72, L), paint);
-  body.position.y = 0.62; g.add(body);
-  // cabin
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 0.62, L * 0.46), glass);
-  cab.position.set(0, 1.26, -L * 0.06); g.add(cab);
-  // hood + trunk hints
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(W * 0.98, 0.1, L * 0.24), paint);
-  hood.position.set(0, 1.0, L * 0.36); hood.rotation.x = -0.1; g.add(hood);
-  // wheels
-  const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 12);
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.9 });
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xb8bec8, roughness: 0.3, metalness: 0.9 });
-  for (const [wx, wz] of [[-W / 2 + 0.1, L * 0.32], [W / 2 - 0.1, L * 0.32], [-W / 2 + 0.1, -L * 0.32], [W / 2 - 0.1, -L * 0.32]]) {
-    const wg = new THREE.Group();
-    const tyre = new THREE.Mesh(wheelGeo, wheelMat); tyre.rotation.z = Math.PI / 2; wg.add(tyre);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.32, 8), hubMat);
-    hub.rotation.z = Math.PI / 2; wg.add(hub);
-    wg.position.set(wx, 0.36, wz); g.add(wg); wheels.push(wg);
+  const paint = new THREE.MeshPhysicalMaterial({
+    color: paintColor, roughness: 0.22, metalness: 0.55,
+    clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 1.8,
+  });
+  g.add(extrudeProfile(SPORT_BODY, 2.1, paint, 0.07));
+  g.add(extrudeProfile(SPORT_CANOPY, 1.72, GLASS_MAT, 0.04));
+  g.add(extrudeProfile(SPORT_ROOF, 1.7, paint, 0.03));
+  bumpers(g, 2.1, 4.6, paint);
+  // big rear spoiler: thin sloped wing + struts
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.6), paint);
+  wing.position.set(0, 1.34, -2.15);
+  wing.rotation.x = -0.12;
+  g.add(wing);
+  const strutGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.45, 6);
+  for (const x of [-0.85, 0.85]) {
+    const s = new THREE.Mesh(strutGeo, paint);
+    s.position.set(x, 1.08, -2.15);
+    g.add(s);
   }
-  // headlights (front = +Z in local space? we drive nose-first: nose at -Z)
-  const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2c0 });
-  for (const hx of [-W * 0.32, W * 0.32]) {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.08), headMat);
-    h.position.set(hx, 0.72, -L / 2 - 0.02); g.add(h);
-    g.add(glow(hx, 0.72, -L / 2 - 0.3, 0xffe9a8, 2.4, 0.6));
+  // side skirts: slim rounded rails along the sills
+  const skirtGeo = new THREE.CylinderGeometry(0.09, 0.09, 2.6, 8);
+  for (const x of [-1.05, 1.05]) {
+    const s = new THREE.Mesh(skirtGeo, ARCH_MAT);
+    s.rotation.x = Math.PI / 2;
+    s.position.set(x, 0.34, 0);
+    g.add(s);
   }
-  // taillights
-  const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a });
-  if (type === 'sports') {
-    // full-width LED bar — the hero car's signature
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(W * 0.92, 0.14, 0.08), tailMat);
-    bar.position.set(0, 0.86, L / 2 + 0.02); g.add(bar);
-    g.add(glow(0, 0.86, L / 2 + 0.35, 0xff2a1a, 4.5, 0.75));
-    // spoiler
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, 0.08, 0.55), paint);
-    wing.position.set(0, 1.28, L / 2 - 0.35); wing.rotation.x = 0.12; g.add(wing);
-    for (const sx of [-W * 0.4, W * 0.4]) {
-      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.3), dark);
-      strut.position.set(sx, 1.1, L / 2 - 0.35); g.add(strut);
-    }
-    // side skirts + front splitter
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(W * 1.02, 0.14, L * 0.8), dark);
-    skirt.position.y = 0.32; g.add(skirt);
-  } else {
-    for (const hx of [-W * 0.32, W * 0.32]) {
-      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.08), tailMat);
-      tl.position.set(hx, 0.72, L / 2 + 0.02); g.add(tl);
-    }
-    g.add(glow(0, 0.72, L / 2 + 0.3, 0xff2a1a, 2.6, 0.5));
-  }
-  // taxi sign / police light bar
-  if (type === 'taxi') {
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.3), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
-    sign.position.set(0, 1.68, 0); g.add(sign);
-  }
-  let lightBar = null;
-  if (type === 'police') {
-    // white doors
-    const door = new THREE.Mesh(new THREE.BoxGeometry(W + 0.04, 0.5, L * 0.42),
-      new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.4 }));
-    door.position.set(0, 0.66, 0.1); g.add(door);
-    lightBar = new THREE.Group();
-    const red = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.3), new THREE.MeshBasicMaterial({ color: 0xff2222 }));
-    red.position.x = -0.32; lightBar.add(red);
-    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.3), new THREE.MeshBasicMaterial({ color: 0x2266ff }));
-    blue.position.x = 0.32; lightBar.add(blue);
-    const gR = glow(-0.32, 0.3, 0, 0xff2222, 3.4, 0.9); gR.name = 'glowR'; lightBar.add(gR);
-    const gB = glow(0.32, 0.3, 0, 0x2266ff, 3.4, 0.9); gB.name = 'glowB'; lightBar.add(gB);
-    // coloured pools on the asphalt
-    const poolR = new THREE.Mesh(new THREE.CircleGeometry(3.4, 18),
-      new THREE.MeshBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
-    poolR.rotation.x = -Math.PI / 2; poolR.position.y = -0.55; poolR.name = 'poolR'; lightBar.add(poolR);
-    const poolB = poolR.clone(); poolB.material = poolR.material.clone(); poolB.material.color.set(0x2266ff); poolB.name = 'poolB';
-    lightBar.add(poolB);
-    lightBar.position.set(0, 1.62, -0.1); g.add(lightBar);
-  }
-  g.userData = { type, wheels, lightBar, steer: 0, spin: 0 };
+  wheels(g, 2.1, 4.4);
+  tailBar(g, 1.9, 0.82, -2.32);
+  headlights(g, 2.0, 0.68, 2.62);
+  // rim lights: magenta left, cyan right — the car edge GLOWS against the night
+  const rimL = new THREE.PointLight(0xff2d95, 26, 14, 1.8);
+  rimL.position.set(-3.2, 1.6, -1);
+  g.add(rimL);
+  const rimR = new THREE.PointLight(0x00e5ff, 26, 14, 1.8);
+  rimR.position.set(3.2, 1.6, -1);
+  g.add(rimR);
+  // headlight beam: visible cone + bright pool ahead
+  const beam = new THREE.SpotLight(0xfff2c0, 90, 34, 0.5, 0.5, 1.4);
+  beam.position.set(0, 0.9, 2.4);
+  beam.target.position.set(0, 0, 18);
+  g.add(beam, beam.target);
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(3.4, 14, 12, 1, true), coneMat);
+  cone.rotation.x = Math.PI / 2 + 0.06;
+  cone.position.set(0, 0.7, 9);
+  g.add(cone);
+  // red glow pool under the taillights on the wet road
+  const pool = lightPool(0xff3020, 4.5, 0.5);
+  pool.position.set(0, 0.06, -3.2);
+  g.add(pool);
   return g;
 }
 
-export function makeCar(scene, type, x, z, heading, colorHex) {
-  const t = CAR_TYPES[type];
-  const mesh = makeCarMesh(type, colorHex);
-  mesh.position.set(x, 0, z); mesh.rotation.y = heading;
-  scene.add(mesh);
-  const car = {
-    mesh, type, spec: t, heading, speed: 0,
-    x, z, condition: 100, engine: 0, armour: 0, paint: colorHex ?? t.color,
-    sirenPhase: rng() * 10, isPlayer: false,
-  };
-  return car;
+export function makePoliceCar() {
+  const g = new THREE.Group();
+  const black = new THREE.MeshStandardMaterial({ color: 0x14141e, roughness: 0.3, metalness: 0.6, envMapIntensity: 1.4 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.3, metalness: 0.5, envMapIntensity: 1.4 });
+  g.add(extrudeProfile(SEDAN_BODY, 2.0, black, 0.07));
+  g.add(extrudeProfile(SEDAN_CANOPY, 1.62, GLASS_MAT, 0.04));
+  // white doors band: a slim extruded stripe along the flanks
+  const band = extrudeProfile([[-1.6, 0.62], [1.6, 0.62], [1.6, 0.9], [-1.6, 0.9]], 2.06, white, 0.02);
+  g.add(band);
+  bumpers(g, 2.0, 4.4, black);
+  wheels(g, 2.0, 4.3);
+  tailBar(g, 1.7, 0.8, -2.24);
+  headlights(g, 1.9, 0.68, 2.52);
+  // light bar: red + blue halves on a rounded base, with big alternating glows
+  const barBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.5, 8), black);
+  barBase.rotation.z = Math.PI / 2;
+  barBase.position.set(0, 1.42, -0.2);
+  g.add(barBase);
+  const redHalf = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.36), new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2020, emissiveIntensity: 5 }));
+  redHalf.position.set(-0.38, 1.54, -0.2);
+  const blueHalf = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.36), new THREE.MeshStandardMaterial({ color: 0x000022, emissive: 0x2040ff, emissiveIntensity: 5 }));
+  blueHalf.position.set(0.38, 1.54, -0.2);
+  g.add(redHalf, blueHalf);
+  const redGlow = makeGlow(0xff2020, 7, 0.9);
+  redGlow.position.set(-0.4, 1.75, -0.2);
+  const blueGlow = makeGlow(0x3050ff, 7, 0.9);
+  blueGlow.position.set(0.4, 1.75, -0.2);
+  g.add(redGlow, blueGlow);
+  // ONE point light per cruiser (alternates red/blue) — keeps the light count low
+  const barLight = new THREE.PointLight(0xff2020, 30, 18, 1.7);
+  barLight.position.set(0, 2.0, -0.2);
+  g.add(barLight);
+  // coloured pools on the asphalt
+  const poolR = lightPool(0xff2020, 6, 0.5);
+  poolR.position.set(-1.2, 0.06, 0);
+  const poolB = lightPool(0x3050ff, 6, 0.5);
+  poolB.position.set(1.2, 0.06, 0);
+  g.add(poolR, poolB);
+  const streakR = roadStreak(0xff2020, 2.4, 16, 0.5);
+  streakR.position.set(-1, 0.05, -6);
+  const streakB = roadStreak(0x3050ff, 2.4, 16, 0.5);
+  streakB.position.set(1, 0.05, -6);
+  g.add(streakR, streakB);
+  g.userData.lights = { barLight, redGlow, blueGlow, phase: Math.random() * 10 };
+  return g;
 }
 
-export function syncCarMesh(car) {
-  car.mesh.position.set(car.x, 0, car.z);
-  car.mesh.rotation.y = car.heading;
-  const u = car.mesh.userData;
-  u.spin += car.speed * 0.06;
-  for (const w of u.wheels) w.rotation.x = u.spin;
-  // front wheels steer
-  u.wheels[0].rotation.y = u.steer; u.wheels[1].rotation.y = u.steer;
+export function updatePoliceLights(car, t) {
+  const L = car.userData.lights;
+  if (!L) return;
+  const on = Math.sin((t + L.phase) * 9) > 0;
+  L.barLight.color.setHex(on ? 0xff2020 : 0x3050ff);
+  L.barLight.intensity = 34;
+  L.redGlow.material.opacity = on ? 0.95 : 0.25;
+  L.blueGlow.material.opacity = on ? 0.25 : 0.95;
 }
 
-// Arcade driving: throttle, brake, steering that tightens with grip, handbrake drift.
-export function driveCar(car, input, dt) {
-  const s = car.spec;
-  const top = s.top * (1 + car.engine * 0.15);
-  if (input.up) car.speed += s.accel * dt * (car.speed < 0 ? 2.2 : 1);
-  else if (input.down) car.speed -= (car.speed > 0.5 ? 30 : 12) * dt;
-  else car.speed -= car.speed * 0.55 * dt; // drag
-  if (input.handbrake) car.speed -= car.speed * 1.4 * dt;
-  car.speed = clamp(car.speed, -12, top);
-  const spd = Math.abs(car.speed);
-  const steerTarget = (input.left ? 1 : 0) - (input.right ? 1 : 0);
-  const u = car.mesh.userData;
-  u.steer = lerp(u.steer, steerTarget * 0.42, 1 - Math.exp(-8 * dt));
-  const grip = input.handbrake ? s.grip * 0.42 : s.grip;
-  const turnRate = u.steer * clamp(spd / 14, 0, 1) * 1.9;
-  car.heading += turnRate * dt * Math.sign(car.speed || 1);
-  // drift: velocity lags heading when handbraking at speed
-  const drift = input.handbrake && spd > 18 ? 0.35 : 0;
-  const moveHeading = car.heading + (u.steer * drift * Math.sign(car.speed || 1));
-  car.x += -Math.sin(moveHeading) * car.speed * dt;
-  car.z += -Math.cos(moveHeading) * car.speed * dt;
-  const p = resolveCollision(car.x, car.z, 1.4);
-  if (p.x !== car.x || p.z !== car.z) {
-    car.x = p.x; car.z = p.z;
-    if (spd > 8) { car.speed *= -0.25; car.condition = Math.max(0, car.condition - spd * 0.35); }
-    else car.speed *= 0.4;
+const TRAFFIC_COLORS = [0x2a6aff, 0xffd23e, 0x9a9ab0, 0x2aa876, 0xc86a2a, 0x8a5cff, 0xe8e8f0];
+export function makeTrafficCar(kind, color) {
+  const g = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.6, envMapIntensity: 1.3 });
+  if (kind === 'truck') {
+    // cargo box with soft bevelled edges + sloped-front cab
+    const cargo = extrudeProfile([[-1.6, 0.5], [1.6, 0.5], [1.6, 2.3], [-1.6, 2.3]], 2.2, paint, 0.1);
+    cargo.position.z = -1.2;
+    g.add(cargo);
+    const cab = extrudeProfile(CAB_BODY, 2.1, paint, 0.08);
+    cab.position.z = 1.5;
+    g.add(cab);
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.9, 0.08), GLASS_MAT);
+    shield.position.set(0, 1.58, 2.13);
+    shield.rotation.x = -0.65;
+    g.add(shield);
+    wheels(g, 2.1, 4.6);
+    tailBar(g, 1.6, 0.8, -2.85);
+    headlights(g, 1.9, 0.7, 2.5);
+    return g;
   }
-  car.x = clamp(car.x, CITY.west + 4, CITY.east - 4);
-  car.z = clamp(car.z, CITY.north + 4, CITY.south + 24);
-  syncCarMesh(car);
-  return { drifting: drift > 0 && spd > 18, speedKmh: Math.abs(car.speed) * 3.6 };
+  if (kind === 'van') {
+    g.add(extrudeProfile(VAN_BODY, 2.1, paint, 0.08));
+    g.add(extrudeProfile(VAN_GLASS, 1.9, GLASS_MAT, 0.02));
+    const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 2.6), GLASS_MAT);
+    sideGlass.position.set(1.14, 1.35, -0.4);
+    const sideGlass2 = sideGlass.clone();
+    sideGlass2.position.x = -1.14;
+    g.add(sideGlass, sideGlass2);
+    bumpers(g, 2.1, 4.4, paint);
+    wheels(g, 2.1, 4.2);
+    tailBar(g, 1.6, 0.8, -2.25);
+    headlights(g, 1.9, 0.68, 2.55);
+    return g;
+  }
+  g.add(extrudeProfile(SEDAN_BODY, 2.0, paint, 0.07));
+  g.add(extrudeProfile(SEDAN_CANOPY, 1.62, GLASS_MAT, 0.04));
+  bumpers(g, 2.0, 4.4, paint);
+  if (kind === 'taxi') {
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.22, 0.4), new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xffd23e, emissiveIntensity: 2.5 }));
+    sign.position.set(0, 1.42, -0.2);
+    g.add(sign);
+  }
+  wheels(g, 2.0, 4.2);
+  tailBar(g, 1.6, 0.8, -2.25);
+  headlights(g, 1.9, 0.68, 2.55);
+  return g;
 }
 
-// ---- traffic ----
-export const trafficCars = [];
-const TRAFFIC_COLORS = [0x8a93b8, 0x5a6e8a, 0xb8b0a0, 0x3a5a3a, 0x7a3a4a, 0x2a4a7a, 0xc8c8d8];
-
-export function spawnTraffic(scene, n = 14) {
-  const types = ['sedan', 'sedan', 'taxi', 'van', 'sedan', 'truck'];
-  for (let i = 0; i < n; i++) {
-    const onAvenue = rng() < 0.6;
-    let x, z, heading;
-    if (onAvenue) {
-      const lane = rng() < 0.5 ? -4.5 : 4.5;
-      x = lane; z = -280 + rng() * 560; heading = lane < 0 ? Math.PI : 0;
-    } else {
-      const cz = CITY.crossZ[Math.floor(rng() * CITY.crossZ.length)];
-      x = -190 + rng() * 380; z = cz + (rng() < 0.5 ? -3.5 : 3.5);
-      heading = z > cz ? Math.PI / 2 : -Math.PI / 2;
-    }
-    const type = types[Math.floor(rng() * types.length)];
-    const car = makeCar(scene, type, x, z, heading, TRAFFIC_COLORS[Math.floor(rng() * TRAFFIC_COLORS.length)]);
-    car.speed = 9 + rng() * 6; car.cruise = car.speed; car.lane = { onAvenue, fixed: onAvenue ? x : z };
-    trafficCars.push(car);
-  }
-}
-
-export function updateTraffic(dt, playerCar) {
-  for (const c of trafficCars) {
-    // slow down if something is close ahead
-    let target = c.cruise;
-    const aheadX = c.x - Math.sin(c.heading) * 10, aheadZ = c.z - Math.cos(c.heading) * 10;
-    for (const o of trafficCars) {
-      if (o === c) continue;
-      const d2 = (o.x - aheadX) ** 2 + (o.z - aheadZ) ** 2;
-      if (d2 < 36) { target = 0; break; }
-    }
-    if (playerCar) {
-      const d2 = (playerCar.x - aheadX) ** 2 + (playerCar.z - aheadZ) ** 2;
-      if (d2 < 30) target = 0;
-    }
-    c.speed = lerp(c.speed, target, 1 - Math.exp(-2 * dt));
-    c.x += -Math.sin(c.heading) * c.speed * dt;
-    c.z += -Math.cos(c.heading) * c.speed * dt;
-    // wrap around at the map edges, rejoining a lane
-    if (c.z < -300 || c.z > 300 || c.x < -200 || c.x > 200) {
-      if (c.lane.onAvenue) { c.z = c.z < 0 ? 290 : -290; c.x = c.lane.fixed; }
-      else { c.x = c.x < 0 ? 195 : -195; c.z = c.lane.fixed; }
-    }
-    syncCarMesh(c);
-  }
-}
-
-// Parked cars along side streets and the impound lot.
-export function spawnParked(scene) {
-  const spots = [
-    [18, -60, 0.1], [18, 30, 0], [-18, -130, 0.05], [-18, 150, -0.05], [30, 210, 1.57],
-    [120, -52, 0.3], [126, -44, -0.2], [114, -36, 0.1], [128, -28, 0.4], [-40, 210, 1.5],
-    [52, -148, 0.2], [-52, 108, 1.57], [18, -190, 0], [-18, 60, 0],
-  ];
-  const cars = [];
-  for (const [x, z, h] of spots) {
-    const type = rng() < 0.5 ? 'sedan' : (rng() < 0.5 ? 'van' : 'taxi');
-    cars.push(makeCar(scene, type, x, z, h, TRAFFIC_COLORS[Math.floor(rng() * TRAFFIC_COLORS.length)]));
-  }
-  return cars;
+export function randomTrafficCar(rnd) {
+  const kinds = ['sedan', 'sedan', 'taxi', 'van', 'truck'];
+  const kind = kinds[Math.floor(rnd() * kinds.length)];
+  const color = kind === 'taxi' ? 0xffd23e : TRAFFIC_COLORS[Math.floor(rnd() * TRAFFIC_COLORS.length)];
+  return makeTrafficCar(kind, color);
 }

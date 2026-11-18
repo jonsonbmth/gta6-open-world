@@ -1,134 +1,120 @@
-// Story: 7 jobs for Rico Marín and his crew. Each job has stages with a
-// target spot, dialogue from the crew, and a money + REP payout.
-import { S, CITY } from './state.js';
-
+// Story: 7 jobs for Rico Marín and his crew, each with stages + dialogue.
 export const CREW = {
-  lena: { name: 'LENA "WRENCH" ORTIZ', short: 'LENA' },
-  rosa: { name: 'MAMA ROSA', short: 'ROSA' },
-  dario: { name: 'DARIO "FUZE" KANE', short: 'DARIO' },
-  rico: { name: 'RICO MARÍN', short: 'RICO' },
-  cop: { name: 'SBPD DISPATCH', short: 'DISPATCH' },
+  lena: { name: 'LENA "WRENCH" ORTIZ', role: 'mechanic', skin: '#c98a5a', hair: '#ff2d95', shirt: '#2a6aff' },
+  rosa: { name: 'MAMA ROSA', role: 'fence', skin: '#8a5a34', hair: '#e8e8e8', shirt: '#7a2a4a' },
+  dario: { name: 'DARIO "FUZE" KANE', role: 'demolitions', skin: '#f2c89a', hair: '#1c1c28', shirt: '#2a7a5a' },
+  rico: { name: 'RICO MARÍN', role: 'getaway driver', skin: '#c98a5a', hair: '#1c1c28', shirt: '#ffd23e' },
 };
 
 export const JOBS = [
   {
     chapter: 'CH 1', title: 'THE GETAWAY DRIVER',
-    desc: 'Lena needs the Comet out of the impound lot.\nGet it back to the garage in one piece.',
-    stages: [
-      { text: 'Reach the impound lot', spot: { x: 120, z: -40, r: 12 }, say: ['lena', 'The Comet is sitting in Lot 4, Rico. Cops towed it at dawn. Go get my car.'] },
-      { text: 'Steal the Comet', spot: { x: 120, z: -40, r: 8 }, say: ['rosa', 'Quick hands, mijo. The lot guard changes shift in ten minutes.'], needCar: true },
-      { text: 'Lose the cops', spot: null, say: ['cop', 'All units: stolen vehicle heading west on Lumen. Intercept.'], loseCops: true },
-      { text: 'Bring it to the garage', spot: { x: CITY.garage.x, z: CITY.garage.z, r: 10 }, say: ['lena', 'That is my girl. Park her inside and I will make her sing.'] },
+    desc: 'Lena needs the Comet out of the impound lot. Get it back to the garage in one piece.',
+    stages: ['Reach the impound lot', 'Steal the Comet', 'Lose the cops', 'Deliver to the garage'],
+    crew: 'lena',
+    lines: [
+      'Lose them before the bridge, Rico. The Comet is worth more than my freedom — barely.',
+      'That car is my retirement plan. Do not scratch the paint. Actually, scratch it. Just bring it home.',
     ],
-    pay: 1200, rep: 120,
+    pay: 2400,
   },
   {
     chapter: 'CH 1', title: 'WET WORK',
-    desc: 'Dario wired a job at the Old Harbour.\nPick up the package — no questions.',
-    stages: [
-      { text: 'Meet Dario at the marina', spot: { x: -20, z: 258, r: 12 }, say: ['dario', 'Package is in the blue container, Pier 9. Do not open it. Seriously.'] },
-      { text: 'Grab the package', spot: { x: -20, z: 258, r: 6 }, say: ['rico', 'Feels like it ticks. Dario, tell me it does not tick.'] },
-      { text: 'Deliver to Mama Rosa', spot: { x: 44, z: -148, r: 10 }, say: ['rosa', 'Bring it to the back room. And Rico — wash your hands. Rain or no rain.'] },
+    desc: 'Dario wired a job at the Old Harbour. Pick up the package — no questions.',
+    stages: ['Meet Dario at the marina', 'Grab the package', 'Reach the safehouse'],
+    crew: 'dario',
+    lines: [
+      'Package is in the blue container, Pier 9. Do not open it. Seriously.',
+      'If anyone follows you, the harbour is deep and the night is long. You get me?',
     ],
-    pay: 1800, rep: 150,
+    pay: 1800,
+  },
+  {
+    chapter: 'CH 2', title: 'MAMA ROSA\'S FAVOUR',
+    desc: 'Rosa has a buyer for hot jewellery. Collect it from the Gilded Pawn, fast and quiet.',
+    stages: ['Reach the Gilded Pawn', 'Collect the jewellery', 'Deliver to Rosa'],
+    crew: 'rosa',
+    lines: [
+      'My buyer pays in cash, no names. You are my favourite grandson tonight, Rico.',
+      'The pawn man talks too much. Smile, take the bag, leave before he finishes a sentence.',
+    ],
+    pay: 3200,
   },
   {
     chapter: 'CH 2', title: 'NEON RUN',
-    desc: 'A rival crew is moving product down Lumen Avenue.\nFollow them. Find the stash house.',
-    stages: [
-      { text: 'Tail the black sedan', spot: { x: 0, z: -120, r: 18 }, say: ['lena', 'Black Meridian, no plates. Stay two cars back or they will spook.'] },
-      { text: 'Follow to the stash house', spot: { x: 95, z: 150, r: 14 }, say: ['dario', 'Eastside warehouse. I knew it. They always use Eastside.'] },
-      { text: 'Photograph the drop', spot: { x: 95, z: 150, r: 8 }, say: ['rico', 'Got it. Three crates, two guards. Rosa will love this.'] },
-      { text: 'Escape the area', spot: { x: -52, z: 96, r: 12 }, say: ['cop', 'Shots reported near the Eastside warehouse. All units respond.'] },
+    desc: 'A rival crew is moving product down Lumen Avenue. Intercept the courier van.',
+    stages: ['Find the courier van', 'Ram it off the road', 'Take the cargo'],
+    crew: 'lena',
+    lines: [
+      'The van is armoured, so hit it where it lives — the rear axle. Physics does the rest.',
+      'If the van makes the bridge, we lose the cargo and the night. Do not let it.',
     ],
-    pay: 2500, rep: 200,
+    pay: 4100,
   },
   {
-    chapter: 'CH 2', title: 'THE COLLECTOR',
-    desc: 'A debtor in Downtown owes Rosa forty grand.\nCollect it — politely, then firmly.',
-    stages: [
-      { text: 'Reach the Downtown tower', spot: { x: -95, z: -260, r: 12 }, say: ['rosa', 'He hides in the glass tower. Remind him who lent him the money.'] },
-      { text: 'Confront the debtor', spot: { x: -95, z: -260, r: 6 }, say: ['rico', 'Rosa sends her regards. The envelope, please.'] },
-      { text: 'Take the money to Rosa', spot: { x: 44, z: -148, r: 10 }, say: ['dario', 'Forty grand in a wet envelope. Classic.'] },
+    chapter: 'CH 3', title: 'THE DOWNTOWN DROP',
+    desc: 'Dario planted something under the Halcyon Motel. Drive the decoy, draw the heat.',
+    stages: ['Pick up the decoy car', 'Draw police downtown', 'Escape to the marina'],
+    crew: 'dario',
+    lines: [
+      'The decoy is loud on purpose. Every cop in Solmar Bay should want a piece of you.',
+      'When the sky lights up, do not look back. Looking back is how drivers get caught.',
     ],
-    pay: 3200, rep: 220,
+    pay: 5000,
   },
   {
-    chapter: 'CH 3', title: 'RAIN CHECK',
-    desc: 'The crew needs a clean car for the big night.\nSteal a Vulpine S from the Westside showroom.',
-    stages: [
-      { text: 'Reach the showroom', spot: { x: -160, z: -50, r: 12 }, say: ['lena', 'Red Vulpine S, showroom floor. Alarm is on a 30-second delay. Be quick.'] },
-      { text: 'Steal the Vulpine S', spot: { x: -160, z: -50, r: 8 }, say: ['rico', 'She is beautiful. She is also very loud.'], needCar: true },
-      { text: 'Outrun the police', spot: null, say: ['cop', 'Grand theft auto in progress, Westside. All units, intercept the red sports car.'], loseCops: true },
-      { text: 'Stash it at the safehouse', spot: { x: 44, z: -148, r: 10 }, say: ['lena', 'Park it under the tarp. Tomorrow we paint her midnight blue.'] },
+    chapter: 'CH 3', title: 'HARBOUR LIGHTS',
+    desc: 'Rosa\'s shipment arrives by ferry at midnight. Escort the truck through Westside.',
+    stages: ['Meet the ferry', 'Escort the truck', 'Defend the drop'],
+    crew: 'rosa',
+    lines: [
+      'The truck carries my whole month. Guard it like it is your own mother, Rico.',
+      'Westside is hungry tonight. Keep your eyes on the mirrors and your foot down.',
     ],
-    pay: 4000, rep: 280,
+    pay: 6400,
   },
   {
-    chapter: 'CH 3', title: 'FLOOD TIDE',
-    desc: 'A storm surge is coming. The crew moves the stash\nfrom the marina before the water takes it.',
-    stages: [
-      { text: 'Reach the marina stash', spot: { x: 60, z: 258, r: 12 }, say: ['rosa', 'The water rises at midnight. My goods do not swim, Rico.'] },
-      { text: 'Load the crates', spot: { x: 60, z: 258, r: 6 }, say: ['dario', 'Four crates. Heavy. Whatever is inside, do not drop it.'] },
-      { text: 'Drive to the garage', spot: { x: CITY.garage.x, z: CITY.garage.z, r: 10 }, say: ['lena', 'Garage is dry and the door locks. Move, the rain is getting worse.'] },
+    chapter: 'CH 4', title: 'THE LONG GOODBYE',
+    desc: 'One last job: the vault under the Mirage Hotel. Then Rico leaves Solmar Bay rich.',
+    stages: ['Reach the Mirage', 'Crack the vault', 'Outrun the whole city', 'Reach the bridge'],
+    crew: 'lena',
+    lines: [
+      'Seven jobs, Rico. This is the last one. After tonight, Solmar Bay is a postcard.',
+      'The whole city will be behind you. Drive like the rain owes you money.',
     ],
-    pay: 5000, rep: 320,
-  },
-  {
-    chapter: 'CH 4', title: 'THE LONG NIGHT',
-    desc: 'The rival crew found the garage. Defend it,\nthen finish the job at the Old Harbour.',
-    stages: [
-      { text: 'Defend the garage', spot: { x: CITY.garage.x, z: CITY.garage.z, r: 14 }, say: ['lena', 'They are here! Rico, get to the garage NOW.'], combat: true },
-      { text: 'Chase the last car', spot: { x: 0, z: 200, r: 20 }, say: ['dario', 'One left, heading for the marina. End this.'], needCar: true },
-      { text: 'Finish it at the harbour', spot: { x: 0, z: 258, r: 12 }, say: ['rosa', 'When it is done, come home. The rain will wash the rest away.'] },
-      { text: 'Return to the safehouse', spot: { x: 44, z: -148, r: 10 }, say: ['rico', 'Solmar Bay. My city. My storm.'] },
-    ],
-    pay: 8000, rep: 500,
+    pay: 12000,
   },
 ];
 
-export function currentJob() { return JOBS[Math.min(S.mission, JOBS.length - 1)]; }
-export function currentStage() { const j = currentJob(); return j.stages[Math.min(S.stage, j.stages.length - 1)]; }
-export function jobDone() { return S.mission >= JOBS.length; }
+export function currentJob(state) {
+  return JOBS[Math.min(state.jobIndex, JOBS.length - 1)];
+}
 
-// Advance the mission when the player reaches the stage spot (or its condition).
-// Returns an event for the HUD: {type:'say'|'stage'|'jobDone'|'allDone', ...}
-export function updateMission(px, pz, inCar) {
-  if (jobDone()) return null;
-  const job = currentJob();
-  const st = job.stages[S.stage];
-  if (!st) return null;
-  if (st.loseCops) {
-    if (S.wanted === 0) return advance();
-    return null;
-  }
-  if (st.spot) {
-    const d2 = (px - st.spot.x) ** 2 + (pz - st.spot.z) ** 2;
-    if (d2 < st.spot.r * st.spot.r) {
-      if (st.needCar && !inCar) return { type: 'hint', text: 'You need a car for this.' };
-      return advance();
+export function stageLabel(state) {
+  const job = currentJob(state);
+  return `STAGE ${Math.min(state.jobStage + 1, job.stages.length)}/${job.stages.length}`;
+}
+
+export function nextObjective(state) {
+  const job = currentJob(state);
+  return job.stages[Math.min(state.jobStage, job.stages.length - 1)];
+}
+
+// Advance one stage; returns { completedJob, finishedStory, pay }.
+export function advanceStage(state) {
+  const job = currentJob(state);
+  state.jobStage += 1;
+  if (state.jobStage >= job.stages.length) {
+    state.money += job.pay;
+    state.respect = Math.min(1000, state.respect + 90);
+    state.respectLevel = Math.min(5, 1 + Math.floor(state.respect / 200));
+    state.jobsDone += 1;
+    const finishedStory = state.jobIndex >= JOBS.length - 1;
+    if (!finishedStory) {
+      state.jobIndex += 1;
+      state.jobStage = 0;
     }
+    return { completedJob: true, finishedStory, pay: job.pay };
   }
-  return null;
-}
-
-function advance() {
-  const job = currentJob();
-  S.stage++;
-  if (S.stage >= job.stages.length) {
-    S.money += job.pay;
-    S.rep += job.rep;
-    S.respect = 1 + Math.floor(S.rep / 250);
-    S.mission++;
-    S.stage = 0;
-    if (S.mission >= JOBS.length) return { type: 'allDone', pay: job.pay };
-    return { type: 'jobDone', pay: job.pay, next: JOBS[S.mission].title };
-  }
-  const next = job.stages[S.stage];
-  return { type: 'stage', say: next.say || null, text: next.text };
-}
-
-export function stageSay() {
-  const st = currentStage();
-  return st && st.say ? st.say : null;
+  return { completedJob: false, finishedStory: false, pay: 0 };
 }

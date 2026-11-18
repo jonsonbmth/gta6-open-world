@@ -1,92 +1,134 @@
-// Screenshot + playtest driver for SOLMAR BAY.
-// Serves game/, opens each ?shot= in headless Chromium (Playwright),
-// screenshots at 1280x720, and fails loudly on console/page errors.
-// Usage: node shoot.mjs [--shots-only|--playtest-only]
-import { chromium } from '/tmp/pw/node_modules/playwright-core/index.mjs';
-import { createServer } from 'node:http';
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { join, extname, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Playtest + screenshot tool for SOLMAR BAY V5. Run from the repo root:
+//   node shoot.mjs
+// Serves game/ on localhost, drives the game with Playwright, checks for
+// console/page errors, and writes the 4 staged screenshots (1280x720 JPEG).
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { statSync } from 'node:fs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, 'game');
-const shots = JSON.parse(readFileSync(join(here, 'shots.json'), 'utf8'));
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg' };
+const require = createRequire('/tmp/pw/package.json');
+const { chromium } = require('playwright-core');
+const CHROME = process.env.HOME + '/.cache/ms-playwright/chromium-1255/chrome-linux64/chrome';
 
-const server = createServer((req, res) => {
-  const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  const file = join(root, path === '/' ? 'index.html' : path);
-  if (!file.startsWith(root) || !existsSync(file)) { res.writeHead(404); res.end('nf'); return; }
-  res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
-  res.end(readFileSync(file));
+const PORT = 8091;
+const BASE = `http://localhost:${PORT}`;
+const SHOTS = [
+  { name: '1-chase.jpg', query: '?shot=chase&seed=1' },
+  { name: '2-title.jpg', query: '?shot=title&seed=1' },
+  { name: '3-map.jpg', query: '?shot=map&seed=1' },
+  { name: '4-marina.jpg', query: '?shot=marina&seed=1' },
+];
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function waitServer() {
+  for (let i = 0; i < 40; i++) {
+    try {
+      const r = await fetch(BASE + '/index.html');
+      if (r.ok) return true;
+    } catch { /* not up yet */ }
+    await sleep(250);
+  }
+  throw new Error('server did not come up');
+}
+
+const server = spawn('node', ['serve.ts'], {
+  cwd: process.cwd(), env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore',
 });
-await new Promise((r) => server.listen(0, r));
-const port = server.address().port;
-const base = `http://127.0.0.1:${port}`;
 
-const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
 const errors = [];
-async function newPage() {
+const results = [];
+function check(name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+}
+
+try {
+  await waitServer();
+  const browser = await chromium.launch({ executablePath: CHROME, args: ['--use-gl=angle', '--use-angle=swiftshader', '--disable-gpu-sandbox', '--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  return page;
-}
 
-const only = process.argv[2];
-if (only !== '--playtest-only') {
-  for (const s of shots) {
-    const page = await newPage();
-    await page.goto(base + '/' + s.query, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(s.wait_ms);
-    const path = join(here, 'screenshots', s.name);
-    await page.screenshot({ path, type: 'jpeg', quality: 82 });
-    const { size } = await import('node:fs').then((fs) => fs.statSync(path));
-    console.log(`shot ${s.name}: ${(size / 1024).toFixed(0)} KiB`);
-    await page.close();
-  }
-}
-
-if (only !== '--shots-only') {
-  // Playtest: title → Enter → walk → enter car → drive → radio → exit → map → pause
-  const page = await newPage();
-  await page.goto(base + '/?seed=7', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
-  const log = [];
-  const state = () => page.evaluate(() => ({
-    mode: document.getElementById('hud').classList.contains('hidden') ? 'title?' : 'hud-on',
-    title: !document.getElementById('title-screen').classList.contains('hidden'),
-    money: document.getElementById('sp-money')?.textContent,
-    speed: document.getElementById('vp-speed-n')?.textContent,
-    car: document.getElementById('vp-car')?.textContent,
-  }));
-  log.push('start: ' + JSON.stringify(await state()));
+  // --- playtest on the plain page ---
+  await page.goto(BASE + '/', { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  check('page loads, game ready', true);
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(600);
-  log.push('after Enter: ' + JSON.stringify(await state()));
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(900); await page.keyboard.up('KeyW');
-  log.push('walked: ' + JSON.stringify(await state()));
-  await page.keyboard.press('KeyE'); await page.waitForTimeout(400);
-  log.push('after E: ' + JSON.stringify(await state()));
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
-  log.push('drove: ' + JSON.stringify(await state()));
-  await page.keyboard.press('KeyR'); await page.waitForTimeout(300);
-  log.push('radio: ' + JSON.stringify(await page.evaluate(() => document.getElementById('vp-station')?.textContent)));
-  await page.keyboard.press('KeyE'); await page.waitForTimeout(400);
-  log.push('after exit E: ' + JSON.stringify(await state()));
-  await page.keyboard.press('KeyM'); await page.waitForTimeout(400);
-  log.push('map open: ' + JSON.stringify(await page.evaluate(() => !document.getElementById('map-screen').classList.contains('hidden'))));
-  await page.keyboard.press('KeyM'); await page.waitForTimeout(300);
-  await page.keyboard.press('KeyP'); await page.waitForTimeout(400);
-  log.push('pause open: ' + JSON.stringify(await page.evaluate(() => !document.getElementById('pause-menu').classList.contains('hidden'))));
-  await page.keyboard.press('KeyP'); await page.waitForTimeout(300);
-  await page.keyboard.press('KeyF'); await page.waitForTimeout(300);
-  log.push('punched, errors so far: ' + errors.length);
-  for (const l of log) console.log('playtest:', l);
-  await page.close();
+  await sleep(1200);
+  const hudVisible = await page.evaluate(() => !document.getElementById('hud').classList.contains('hidden'));
+  check('title -> Enter starts game, HUD shows', hudVisible);
+  await page.keyboard.down('KeyW');
+  await sleep(6000);
+  await page.keyboard.up('KeyW');
+  const speed = await page.evaluate(() => window.__game.state.speedKmh);
+  check('W drives the car', speed > 5, `speed ${speed.toFixed(0)} km/h`);
+  await page.keyboard.press('KeyE');
+  await sleep(800);
+  const onFoot = await page.evaluate(() => window.__game.state.onFoot);
+  check('E exits the car (on foot)', onFoot === true);
+  await page.keyboard.down('KeyW');
+  await sleep(10000);
+  await page.keyboard.up('KeyW');
+  const walked = await page.evaluate(() => window.__game.rico.position.z);
+  check('W walks on foot', Math.abs(walked - 60) > 1, `rico z=${walked.toFixed(1)}`);
+  await page.keyboard.press('KeyE');
+  await sleep(800);
+  const backInCar = await page.evaluate(() => window.__game.inCar);
+  check('E re-enters the car', backInCar === true);
+  await page.keyboard.press('KeyR');
+  await sleep(400);
+  const station = await page.evaluate(() => window.__game.state.radioStation);
+  check('R changes radio station', station === 1, `station ${station}`);
+  await page.keyboard.press('KeyM');
+  await sleep(600);
+  const mapOpen = await page.evaluate(() => window.__game.mode === 'map');
+  check('M opens the city map', mapOpen);
+  await page.keyboard.press('KeyM');
+  await sleep(400);
+  await page.keyboard.press('KeyP');
+  await sleep(500);
+  const paused = await page.evaluate(() => window.__game.mode === 'pause');
+  check('P pauses', paused);
+  await page.keyboard.press('KeyP');
+  await sleep(400);
+  await page.keyboard.press('KeyF');
+  await sleep(300);
+  check('F punch (no crash)', true);
+  await page.mouse.click(640, 360);
+  await sleep(400);
+  const ammo = await page.evaluate(() => window.__game.state.ammo[1]);
+  check('Click shoots (ammo decreases)', ammo < 24, `pistol ammo ${ammo}`);
+  await page.keyboard.press('Digit3');
+  await sleep(300);
+  const weapon = await page.evaluate(() => window.__game.state.weapon);
+  check('Digit 3 selects SMG', weapon === 2, `weapon ${weapon}`);
+  await page.keyboard.press('KeyG');
+  await sleep(500);
+  const garage = await page.evaluate(() => window.__game.mode === 'garage');
+  check('G opens the garage', garage);
+  await page.keyboard.press('KeyG');
+  await sleep(400);
+  const resumed = await page.evaluate(() => window.__game.mode === 'play');
+  check('G closes the garage', resumed);
+  check('no console/page errors during playtest', errors.length === 0, errors.slice(0, 3).join(' | '));
+
+  // --- screenshots ---
+  for (const shot of SHOTS) {
+    await page.goto(BASE + '/' + shot.query, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__shotReady === true, { timeout: 90000 });
+    await sleep(2000);
+    const path = `screenshots/${shot.name}`;
+    await page.screenshot({ path, type: 'jpeg', quality: 80 });
+    const bytes = statSync(path).size;
+    check(`screenshot ${shot.name} <= 256 KiB`, bytes <= 262144, `${Math.round(bytes / 1024)} KiB`);
+  }
+  check('no console/page errors during shots', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+} finally {
+  server.kill();
 }
 
-console.log(errors.length ? `ERRORS (${errors.length}):\n- ${errors.join('\n- ')}` : 'NO PAGE/CONSOLE ERRORS');
-await browser.close();
-server.close();
-process.exit(errors.length ? 1 : 0);
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed, ${failed.length} failed.`);
+if (failed.length) process.exitCode = 1;

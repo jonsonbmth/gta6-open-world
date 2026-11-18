@@ -1,49 +1,52 @@
 # SOLMAR BAY — Night Rain
 
-An open-world crime game for make.fun's "Make GTA 6" bounty (gta6-01), $1,666 in USDC.
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Rico Marín is a getaway driver in Solmar Bay, a neon coastal city in the middle
-of a night storm. Seven story jobs with Mama Rosa, Lena "Wrench" Ortiz and Dario
-"Fuze" Kane. Steal cars, outrun the SBPD, lose the helicopter, upgrade your ride
-at Lena's garage, and save the city one wet night at a time.
+An open-world crime game for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+Built by an AI agent. Original city, characters, vehicles, names, story and
+sounds — no Rockstar content.
 
-## Play
+## The game
 
-```sh
-node serve.ts   # http://localhost:8080
-```
+Rico Marín, getaway driver, works seven story jobs across SOLMAR BAY — a
+rain-soaked neon coastal city at night — for his crew: Mama Rosa (fence),
+Lena "Wrench" Ortiz (mechanic) and Dario "Fuze" Kane (demolitions). Drive the
+VULPINE S sports car through wet, reflective Lumen Avenue, steal cars, outrun
+named police units and the AIR-1 helicopter, and build respect from 0 to 1000.
+
+- **Open world:** drivable city on foot and by car — Lumen Avenue, Downtown,
+  Westside, Eastside, Old Harbour marina; traffic AI, pedestrians with
+  umbrellas who panic and run when the chase comes close.
+- **Wanted system:** 0–5 stars, named units (UNIT 7/12/21) with live status,
+  helicopter spotlight at 3+, roadblocks at 4+, BUSTED / WASTED screens.
+- **Missions:** 7 story jobs with stages, objectives, crew dialogue with
+  portraits, and pay.
+- **Combat:** fists, pistol, SMG, shotgun, rifle; near-miss and drift bonuses.
+- **Systems:** garage upgrades (engine, armour, paint, lose the heat), radio
+  with 3 stations, rotating minimap, full city map, localStorage save.
+- **Look:** bright neon night — wet asphalt full of reflections, neon signs on
+  both sides of every street, rain, glowing police light bars, headlight beams.
+
+## Controls
 
 WASD drive & walk · E enter/exit car · F punch · Click shoot · 1–5 weapons ·
-R radio · M map · G garage · P pause · Space handbrake · Shift sprint.
+R radio · M map · P pause · G garage · Space handbrake/drift · X mute
 
-## What is in the game
-
-- **A city to explore** — Lumen Avenue's neon shopfronts, Downtown towers,
-  Westside and Eastside blocks, the Old Harbour marina with docks and boats.
-- **Night rain** — falling rain, wet asphalt with fake neon reflections, fog,
-  glowing signs, palm silhouettes, a gradient night sky.
-- **Traffic and pedestrians** — cars that drive the grid, people with umbrellas
-  who run screaming when a chase passes.
-- **Wanted 0–5 stars** — named SBPD units (UNIT 7, UNIT 12, UNIT 21…) that
-  pursue, ram and roadblock; AIR-1 helicopter with a searchlight at 3+ stars.
-- **7 story jobs** with stages, objectives, crew dialogue and portraits.
-- **Combat** — fists, pistol, SMG, shotgun, rifle; health and armour.
-- **Garage** — engine, armour, repair, repaint, fake plates.
-- **HUD** — mission panel, police response panel, money/stars/weapons, round
-  rotating minimap, health/armour/REP, dialogue, radio + speedometer.
-- **Sound** — synthesized WebAudio: engine, sirens, rain, three radio stations.
-- **Save** — localStorage, autosaves after every job.
-
-## Tech
-
-three.js 0.160.0 (vendored, `game/vendor/three.module.min.js`), ES modules, no
-build step, fully offline. All art is procedural — canvas-drawn signs, window
-grids and portraits; no external assets.
-
-## Hand in
+## Run
 
 ```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+node serve.ts   # then open http://localhost:8080
 ```
 
-Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+Screenshots are staged with `?shot=chase|title|map|marina&seed=1` (see
+`shots.json`); they are real renders of the game's own code.
+
+## License
+
+MIT — see LICENSE.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
