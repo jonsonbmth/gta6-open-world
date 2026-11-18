@@ -1,18 +1,32 @@
-// SOLMAR BAY V5 — gta6-01 entry program (Node 22, standard library only).
-// The game is the static files under game/ (three.js, vendored, fully offline).
-// This program hands it in: it copies game/ and screenshots/ beside this file
-// into /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes the
-// dossier the judge reads with the kit's own buildDossier library.
-//
+// SOLMAR BAY — gta6-01 entry program (Node 22, standard library only).
+// Hands the game in: copies game/ and screenshots/ from beside this file to
+// /output and writes /output/dossier.json with the vendored make.fun library
+// (buildDossier). Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// The game itself is plain static files a desktop browser loads offline:
+// game/index.html and its ES modules, three.js vendored under game/vendor/,
+// no network request at run time.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// Sanity: the entry is not an entry without its game and its screenshots.
+const gameIndex = join(here, 'game', 'index.html');
+if (!existsSync(gameIndex)) throw new Error('game/index.html is missing — nothing to hand in');
+const shotDir = join(here, 'screenshots');
+const shots = existsSync(shotDir) ? readdirSync(shotDir).filter((f) => /\.(png|jpe?g)$/i.test(f)) : [];
+if (shots.length < 3 || shots.length > 4) {
+  throw new Error(`expected 3 or 4 screenshots, found ${shots.length}`);
+}
+for (const shot of shots) {
+  const bytes = statSync(join(shotDir, shot)).size;
+  if (bytes > 262144) throw new Error(`screenshot ${shot} is ${bytes} bytes, over the 256 KiB cap`);
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
@@ -21,8 +35,11 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The program is deterministic: same repository, same bytes, every run —
-// the grader runs it twice and compares the outputs byte for byte.
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
+// bytes; the others refuse an entry the scorer would refuse (more than 4
+// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
+// game files, in all, or a path under game/ over 1000 bytes: game/ counts
+// beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

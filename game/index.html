@@ -1,132 +1,245 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOLMAR BAY — Night Rain | An Open-World Crime Story</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css">
+<title>SOLMAR BAY — Make GTA 6</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070b26;
+    font-family: "Segoe UI", system-ui, Arial, sans-serif; color: #fff; }
+  #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #app canvas { touch-action: none; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10;
+    font-size: 14px; }
+  .panel { position: absolute; background: rgba(8, 10, 26, 0.78);
+    border: 1px solid rgba(255,255,255,0.22); border-radius: 10px;
+    padding: 10px 14px; }
+
+  /* Top-left: mission panel */
+  #mission-panel { top: 16px; left: 16px; width: 330px; }
+  #mission-chapter { display: inline-block; background: #ffd60a; color: #111;
+    font-weight: 900; font-size: 12px; padding: 2px 8px; border-radius: 4px;
+    letter-spacing: 1px; }
+  #mission-title { display: inline-block; font-weight: 900; font-size: 17px;
+    letter-spacing: 1.5px; margin-left: 8px; }
+  #mission-text { margin-top: 7px; font-size: 14px; color: #dff3ff; line-height: 1.35; }
+  #mission-stage-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  #mission-stage { font-size: 12px; font-weight: 700; color: #ffd60a; letter-spacing: 1px; }
+  #mission-progress { display: flex; gap: 4px; flex: 1; }
+  #mission-progress .seg { flex: 1; height: 7px; border-radius: 3px;
+    background: rgba(255,255,255,0.18); }
+  #mission-progress .seg.done { background: #ffd60a; }
+  #mission-next { margin-top: 7px; font-size: 12.5px; color: #ffd60a; font-weight: 700; }
+
+  /* Top-right: status */
+  #status-panel { top: 16px; right: 16px; width: 250px; text-align: right; }
+  #clock { font-size: 13px; color: #c8d0e8; letter-spacing: 1px; }
+  #money { font-size: 30px; font-weight: 900; color: #39ff88; line-height: 1.1;
+    text-shadow: 0 0 14px rgba(57,255,136,0.45); }
+  #stars { margin-top: 2px; font-size: 21px; letter-spacing: 3px; }
+  #stars .star { color: rgba(255,255,255,0.25); }
+  #stars .star.lit { color: #ffb020; text-shadow: 0 0 10px rgba(255,176,32,0.8); }
+  #wanted-label { color: #ff3b3b; font-weight: 900; font-size: 13px;
+    letter-spacing: 2px; visibility: hidden; }
+  #pursuit-label { color: #ff3b3b; font-weight: 700; font-size: 11.5px;
+    letter-spacing: 1px; visibility: hidden; }
+
+  /* Bottom-left: minimap + district + respect */
+  #minimap-wrap { left: 16px; bottom: 16px; display: flex; flex-direction: column;
+    align-items: flex-start; gap: 8px; }
+  #minimap { width: 190px; height: 190px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.35);
+    box-shadow: 0 0 24px rgba(0,0,0,0.6); background: #10142a; }
+  #district-label { background: #ff2d95; color: #fff; font-weight: 900;
+    font-size: 13px; letter-spacing: 1.5px; padding: 4px 12px; border-radius: 20px; }
+  #respect-row { width: 190px; }
+  #respect-label { font-size: 12px; font-weight: 700; color: #c8d0e8; }
+  #respect-track { height: 7px; background: rgba(255,255,255,0.18);
+    border-radius: 4px; margin-top: 3px; overflow: hidden; }
+  #respect-bar { height: 100%; width: 32%; background: linear-gradient(90deg, #00e5ff, #39ff88);
+    border-radius: 4px; }
+
+  /* Bottom-right: radio + vehicle */
+  #vehicle-panel { right: 16px; bottom: 16px; width: 290px; text-align: right; }
+  #radio-station { font-size: 13px; font-weight: 800; color: #00e5ff; letter-spacing: 1px; }
+  #radio-track { font-size: 12.5px; color: #c8d0e8; margin-top: 1px; }
+  #car-name { font-size: 22px; font-weight: 900; letter-spacing: 1.5px; margin-top: 6px; }
+  #condition-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end;
+    margin-top: 4px; }
+  #condition-row .lbl { font-size: 11px; color: #c8d0e8; letter-spacing: 1px; }
+  #condition-track { flex: 1; height: 7px; background: rgba(255,255,255,0.18);
+    border-radius: 4px; overflow: hidden; }
+  #condition-bar { height: 100%; width: 100%; background: #39ff88; }
+  #condition-pct { font-size: 11px; font-weight: 700; min-width: 32px; }
+  #speed-row { display: flex; align-items: baseline; justify-content: flex-end; gap: 8px;
+    margin-top: 2px; }
+  #speed { font-size: 56px; font-weight: 900; line-height: 1;
+    text-shadow: 0 0 18px rgba(255,255,255,0.35); font-variant-numeric: tabular-nums; }
+  #speed-unit { font-size: 16px; font-weight: 800; color: #c8d0e8; }
+  #gear { font-size: 12px; font-weight: 700; color: #ffd60a; letter-spacing: 1px; }
+
+  /* Dialogue box */
+  #dialogue-box { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
+    display: none; align-items: center; gap: 14px; width: 620px; max-width: 62vw;
+    background: rgba(8, 10, 26, 0.82); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 12px; padding: 12px 16px; }
+  #dialogue-portrait { width: 72px; height: 72px; border-radius: 8px; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.3); }
+  #dialogue-name { font-weight: 900; font-size: 14px; color: #ffd60a; letter-spacing: 0.5px; }
+  #dialogue-text { font-size: 15px; line-height: 1.4; margin-top: 3px; color: #f2f6ff; }
+  #dialogue-hint { font-size: 11px; color: #8d97b8; margin-top: 4px; }
+
+  /* Floating action text */
+  #floating-layer { position: absolute; left: 50%; top: 34%; transform: translateX(-50%);
+    text-align: center; }
+  .float-text { font-size: 34px; font-weight: 900; letter-spacing: 2px; color: #ffd60a;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 24px rgba(255,214,10,0.5);
+    animation: floatUp 1.8s ease-out forwards; margin: 4px 0; }
+  .float-text.good { color: #39ff88; text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 24px rgba(57,255,136,0.5); }
+  .float-text.bad { color: #ff3b3b; }
+  .float-text.drift { color: #00e5ff; }
+  .float-text.radio { color: #00e5ff; font-size: 22px; }
+  .float-text.sticky { animation: none; opacity: 1; }
+  @keyframes floatUp {
+    0% { opacity: 0; transform: translateY(14px) scale(0.9); }
+    12% { opacity: 1; transform: translateY(0) scale(1); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-26px) scale(1.02); }
+  }
+
+  /* Wanted banner */
+  #wanted-banner { position: absolute; top: 96px; left: 50%; transform: translateX(-50%);
+    display: none; background: rgba(120, 8, 16, 0.85); border: 1px solid #ff3b3b;
+    color: #fff; font-weight: 900; letter-spacing: 2px; font-size: 17px;
+    padding: 10px 26px; border-radius: 8px; text-align: center; }
+
+  /* Hint line */
+  #hint-line { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%);
+    display: none; font-size: 13px; color: #e8ecff; background: rgba(8,10,26,0.7);
+    padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); }
+
+  /* Damage vignette */
+  #damage-vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255,0,0,0.5) 100%); }
+
+  /* ---------- Title screen ---------- */
+  #title-screen { position: fixed; inset: 0; z-index: 20; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(7,11,38,0.25) 0%, rgba(7,11,38,0.55) 60%, rgba(7,11,38,0.85) 100%);
+    text-align: center; pointer-events: none; }
+  #title-kicker { font-size: 15px; letter-spacing: 8px; color: #00e5ff; font-weight: 700; }
+  #title-logo { font-family: "Arial Black", Arial, sans-serif; font-size: 92px;
+    font-weight: 900; letter-spacing: 4px; line-height: 0.95; margin: 10px 0 4px;
+    background: linear-gradient(180deg, #fff 15%, #ffd60a 45%, #ff2d95 80%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 24px rgba(255,45,149,0.45)); }
+  #title-sub { font-size: 19px; letter-spacing: 5px; color: #dff3ff; font-weight: 600; }
+  #title-tag { margin-top: 14px; font-size: 14px; color: #c8d0e8; max-width: 560px; line-height: 1.5; }
+  #title-press { margin-top: 34px; font-size: 22px; font-weight: 900; letter-spacing: 4px;
+    color: #fff; animation: blink 1.1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.15; } }
+  #title-controls { margin-top: 26px; font-size: 13px; color: #8d97b8; line-height: 1.8;
+    letter-spacing: 1px; }
+  #title-controls b { color: #e8ecff; }
+
+  /* ---------- City map overlay ---------- */
+  #map-overlay { position: fixed; inset: 0; z-index: 30; display: none;
+    align-items: center; justify-content: center; flex-direction: column;
+    background: rgba(4, 6, 20, 0.94); pointer-events: none; }
+  #citymap { width: 1100px; max-width: 94vw; max-height: 82vh; height: auto; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 60px rgba(0,0,0,0.8); }
+  #map-route-info { margin-top: 12px; font-size: 15px; font-weight: 800;
+    color: #39ff88; letter-spacing: 1.5px; }
+  #map-close-hint { margin-top: 6px; font-size: 12px; color: #8d97b8; letter-spacing: 1px; }
+</style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="game-root"></div>
+<div id="app"></div>
 
-<!-- HUD -->
-<div id="hud" class="hidden">
-  <div id="hud-tl">
-    <div id="mission-panel" class="panel">
-      <div class="mission-head"><span id="mission-chapter" class="badge">CH 1</span><span id="mission-title">THE GETAWAY DRIVER</span></div>
-      <div id="mission-desc" class="mission-desc">Lena needs the Comet out of the impound lot. Get it back to the garage in one piece.</div>
-      <div class="mission-stage"><span id="mission-stage-label">STAGE 1/4</span><div class="segbar" id="mission-segments"></div></div>
-      <div class="mission-next">NEXT &rarr; <span id="mission-next">Reach the impound lot</span></div>
+<div id="hud">
+  <div id="mission-panel" class="panel">
+    <div><span id="mission-chapter">CH 1</span><span id="mission-title">RAIN CHECK</span></div>
+    <div id="mission-text">Drive the VULPINE S down Lumen Avenue</div>
+    <div id="mission-stage-row">
+      <span id="mission-stage">STAGE 1/3</span>
+      <div id="mission-progress"></div>
     </div>
-    <div id="police-panel" class="panel">
-      <div class="police-head">SOLMAR BAY PD &mdash; RESPONDING</div>
-      <div id="police-rows"></div>
+    <div id="mission-next">NEXT → CH 2 WET WORK</div>
+  </div>
+
+  <div id="status-panel" class="panel">
+    <div id="clock">DAY 1 22:47</div>
+    <div id="money">$42,780</div>
+    <div id="stars"></div>
+    <div id="wanted-label">★ WANTED ★</div>
+    <div id="pursuit-label">PURSUIT ACTIVE</div>
+  </div>
+
+  <div id="minimap-wrap" class="panel" style="background:transparent;border:none;padding:0;">
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="district-label">LUMEN STRIP</div>
+    <div id="respect-row">
+      <div id="respect-label">RESPECT 2 · 320 / 1000</div>
+      <div id="respect-track"><div id="respect-bar"></div></div>
     </div>
   </div>
 
-  <div id="hud-tr">
-    <div id="status-panel" class="panel">
-      <div id="clock">DAY 1 &nbsp;|&nbsp; 22:46</div>
-      <div id="money">$42,780</div>
-      <div id="stars">★★★☆☆</div>
-      <div id="wanted-label">WANTED</div>
-      <div id="pursuit-label">PURSUIT ACTIVE</div>
+  <div id="vehicle-panel" class="panel">
+    <div id="radio-station">♪ WAVEFORM 88.1</div>
+    <div id="radio-track">Midnight Overdrive</div>
+    <div id="car-name">VULPINE S</div>
+    <div id="condition-row">
+      <span class="lbl">CONDITION</span>
+      <div id="condition-track"><div id="condition-bar"></div></div>
+      <span id="condition-pct">100%</span>
     </div>
-    <div id="weapons-panel" class="panel">
-      <div class="wpn" data-w="0"><span>1</span> FISTS</div>
-      <div class="wpn active" data-w="1"><span>2</span> PISTOL <b>24</b></div>
-      <div class="wpn" data-w="2"><span>3</span> SMG <b>90</b></div>
-      <div class="wpn" data-w="3"><span>4</span> SHOTGUN <b>12</b></div>
-      <div class="wpn" data-w="4"><span>5</span> RIFLE <b>60</b></div>
+    <div id="speed-row">
+      <span id="speed">0</span><span id="speed-unit">KM/H</span>
+      <span id="gear">GEAR 1</span>
     </div>
   </div>
 
-  <div id="hud-bl">
-    <canvas id="minimap" width="220" height="220"></canvas>
-    <div id="district-pill">LUMEN AVENUE</div>
-    <div class="bars">
-      <div class="bar-row"><label>HEALTH</label><div class="bar"><div id="health-bar" class="fill health"></div></div></div>
-      <div class="bar-row"><label>ARMOUR</label><div class="bar"><div id="armour-bar" class="fill armour"></div></div></div>
-      <div class="bar-row"><label>REP</label><div class="bar"><div id="rep-bar" class="fill rep"></div></div><span id="rep-text">320 / 1000</span></div>
-    </div>
-    <div id="respect-label">RESPECT 3</div>
-  </div>
-
-  <div id="hud-bc">
-    <div id="dialogue" class="panel">
-      <canvas id="portrait" width="72" height="72"></canvas>
-      <div><div id="dialogue-name">LENA &ldquo;WRENCH&rdquo; ORTIZ</div><div id="dialogue-text">Lose them before the bridge, Rico. The Comet is worth more than my freedom &mdash; barely.</div></div>
+  <div id="dialogue-box">
+    <img id="dialogue-portrait" alt="">
+    <div>
+      <div id="dialogue-name">Lena 'Wrench' Ortiz — Mechanic</div>
+      <div id="dialogue-text"></div>
+      <div id="dialogue-hint">J — next line</div>
     </div>
   </div>
 
-  <div id="hud-br">
-    <div id="vehicle-panel" class="panel">
-      <div id="radio-line"><span id="radio-station">WAVEFORM 88.1</span> <span id="radio-eq">▁▂▃▅▃▂▁</span></div>
-      <div id="radio-song">Glass Harbour &mdash; Midnight Static</div>
-      <div id="car-name">VULPINE S</div>
-      <div class="cond-row"><label>CONDITION</label><div class="bar"><div id="cond-bar" class="fill cond"></div></div><span id="cond-text">95%</span></div>
-      <div id="speedo"><span id="speed-num">167</span><span class="unit">KM/H</span></div>
-      <div id="gear-line">GEAR 5 &middot; E exit &nbsp; R radio &nbsp; M map</div>
-    </div>
-  </div>
-
-  <div id="floater"></div>
-  <div id="help-bar">WASD move/drive &middot; E enter car &middot; F punch &middot; Click shoot &middot; 1-5 weapons &middot; R radio &middot; M map &middot; P pause &middot; G garage</div>
-  <div id="toast"></div>
+  <div id="floating-layer"></div>
+  <div id="wanted-banner"></div>
+  <div id="hint-line"></div>
 </div>
+<div id="damage-vignette"></div>
 
-<!-- Title screen -->
 <div id="title-screen">
-  <div class="title-inner">
-    <h1>SOLMAR<span>BAY</span></h1>
-    <div class="title-sub">NIGHT RAIN &nbsp;&middot;&nbsp; AN OPEN-WORLD CRIME STORY</div>
-    <div class="title-tag">One driver. Seven jobs. A city that never dries.</div>
-    <div class="title-press">PRESS ENTER TO PLAY</div>
-    <div id="title-save" class="title-save"></div>
-    <div class="title-foot">WASD drive &amp; walk &middot; E steal a car &middot; M map &middot; P pause &nbsp;&middot;&nbsp; An original game &mdash; no Rockstar content</div>
+  <div id="title-kicker">MAKE GTA 6 · AN ORIGINAL OPEN WORLD</div>
+  <div id="title-logo">SOLMAR<br>BAY</div>
+  <div id="title-sub">NIGHT RAIN · NEON · ONE LAST JOB</div>
+  <div id="title-tag">Rico Marín is back on Lumen Avenue. Seven jobs, five stars,
+    one red VULPINE S — and the whole city is watching.</div>
+  <div id="title-press">PRESS ENTER</div>
+  <div id="title-controls">
+    <b>WASD</b> drive / walk &nbsp;·&nbsp; <b>E</b> enter &amp; exit car &nbsp;·&nbsp;
+    <b>SPACE</b> handbrake / sprint &nbsp;·&nbsp; <b>M</b> city map<br>
+    <b>R</b> radio &nbsp;·&nbsp; <b>J</b> dialogue &nbsp;·&nbsp; <b>ESC</b> close map
   </div>
 </div>
 
-<!-- Pause -->
-<div id="pause-screen" class="overlay hidden">
-  <div class="overlay-box">
-    <h2>PAUSED</h2>
-    <div class="pause-stats" id="pause-stats"></div>
-    <div class="menu-hint">P resume &middot; M map &middot; G garage &middot; R radio &middot; ENTER continue</div>
-  </div>
+<div id="map-overlay">
+  <canvas id="citymap" width="1100" height="760"></canvas>
+  <div id="map-route-info"></div>
+  <div id="map-close-hint">M / ESC — CLOSE MAP</div>
 </div>
 
-<!-- City map -->
-<div id="map-screen" class="overlay hidden">
-  <div class="map-box">
-    <h2>SOLMAR BAY &mdash; CITY MAP</h2>
-    <canvas id="bigmap" width="760" height="520"></canvas>
-    <div class="menu-hint">Green dashed line = GPS route to the mission &nbsp;&mdash;&nbsp; M or ESC to close</div>
-  </div>
-</div>
-
-<!-- Garage -->
-<div id="garage-screen" class="overlay hidden">
-  <div class="overlay-box">
-    <h2>LENA'S GARAGE</h2>
-    <div id="garage-list"></div>
-    <div class="menu-hint">1-4 buy &middot; G or ESC to leave</div>
-  </div>
-</div>
-
-<!-- Game over -->
-<div id="gameover-screen" class="overlay hidden">
-  <div class="overlay-box">
-    <h2 id="gameover-title">BUSTED</h2>
-    <div id="gameover-text" class="gameover-text"></div>
-    <div class="menu-hint">ENTER retry &middot; The city forgets nothing.</div>
-  </div>
-</div>
-
-<script type="module" src="src/main.js"></script>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

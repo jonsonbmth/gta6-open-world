@@ -1,697 +1,756 @@
-// SOLMAR BAY V5 — main entry: renderer, game loop, input, camera, driving,
-// on-foot play, missions, wanted, garage, save. Bright neon night by design:
-// exposure 1.5, strong hemisphere light, neon everywhere, wet reflective road.
+// SOLMAR BAY — main loop: renderer, player (drive + on foot), traffic,
+// camera, collisions, missions, police, HUD, save/load, shot presets.
+// The game is fully offline: three.js is vendored, all textures procedural.
 import * as THREE from 'three';
-import { buildCity, CITY } from './city.js';
-import { makeHeroCar, makePoliceCar, randomTrafficCar, updatePoliceLights } from './vehicles.js';
-import { makePedestrian, makeRico, animateWalker } from './people.js';
-import { Police } from './police.js';
-import { currentJob, advanceStage, nextObjective, CREW } from './missions.js';
-import { showHud, updateHud, drawMinimap, drawBigMap, setDialogue, floatText, toast, districtAt, setDistrict } from './hud.js';
-import { startRadio, stopRadio, startEngine, setEngine, startSiren, stopSiren, startRain, blip, gunshot, setMuted } from './audio.js';
-import { freshState, loadSave, saveGame, RADIO, PAINTS } from './state.js';
-import { autosave, garageItems, buyGarageItem, hasSave } from './save.js';
-import { shotParam, STAGES } from './shots.js';
-import { mulberry32, nightEnvTexture, clamp } from './util.js';
+import { Rng } from './random.js';
+import { CITY, DISTRICTS, TRAFFIC_MODELS, TUNE, districtAt, CREW } from './config.js';
+import { buildWorld } from './world.js';
+import { buildCar } from './cars.js';
+import { createCrowd, makeRico, makePerson } from './people.js';
+import { createPolice } from './police.js';
+import { createMissions } from './missions.js';
+import { AudioEngine } from './audio.js';
+import { Input } from './input.js';
+import { createHUD } from './hud.js';
+import { saveGame, loadGame } from './save.js';
+import { applyShot } from './shots.js';
 
-const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(window.location.search);
+const SEED = Number(params.get('seed')) || 1;
+const SHOT = params.get('shot');
+const rng = new Rng(SEED);
 
-// Mission objective spots (world coords).
-const SPOTS = {
-  impound: { x: -42, z: -60, label: 'IMPOUND LOT' },
-  marina: { x: -18, z: 172, label: 'OLD HARBOUR' },
-  pawn: { x: 42, z: 20, label: 'GILDED PAWN' },
-  rosa: { x: -38, z: -140, label: "ROSA'S" },
-  avenue: { x: 0, z: -100, label: 'LUMEN AVENUE' },
-  downtown: { x: -10, z: -170, label: 'DOWNTOWN' },
-  mirage: { x: 44, z: -140, label: 'MIRAGE HOTEL' },
-  bridge: { x: 0, z: -205, label: 'NORTH BRIDGE' },
-  garage: { x: -30, z: 100, label: 'GARAGE' },
-  safehouse: { x: 20, z: -120, label: 'SAFEHOUSE' },
-  ferry: { x: 30, z: 178, label: 'FERRY DOCK' },
-  westside: { x: -80, z: 20, label: 'WESTSIDE' },
-};
-const JOB_TARGETS = [
-  ['impound', 'impound', 'loseHeat', 'garage'],
-  ['marina', 'marina', 'safehouse'],
-  ['pawn', 'pawn', 'rosa'],
-  ['avenue', 'avenue', 'garage'],
-  ['downtown', 'downtown', 'marina'],
-  ['ferry', 'westside', 'rosa'],
-  ['mirage', 'mirage', 'bridge', 'bridge'],
+// --- Renderer / scene / camera.
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(window.innerWidth, window.innerHeight);
+// ?perf=low halves the render resolution for low-end devices (same game,
+// same logic — just fewer pixels to shade). Default is full resolution.
+const perfLow = new URLSearchParams(location.search).get('perf') === 'low';
+renderer.setPixelRatio(perfLow ? 0.5 : Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18; // bright night
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x141a3a);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
+camera.position.set(12, 6, 80);
+
+// --- World, crowd, police, missions, HUD, audio, input.
+const world = buildWorld(scene, rng);
+const crowd = createCrowd(scene, rng, 26);
+const police = createPolice(scene, rng, world.colliders);
+const missions = createMissions(scene);
+const hud = createHUD(document);
+const audio = new AudioEngine();
+const input = new Input();
+
+// --- Hero car: the VULPINE S.
+const heroCar = buildCar({ type: 'sport', color: 0xe62129, name: 'VULPINE S', spoiler: true, emissive: 0x451012 });
+heroCar.position.set(2, 0, 40);
+heroCar.rotation.y = Math.PI; // facing north (-Z)
+scene.add(heroCar);
+const heroHeadlight = new THREE.SpotLight(0xfff2cc, 180, 42, 0.5, 0.5, 1.4);
+heroHeadlight.position.set(0, 0.7, 2.4);
+heroCar.add(heroHeadlight);
+heroHeadlight.target.position.set(0, 0, 30);
+heroCar.add(heroHeadlight.target);
+
+// --- Rico on foot.
+const rico = makeRico();
+rico.visible = false;
+scene.add(rico);
+
+// --- Traffic: cars looping the street network.
+const traffic = [];
+const TRAFFIC_LOOPS = [
+  [[5, 260], [5, -260], [-5, -260], [-5, 260]],
+  [[300, 5], [-180, 5], [-180, -5], [300, -5]],
+  [[165, 245], [165, -245], [-165, -245], [-165, 245]],
+  [[300, 165], [-180, 165], [-180, 155], [300, 155]],
+  [[300, -165], [-180, -165], [-180, -155], [300, -155]],
+  [[85, 260], [85, -260], [75, -260], [75, 260]],
 ];
+function spawnTrafficCar(loop, t) {
+  const model = rng.pick(TRAFFIC_MODELS);
+  const car = buildCar({
+    type: model.type, color: rng.pick(model.colors),
+    name: model.name, taxi: model.type === 'taxi',
+    spoiler: model.type === 'muscle' && rng.chance(0.5),
+  });
+  const [ax, az] = loop[0];
+  const [bx, bz] = loop[1];
+  car.position.set(ax + (bx - ax) * t, 0, az + (bz - az) * t);
+  car.rotation.y = Math.atan2(bx - ax, bz - az);
+  scene.add(car);
+  const entry = { car, loop, wp: 1, speed: TUNE.trafficSpeed * rng.range(0.85, 1.1), nearMissAt: 0 };
+  traffic.push(entry);
+  return entry;
+}
+for (let i = 0; i < 14; i++) {
+  const loop = TRAFFIC_LOOPS[i % TRAFFIC_LOOPS.length];
+  spawnTrafficCar(loop, rng.f());
+}
 
-class Game {
-  constructor() {
-    this.state = loadSave() || freshState();
-    this.mode = 'title'; // title | play | pause | map | garage | over
-    this.inCar = true;
-    this.heroSpeed = 0; // m/s
-    this.heroHeading = Math.PI;
-    this.steer = 0;
-    this.driftCombo = 0;
-    this.driftTimer = 0;
-    this.nearMissCooldown = 0;
-    this.bustedTimer = 0;
-    this.keys = {};
-    this.camMode = 'title';
-    this.camOffset = new THREE.Vector3(6.5, 3.4, 14);
-    this.camPos = new THREE.Vector3(0, 8, 140);
-    this.camLook = new THREE.Vector3(0, 1, 0);
-    this.time = 0;
-    this.shot = shotParam();
-    this.frames = 0;
-    this.traffic = [];
-    this.peds = [];
-    this.rnd = mulberry32(20261118);
-    this.muzzleFlash = 0;
-    this.initThree();
-    this.initWorld();
-    this.initInput();
-    this.initHud();
-    this.maybeStageShot();
-    this.loop = this.loop.bind(this);
-    requestAnimationFrame(this.loop);
-    window.__game = this;
-  }
+// --- Crew members standing by (used by the marina shot + garage).
+const crewMembers = {};
+for (const key of ['lena', 'dario', 'rosa']) {
+  const p = CREW[key];
+  const person = makePerson({
+    name: p.name, coat: new THREE.Color(p.coat).getHex(), skin: p.skin, hair: p.hair,
+    hood: key === 'lena', umbrella: key === 'rosa' ? 0xa06bff : null,
+  });
+  person.visible = false;
+  scene.add(person);
+  crewMembers[key] = person;
+}
 
-  initThree() {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.55; // BRIGHT: the V4 rejection was darkness
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    $('game-root').appendChild(this.renderer.domElement);
-    this.scene = new THREE.Scene();
-    this.scene.environment = nightEnvTexture();
-    this.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1200);
-    this.camera.position.set(0, 8, 140);
-    window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  }
+// --- Game state.
+const saved = loadGame();
+const state = {
+  mode: 'title', // title | playing
+  driveMode: 'car', // car | foot
+  money: saved?.money ?? TUNE.startMoney,
+  respect: saved?.respect ?? TUNE.startRespect,
+  jobIndex: saved?.jobIndex ?? 0,
+  stageIndex: saved?.stageIndex ?? 0,
+  completedJobs: saved?.completedJobs ?? 0,
+  radioIndex: saved?.radioIndex ?? 0,
+  condition: 100,
+  day: 1,
+  timeMin: 22 * 60 + 47,
+  heading: Math.PI,
+  speed: 0,
+  driftTime: 0,
+  drifting: false,
+  lastSaveAt: 0,
+  lastWanted: 0,
+  shotFrozen: false,
+  cameraMode: 'chase', // chase | foot | title | fixed
+  fixedCam: null,
+  mapOpen: false,
+};
+audio.setStation(state.radioIndex);
+missions.setState(state.jobIndex, state.stageIndex, state.completedJobs);
+if (saved && saved.playerX !== undefined) {
+  heroCar.position.set(saved.playerX, 0, saved.playerZ);
+  state.heading = saved.playerHeading ?? Math.PI;
+  heroCar.rotation.y = state.heading;
+}
 
-  initWorld() {
-    this.city = buildCity(this.scene);
-    this.police = new Police(this.scene);
-    // hero car + Rico
-    this.hero = makeHeroCar(PAINTS[this.state.paint % PAINTS.length].color);
-    this.hero.position.set(2.5, 0, 60);
-    this.hero.rotation.y = Math.PI;
-    this.scene.add(this.hero);
-    this.rico = makeRico();
-    this.rico.visible = false;
-    this.scene.add(this.rico);
-    // traffic
-    for (let i = 0; i < 11; i++) {
-      const car = randomTrafficCar(this.rnd);
-      const lane = this.rnd() < 0.5 ? -5.5 : 5.5;
-      const dir = lane < 0 ? 1 : -1;
-      car.position.set(lane, 0, -190 + i * 32 + this.rnd() * 10);
-      car.rotation.y = dir > 0 ? 0 : Math.PI;
-      this.scene.add(car);
-      this.traffic.push({ mesh: car, lane, dir, speed: 9 + this.rnd() * 6 });
-    }
-    // pedestrians on both sidewalks + marina
-    for (let i = 0; i < 16; i++) {
-      const ped = makePedestrian(100 + i * 7);
-      const onMarina = i >= 13;
-      ped.position.set(
-        onMarina ? -30 + (i - 13) * 14 : (i % 2 === 0 ? -14.5 : 14.5),
-        0,
-        onMarina ? 168 + (i - 13) * 4 : -180 + i * 24,
-      );
-      ped.rotation.y = (i % 2 === 0 ? 0 : Math.PI) + (onMarina ? Math.PI / 2 : 0);
-      this.scene.add(ped);
-      this.peds.push(ped);
-    }
-    // parked cars on the quay, in the on-foot camera's view (frame centre at the quay is x≈0)
-    for (const [px, pz] of [[7, 173], [-11, 175], [1, 179]]) {
-      const car = randomTrafficCar(this.rnd);
-      car.position.set(px, 0, pz);
-      car.rotation.y = Math.PI / 2;
-      this.scene.add(car);
+const player = {
+  get pos() { return state.driveMode === 'car' ? drivenCar.position : rico.position; },
+  get heading() { return state.heading; },
+};
+
+function timeStr() {
+  const h = Math.floor(state.timeMin / 60) % 24;
+  const m = Math.floor(state.timeMin % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function collideCircle(x, z, radius) {
+  // Returns a corrected [x, z] pushed out of building colliders.
+  for (const c of world.colliders) {
+    const nx = Math.max(c.x0, Math.min(x, c.x1));
+    const nz = Math.max(c.z0, Math.min(z, c.z1));
+    const dx = x - nx, dz = z - nz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < radius * radius) {
+      const d = Math.sqrt(d2) || 0.001;
+      x = nx + (dx / d) * radius;
+      z = nz + (dz / d) * radius;
     }
   }
+  // World bounds + bay: cars cannot drive into the water (except the bridge).
+  if (x < -196 && !(Math.abs(z + 40) < 6 && x > -268)) x = -196;
+  x = Math.max(-268, Math.min(315, x));
+  z = Math.max(-315, Math.min(315, z));
+  return [x, z];
+}
 
-  initInput() {
-    window.addEventListener('keydown', (e) => {
-      this.keys[e.code] = true;
-      if (e.code === 'Enter') this.onEnter();
-      if (e.code === 'KeyP') this.togglePause();
-      if (e.code === 'KeyM') this.toggleMap();
-      if (e.code === 'KeyG') this.toggleGarage();
-      if (e.code === 'KeyR') this.cycleRadio();
-      if (e.code === 'Escape') this.closeOverlays();
-      if (e.code === 'KeyE') this.onInteract();
-      if (e.code === 'KeyF') this.onPunch();
-      if (e.code.startsWith('Digit')) this.onDigit(Number(e.code.slice(5)));
-      if (e.code === 'KeyX') { this.state.muted = !this.state.muted; setMuted(this.state.muted); }
-    });
-    window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
-    window.addEventListener('mousedown', (e) => {
-      if (this.mode === 'play' && e.button === 0) this.onShoot();
-    });
-    window.addEventListener('blur', () => { this.keys = {}; });
-  }
-
-  initHud() {
-    const save = hasSave();
-    $('title-save').textContent = save
-      ? `SAVE FOUND — DAY ${this.state.day} · $${this.state.money.toLocaleString('en-US')} · JOB ${this.state.jobIndex + 1}/7 (ENTER TO CONTINUE)`
-      : 'A NEW STORY — PRESS ENTER';
-    setDialogue('lena', currentJob(this.state).lines[0]);
-  }
-
-  maybeStageShot() {
-    if (!this.shot || !STAGES[this.shot]) return;
-    // Staged shots start straight in play mode (except the title shot).
-    if (this.shot !== 'title') {
-      this.mode = 'play';
-      showHud(true);
-      this.state.started = true;
-    }
-    STAGES[this.shot](this);
-    this.updateHudAll();
-  }
-
-  // --- mode transitions ---
-  onEnter() {
-    if (this.mode === 'title') {
-      this.mode = 'play';
-      this.state.started = true;
-      showHud(true);
-      this.camMode = this.inCar ? 'chase' : 'foot';
-      this.camOffset.set(4.6, 2.1, 8.6);
-      startRadio(this.state.radioStation);
-      startEngine();
-      startRain();
-      if (this.state.wanted >= 3) startSiren();
-      blip(880, 0.1);
-    } else if (this.mode === 'over') {
-      this.restartAfterOver();
-    } else if (this.mode === 'pause') {
-      this.togglePause();
-    }
-  }
-
-  togglePause() {
-    if (this.mode === 'play') {
-      this.mode = 'pause';
-      $('pause-screen').classList.remove('hidden');
-      $('pause-stats').innerHTML = `DAY ${this.state.day} &nbsp;·&nbsp; $${this.state.money.toLocaleString('en-US')} &nbsp;·&nbsp; JOB ${this.state.jobIndex + 1}/7<br>RESPECT ${this.state.respectLevel} &nbsp;·&nbsp; WANTED ${'★'.repeat(this.state.wanted)}${'☆'.repeat(5 - this.state.wanted)}`;
-    } else if (this.mode === 'pause') {
-      this.mode = 'play';
-      $('pause-screen').classList.add('hidden');
-    }
-  }
-
-  toggleMap() {
-    if (this.mode === 'play') this.openMap();
-    else if (this.mode === 'map') this.closeOverlays();
-  }
-
-  openMap() {
-    this.mode = 'map';
-    $('map-screen').classList.remove('hidden');
-    const t = this.missionTarget();
-    const heading = this.inCar ? this.heroHeading : this.rico.rotation.y;
-    drawBigMap(this.playerPos().x, this.playerPos().z, heading, this.state.wanted, t, SPOTS.garage, SPOTS.safehouse);
-  }
-
-  toggleGarage() {
-    if (this.mode === 'garage') { this.closeOverlays(); return; }
-    if (this.mode !== 'play') return;
-    this.mode = 'garage';
-    this.renderGarage();
-    $('garage-screen').classList.remove('hidden');
-  }
-
-  renderGarage() {
-    const items = garageItems(this.state);
-    $('garage-list').innerHTML = items.map((it) =>
-      `<div><b>[${it.key}]</b> ${it.name} — ${it.desc} — <b>$${it.price.toLocaleString('en-US')}</b> ${it.can ? '' : '(CAN\'T AFFORD)'}</div>`).join('')
-      + `<div style="margin-top:10px">Your money: <b>$${this.state.money.toLocaleString('en-US')}</b></div>`;
-  }
-
-  closeOverlays() {
-    $('map-screen').classList.add('hidden');
-    $('garage-screen').classList.add('hidden');
-    $('pause-screen').classList.add('hidden');
-    if (this.mode === 'map' || this.mode === 'garage' || this.mode === 'pause') this.mode = 'play';
-  }
-
-  cycleRadio() {
-    if (this.mode !== 'play') return;
-    this.state.radioStation = (this.state.radioStation + 1) % RADIO.length;
-    startRadio(this.state.radioStation);
-    blip(660, 0.07);
-  }
-
-  onDigit(n) {
-    if (this.mode === 'garage') {
-      const item = buyGarageItem(this.state, String(n));
-      if (item) {
-        toast(`${item.name} — purchased!`);
-        if (n === 3) this.repaintHero();
-        if (n === 4) this.police.syncCount(0, this.hero.position);
-        this.renderGarage();
-        blip(990, 0.12);
-      }
-      return;
-    }
-    if (this.mode !== 'play') return;
-    if (n >= 1 && n <= 5) {
-      this.state.weapon = n - 1;
-      blip(520, 0.05);
-    }
-  }
-
-  repaintHero() {
-    const color = PAINTS[this.state.paint % PAINTS.length].color;
-    this.hero.traverse((o) => {
-      if (o.isMesh && o.material && o.material.isMeshPhysicalMaterial) o.material.color.setHex(color);
-    });
-  }
-
-  onInteract() {
-    if (this.mode !== 'play') return;
-    if (this.inCar) {
-      // exit the car
-      this.inCar = false;
-      this.state.onFoot = true;
-      this.heroSpeed = 0;
-      this.rico.position.copy(this.hero.position).add(new THREE.Vector3(2.2, 0, 0));
-      this.rico.rotation.copy(this.hero.rotation);
-      this.rico.visible = true;
-      this.camMode = 'foot';
-      blip(440, 0.08);
-    } else {
-      // enter the nearest car (hero or traffic) within range
-      let best = null;
-      let bestD = 4;
-      const near = [this.hero, ...this.traffic.map((t) => t.mesh)];
-      for (const m of near) {
-        const d = m.position.distanceTo(this.rico.position);
-        if (d < bestD) { bestD = d; best = m; }
-      }
-      if (best) {
-        this.inCar = true;
-        this.state.onFoot = false;
-        this.rico.visible = false;
-        if (best !== this.hero) {
-          // steal it: it becomes the hero car
-          this.hero.position.copy(best.position);
-          this.hero.rotation.copy(best.rotation);
-          best.visible = false;
-          this.state.carName = 'STOLEN SEDAN';
-          this.state.carCondition = 80;
-          this.raiseWanted(1);
-          toast('Car stolen — the city saw that.');
-        }
-        this.camMode = 'chase';
-        blip(700, 0.08);
-        this.checkStage('pressE');
-      }
-    }
-  }
-
-  onPunch() {
-    if (this.mode !== 'play' || this.inCar) return;
-    blip(180, 0.09, 0.12);
-    // scare nearby pedestrians
-    for (const p of this.peds) {
-      if (p.position.distanceTo(this.rico.position) < 6) p.userData.panic = true;
-    }
-  }
-
-  onShoot() {
-    if (this.mode !== 'play') return;
-    const w = this.state.weapon;
-    if (w === 0) { this.onPunch(); return; }
-    if (this.state.ammo[w] <= 0) { blip(220, 0.06); toast('Out of ammo — visit Lena.'); return; }
-    this.state.ammo[w] -= 1;
-    gunshot();
-    this.muzzleFlash = 0.08;
-    this.raiseWanted(1);
-    // hit the nearest pedestrian or traffic car roughly ahead
-    const from = this.inCar ? this.hero.position : this.rico.position;
-    const heading = this.inCar ? this.hero.rotation.y : this.rico.rotation.y;
-    const fx = Math.sin(heading), fz = Math.cos(heading);
-    for (const p of this.peds) {
-      const dx = p.position.x - from.x, dz = p.position.z - from.z;
-      const d = Math.hypot(dx, dz);
-      if (d < 30 && (dx * fx + dz * fz) / (d || 1) > 0.7) {
-        p.userData.panic = true;
-        toast('Careful — the city is watching.');
-        break;
-      }
-    }
-  }
-
-  raiseWanted(n) {
-    this.state.wanted = clamp(this.state.wanted + n, 0, 5);
-    if (this.state.wanted >= 3) startSiren(); else stopSiren();
-  }
-
-  setDialogue(crew, text) { setDialogue(crew, text); }
-  showFloater(text) { floatText(text); }
-
-  // Static floater for staged shots: shown directly, never fades away.
-  showFloaterStatic(text) {
-    const el = document.getElementById('floater');
-    el.textContent = text;
-    el.style.transition = 'none';
-    el.style.opacity = '1';
-    el.style.transform = 'translate(-50%, -50%) scale(1.15)';
-  }
-
-  // Snap the camera to its target immediately (staged shots only) — no lerp,
-  // so the framing is exact even at very low headless frame rates.
-  snapCamera() {
-    this.updateCamera(10);
-    this.camPos.copy(this.camera.position);
-    const look = new THREE.Vector3();
-    this.camera.getWorldDirection(look);
-    this.camLook.copy(this.camera.position).addScaledVector(look, 10);
-  }
-
-  playerPos() {
-    return this.inCar ? this.hero.position : this.rico.position;
-  }
-
-  missionTarget() {
-    const key = JOB_TARGETS[this.state.jobIndex][Math.min(this.state.jobStage, JOB_TARGETS[this.state.jobIndex].length - 1)];
-    if (key === 'loseHeat') return null;
-    return SPOTS[key] || null;
-  }
-
-  checkStage(trigger) {
-    const key = JOB_TARGETS[this.state.jobIndex][Math.min(this.state.jobStage, JOB_TARGETS[this.state.jobIndex].length - 1)];
-    if (key === 'loseHeat') {
-      if (this.state.wanted === 0) this.completeStage();
-      return;
-    }
-    const t = SPOTS[key];
-    if (!t) return;
-    const d = Math.hypot(this.playerPos().x - t.x, this.playerPos().z - t.z);
-    if (trigger === 'pressE' && d < 14) this.completeStage();
-    else if (trigger === 'reach' && d < 14) this.completeStage();
-  }
-
-  completeStage() {
-    const res = advanceStage(this.state);
-    blip(990, 0.14, 0.12);
-    if (res.completedJob) {
-      toast(`JOB DONE — +$${res.pay.toLocaleString('en-US')}`);
-      const job = currentJob(this.state);
-      this.setDialogue(job.crew, job.lines[0]);
-      autosave(this.state);
-      if (res.finishedStory) {
-        toast('STORY COMPLETE — Solmar Bay is yours, Rico.');
-      }
-    } else {
-      toast(`STAGE CLEAR — ${nextObjective(this.state)}`);
-    }
-    this.updateHudAll();
-  }
-
-  restartAfterOver() {
-    this.state.health = 100;
-    this.state.wanted = 0;
-    this.state.busted = false;
-    this.state.wasted = false;
-    this.state.money = Math.max(0, this.state.money - 500);
-    this.hero.position.set(2.5, 0, 60);
-    this.hero.rotation.y = Math.PI;
-    this.heroSpeed = 0;
-    this.inCar = true;
-    this.state.onFoot = false;
-    this.rico.visible = false;
-    this.police.syncCount(0, this.hero.position);
-    $('gameover-screen').classList.add('hidden');
-    this.mode = 'play';
-    this.updateHudAll();
-  }
-
-  gameOver(kind) {
-    if (this.mode === 'over') return;
-    this.mode = 'over';
-    if (kind === 'busted') {
-      this.state.busted = true;
-      $('gameover-title').textContent = 'BUSTED';
-      $('gameover-text').textContent = 'Solmar Bay PD took you in. The Comet stays in the impound — and so does $500 of your money.';
-    } else {
-      this.state.wasted = true;
-      $('gameover-title').textContent = 'WASTED';
-      $('gameover-text').textContent = 'The rain keeps falling on Lumen Avenue. Rico will be back — the city always gives one more chance.';
-    }
-    $('gameover-screen').classList.remove('hidden');
-    stopSiren();
-  }
-
-  updateHudAll() {
-    updateHud(this.state, this.police.rowsForHud(), this.state.speedKmh);
-    setDistrict(districtAt(this.playerPos().x, this.playerPos().z));
-  }
-
-  // --- per-frame updates ---
-  updateDriving(dt) {
-    const k = this.keys;
-    const throttle = k['KeyW'] || k['ArrowUp'] ? 1 : 0;
-    const brake = k['KeyS'] || k['ArrowDown'] ? 1 : 0;
-    const left = k['KeyA'] || k['ArrowLeft'] ? 1 : 0;
-    const right = k['KeyD'] || k['ArrowRight'] ? 1 : 0;
-    const handbrake = k['Space'] ? 1 : 0;
-    const topSpeed = 42 + this.state.upgrades.engine * 6; // m/s
-    const accel = throttle ? 16 : brake ? -22 : -6;
-    this.heroSpeed = clamp(this.heroSpeed + accel * dt, 0, topSpeed);
-    if (handbrake) this.heroSpeed = Math.max(0, this.heroSpeed - 26 * dt);
-    const steerTarget = (left ? 1 : 0) - (right ? 1 : 0);
-    this.steer = THREE.MathUtils.lerp(this.steer, steerTarget, dt * 6);
-    const spd = this.heroSpeed;
-    const turnRate = this.steer * (0.9 + (handbrake ? 1.1 : 0)) * clamp(spd / 12, 0, 1);
-    this.heroHeading += turnRate * dt * (spd > 0.5 ? 1 : 0);
-    // drift: handbrake + steer at speed
-    if (handbrake && Math.abs(this.steer) > 0.6 && spd > 14) {
-      this.driftTimer += dt;
-      if (this.driftTimer > 0.8 && this.driftCombo < 3) {
-        this.driftCombo += 1;
-        this.driftTimer = 0;
-        floatText(`DRIFT x${this.driftCombo}`);
-        this.state.money += 100 * this.driftCombo;
-        blip(1200, 0.1);
-      }
-    } else {
-      this.driftTimer = 0;
-      this.driftCombo = 0;
-    }
-    const fx = Math.sin(this.heroHeading);
-    const fz = Math.cos(this.heroHeading);
-    this.hero.position.x += fx * spd * dt;
-    this.hero.position.z += fz * spd * dt;
-    // stay in the city: avenue + cross streets + marina
-    const z = this.hero.position.z;
-    const onCross = CITY.crossZ.some((cz) => Math.abs(z - cz) < 6);
-    const maxX = z > 150 ? 55 : onCross ? 120 : 18.5;
-    this.hero.position.x = clamp(this.hero.position.x, -maxX, maxX);
-    this.hero.position.z = clamp(this.hero.position.z, -205, 195);
-    this.hero.rotation.y = this.heroHeading;
-    // body roll + pitch for feel
-    this.hero.rotation.z = -this.steer * 0.06 * clamp(spd / 20, 0, 1);
-    this.hero.rotation.x = throttle ? -0.02 : brake ? 0.03 : 0;
-    this.state.speedKmh = spd * 3.6;
-    setEngine(this.state.speedKmh, throttle);
-    // near miss: fast pass close to traffic
-    this.nearMissCooldown -= dt;
-    if (spd > 20 && this.nearMissCooldown <= 0) {
-      for (const t of this.traffic) {
-        const d = t.mesh.position.distanceTo(this.hero.position);
-        if (d < 4.5 && d > 2.6) {
-          this.nearMissCooldown = 3;
-          this.state.money += 250;
-          floatText('NEAR MISS +$250');
-          blip(1400, 0.12);
-          break;
-        }
-      }
-    }
-    // ramming traffic damages the car + raises heat
-    for (const t of this.traffic) {
-      const d = t.mesh.position.distanceTo(this.hero.position);
-      if (d < 2.6 && spd > 6) {
-        this.state.carCondition = Math.max(0, this.state.carCondition - 4);
-        this.heroSpeed *= 0.6;
-        this.raiseWanted(1);
-        blip(140, 0.15, 0.15);
-        break;
-      }
-    }
-    if (this.state.carCondition <= 0) this.gameOver('wasted');
-  }
-
-  updateWalking(dt) {
-    const k = this.keys;
-    const f = (k['KeyW'] || k['ArrowUp'] ? 1 : 0) - (k['KeyS'] || k['ArrowDown'] ? 1 : 0);
-    const s = (k['KeyD'] || k['ArrowRight'] ? 1 : 0) - (k['KeyA'] || k['ArrowLeft'] ? 1 : 0);
-    const moving = f !== 0 || s !== 0;
-    const speed = 6;
-    const heading = this.rico.rotation.y;
-    if (moving) {
-      const fx = Math.sin(heading), fz = Math.cos(heading);
-      const rx = Math.cos(heading), rz = -Math.sin(heading);
-      this.rico.position.x += (fx * f + rx * s) * speed * dt;
-      this.rico.position.z += (fz * f + rz * s) * speed * dt;
-      this.rico.position.x = clamp(this.rico.position.x, -60, 60);
-      this.rico.position.z = clamp(this.rico.position.z, -205, 195);
-    }
-    if (k['KeyA'] || k['ArrowLeft']) this.rico.rotation.y += dt * 2.4;
-    if (k['KeyD'] || k['ArrowRight']) this.rico.rotation.y -= dt * 2.4;
-    animateWalker(this.rico, dt, moving);
-    this.state.speedKmh = moving ? 12 : 0;
-  }
-
-  updateTraffic(dt) {
-    for (const t of this.traffic) {
-      if (!t.mesh.visible) continue;
-      // slow down if the hero is right ahead
-      let speed = t.speed;
-      const ahead = new THREE.Vector3(t.mesh.position.x, 0, t.mesh.position.z + t.dir * 8);
-      if (ahead.distanceTo(this.hero.position) < 7 && this.inCar) speed = 2;
-      t.mesh.position.z += t.dir * speed * dt;
-      if (t.mesh.position.z > 205) t.mesh.position.z = -205;
-      if (t.mesh.position.z < -205) t.mesh.position.z = 205;
-    }
-  }
-
-  updatePeds(dt) {
-    const heroPos = this.playerPos();
-    for (const p of this.peds) {
-      const u = p.userData;
-      const dHero = p.position.distanceTo(heroPos);
-      if (this.state.wanted >= 3 && dHero < 14) u.panic = true;
-      if (u.panic) {
-        // run away from the hero
-        const dx = p.position.x - heroPos.x;
-        const dz = p.position.z - heroPos.z;
-        const d = Math.hypot(dx, dz) || 1;
-        p.position.x += (dx / d) * 5.5 * dt;
-        p.position.z += (dz / d) * 5.5 * dt;
-        p.rotation.y = Math.atan2(dx, dz);
-        animateWalker(p, dt, true);
-        if (dHero > 30) u.panic = false;
-      } else {
-        p.position.z += u.dir * u.speed * dt;
-        if (p.position.z > 195) { p.position.z = 195; u.dir = -1; p.rotation.y = Math.PI; }
-        if (p.position.z < -195) { p.position.z = -195; u.dir = 1; p.rotation.y = 0; }
-        animateWalker(p, dt, true);
-      }
-    }
-  }
-
-  updateCamera(dt) {
-    let targetPos, targetLook;
-    if (this.camMode === 'title') {
-      const t = this.time * 0.05;
-      targetPos = new THREE.Vector3(Math.sin(t) * 8, 3.4, 130 + Math.cos(t * 0.7) * 8);
-      targetLook = new THREE.Vector3(0, 4, 0);
-    } else if (this.inCar || this.camMode === 'chase') {
-      const back = new THREE.Vector3(-Math.sin(this.heroHeading), 0, -Math.cos(this.heroHeading));
-      const right = new THREE.Vector3(-back.z, 0, back.x);
-      targetPos = this.hero.position.clone()
-        .addScaledVector(back, this.camOffset.z)
-        .addScaledVector(right, this.camOffset.x);
-      targetPos.y = this.camOffset.y;
-      targetLook = this.hero.position.clone().add(new THREE.Vector3(0, 1.4, 0))
-        .addScaledVector(back, -8);
-    } else {
-      const back = new THREE.Vector3(-Math.sin(this.rico.rotation.y), 0, -Math.cos(this.rico.rotation.y));
-      const right = new THREE.Vector3(-back.z, 0, back.x);
-      targetPos = this.rico.position.clone()
-        .addScaledVector(back, this.camOffset.z)
-        .addScaledVector(right, this.camOffset.x);
-      targetPos.y = this.camOffset.y;
-      targetLook = this.rico.position.clone().add(new THREE.Vector3(0, 1.5, 0));
-    }
-    const k = 1 - Math.exp(-dt * (this.camMode === 'title' ? 1.2 : 5.5));
-    this.camPos.lerp(targetPos, k);
-    this.camLook.lerp(targetLook, k);
-    this.camera.position.copy(this.camPos);
-    this.camera.lookAt(this.camLook);
-  }
-
-  updateWanted(dt) {
-    if (this.state.wanted > 0 && this.mode === 'play') {
-      // heat decays slowly when driving clean; busted if stopped near police
-      const nearest = this.police.update(dt, this.hero.position, this.heroSpeed, this.state.wanted);
-      if (this.inCar && this.heroSpeed < 1 && nearest < 8) {
-        this.bustedTimer += dt;
-        if (this.bustedTimer > 3) this.gameOver('busted');
-      } else {
-        this.bustedTimer = 0;
-      }
-      if (this.state.wanted > 0 && this.heroSpeed > 25) {
-        // outrunning: slow decay
-        this._decay = (this._decay || 0) + dt;
-        if (this._decay > 25) {
-          this._decay = 0;
-          this.state.wanted = Math.max(0, this.state.wanted - 1);
-          if (this.state.wanted < 3) stopSiren();
-          this.checkStage('loseHeat');
-        }
-      }
-    } else {
-      this.police.update(dt, this.hero.position, this.heroSpeed, this.state.wanted);
-    }
-  }
-
-  loop() {
-    requestAnimationFrame(this.loop);
-    const dt = Math.min(0.05, this.clock ? this.clock.getDelta() : 0.016);
-    if (!this.clock) this.clock = new THREE.Clock();
-    this.time += dt;
-    this.frames += 1;
-    const playing = this.mode === 'play';
-    if (playing && !this.frozen) {
-      this.state.clockMinutes += dt * 0.35;
-      if (this.state.clockMinutes >= 24 * 60) {
-        this.state.clockMinutes -= 24 * 60;
-        this.state.day += 1;
-      }
-      if (this.inCar) this.updateDriving(dt);
-      else this.updateWalking(dt);
-      this.updateTraffic(dt);
-      this.updatePeds(dt);
-      this.updateWanted(dt);
-      this.checkStage('reach');
-      this.updateHudAll();
-      const policeBlips = this.police.cars.map((c) => ({ x: c.mesh.position.x, z: c.mesh.position.z }));
-      drawMinimap(this.playerPos().x, this.playerPos().z, this.inCar ? this.heroHeading : this.rico.rotation.y, policeBlips, this.missionTarget());
-    } else if (playing && this.frozen) {
-      // staged shot: world frozen, but police lights still blink and the HUD
-      // + minimap refresh so the frame is alive.
-      for (const c of this.police.cars) updatePoliceLights(c.mesh, this.time);
-      this.updateHudAll();
-      const policeBlips = this.police.cars.map((c) => ({ x: c.mesh.position.x, z: c.mesh.position.z }));
-      drawMinimap(this.playerPos().x, this.playerPos().z, this.inCar ? this.heroHeading : this.rico.rotation.y, policeBlips, this.missionTarget());
-    } else if (this.mode === 'title') {
-      this.updateTraffic(dt * 0.5);
-      this.updatePeds(dt * 0.5);
-    }
-    this.city.update(dt);
-    this.updateCamera(dt);
-    // muzzle flash light
-    this.muzzleFlash = Math.max(0, this.muzzleFlash - dt);
-    this.renderer.render(this.scene, this.camera);
-    // screenshot readiness: staged + rendered a few frames
-    if (this.shot && this.frames > 8 && !window.__shotReady) {
-      window.__shotReady = true;
-    }
-    if (!this.shot && this.frames > 10 && !window.__ready) window.__ready = true;
+function damageCar(amount) {
+  state.condition = Math.max(0, state.condition - amount);
+  audio.crash();
+  if (state.condition <= 0) {
+    state.condition = 100;
+    hud.floatText('WRECKED — VULPINE RESTORED', 'bad');
+    hud.showWantedBanner('YOUR CAR WAS TOTALLED — RESTORED AT THE GARAGE');
   }
 }
 
-new Game();
+// --- Driving.
+function updateDriving(dt) {
+  const forward = input.isDown('KeyW') || input.isDown('ArrowUp');
+  const back = input.isDown('KeyS') || input.isDown('ArrowDown');
+  const left = input.isDown('KeyA') || input.isDown('ArrowLeft');
+  const right = input.isDown('KeyD') || input.isDown('ArrowRight');
+  const handbrake = input.isDown('Space');
+
+  if (forward) state.speed += TUNE.heroAccel * dt;
+  else if (back) state.speed -= (state.speed > 0.5 ? TUNE.heroBrake : TUNE.heroAccel * 0.5) * dt;
+  else state.speed -= state.speed * 0.55 * dt;
+  if (handbrake) state.speed -= state.speed * 1.6 * dt;
+  state.speed = THREE.MathUtils.clamp(state.speed, -12, TUNE.heroTopSpeed);
+
+  const steerInput = (left ? 1 : 0) - (right ? 1 : 0);
+  const speedFactor = Math.min(1, Math.abs(state.speed) / 14);
+  const steerRate = 1.9 * speedFactor * (state.speed >= 0 ? 1 : -1);
+  state.heading += steerInput * steerRate * dt;
+
+  // Drift: handbrake + steer at speed.
+  state.drifting = handbrake && Math.abs(steerInput) > 0 && Math.abs(state.speed) > 14;
+  if (state.drifting) {
+    state.driftTime += dt;
+    state.heading += steerInput * 0.9 * dt;
+    if (state.driftTime > 1.2) {
+      hud.floatText(`DRIFT x${Math.min(5, 1 + Math.floor(state.driftTime))}`, 'drift');
+      state.driftTime = 0;
+      state.money += 150;
+    }
+  } else {
+    state.driftTime = 0;
+  }
+
+  const dirX = Math.sin(state.heading), dirZ = Math.cos(state.heading);
+  let nx = drivenCar.position.x + dirX * state.speed * dt;
+  let nz = drivenCar.position.z + dirZ * state.speed * dt;
+  const [cx, cz] = collideCircle(nx, nz, 1.5);
+  if (cx !== nx || cz !== nz) {
+    // Hit a wall: lose speed, take damage, raise wanted if fast.
+    if (Math.abs(state.speed) > 8) {
+      damageCar(6);
+      police.raise(4);
+      crowd.panicNear(drivenCar.position, 18, performance.now() / 1000);
+    }
+    state.speed *= 0.35;
+  }
+  drivenCar.position.x = cx;
+  drivenCar.position.z = cz;
+  drivenCar.rotation.y = state.heading;
+  // Body roll + pitch for feel.
+  drivenCar.rotation.z = THREE.MathUtils.lerp(drivenCar.rotation.z, -steerInput * 0.03 * speedFactor, 0.2);
+  drivenCar.rotation.x = THREE.MathUtils.lerp(drivenCar.rotation.x, (forward ? -0.02 : back ? 0.03 : 0), 0.15);
+  // Spin wheels.
+  for (const w of drivenCar.userData.wheels) w.rotation.x += (state.speed * dt) / 0.34;
+  // Front wheels steer visually.
+  drivenCar.userData.wheels[0].rotation.y = steerInput * 0.35;
+  drivenCar.userData.wheels[1].rotation.y = steerInput * 0.35;
+}
+
+// --- On foot.
+function updateOnFoot(dt) {
+  const forward = input.isDown('KeyW') || input.isDown('ArrowUp');
+  const back = input.isDown('KeyS') || input.isDown('ArrowDown');
+  const left = input.isDown('KeyA') || input.isDown('ArrowLeft');
+  const right = input.isDown('KeyD') || input.isDown('ArrowRight');
+  const sprint = input.isDown('Space');
+  const speed = sprint ? 7.5 : 4.2;
+  let mx = 0, mz = 0;
+  if (forward) { mx += Math.sin(state.heading); mz += Math.cos(state.heading); }
+  if (back) { mx -= Math.sin(state.heading); mz -= Math.cos(state.heading); }
+  if (left) { mx -= Math.cos(state.heading); mz += Math.sin(state.heading); }
+  if (right) { mx += Math.cos(state.heading); mz -= Math.sin(state.heading); }
+  const len = Math.hypot(mx, mz);
+  if (len > 0.01) {
+    mx /= len; mz /= len;
+    const targetHeading = Math.atan2(mx, mz);
+    let dh = targetHeading - state.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    state.heading += THREE.MathUtils.clamp(dh, -8 * dt, 8 * dt);
+    const nx = rico.position.x + mx * speed * dt;
+    const nz = rico.position.z + mz * speed * dt;
+    const [cx, cz] = collideCircle(nx, nz, 0.6);
+    rico.position.x = cx;
+    rico.position.z = cz;
+    const phase = performance.now() / 1000 * (sprint ? 11 : 7);
+    const { legL, legR, armL, armR } = rico.userData.limbs;
+    const s = Math.sin(phase);
+    legL.rotation.x = s * 0.7; legR.rotation.x = -s * 0.7;
+    armL.rotation.x = -s * 0.55; armR.rotation.x = s * 0.55;
+  } else {
+    const { legL, legR, armL, armR } = rico.userData.limbs;
+    legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
+    armL.rotation.x *= 0.8; armR.rotation.x *= 0.8;
+  }
+  rico.rotation.y = state.heading;
+}
+
+function nearestCar(maxDist) {
+  let best = null, bestD = maxDist;
+  const p = rico.position;
+  const candidates = [heroCar, ...traffic.map((t) => t.car)];
+  for (const car of candidates) {
+    const d = car.position.distanceTo(p);
+    if (d < bestD) { best = car; bestD = d; }
+  }
+  return best;
+}
+
+function enterCar(car) {
+  if (!car) return;
+  // Stealing a traffic car removes it from traffic.
+  const ti = traffic.findIndex((t) => t.car === car);
+  if (ti !== -1) {
+    traffic.splice(ti, 1);
+    police.raise(6);
+    hud.floatText('CAR STOLEN', 'bad');
+  }
+  // Swap the hero car reference: the stolen car becomes the driven car.
+  if (car !== heroCar) {
+    // Park the old hero car where it stands; drive the new one.
+    heroCar.visible = true;
+    drivenCar = car;
+  } else {
+    drivenCar = heroCar;
+  }
+  state.driveMode = 'car';
+  rico.visible = false;
+  state.heading = car.rotation.y;
+  state.speed = 0;
+  hud.setHint('');
+}
+
+let drivenCar = heroCar;
+
+function exitCar() {
+  state.driveMode = 'foot';
+  const side = new THREE.Vector3(Math.cos(state.heading), 0, -Math.sin(state.heading));
+  rico.position.copy(drivenCar.position).addScaledVector(side, 2.4);
+  rico.position.y = 0;
+  rico.visible = true;
+  state.speed = 0;
+  hud.setHint('WASD walk  ·  E enter car  ·  M map  ·  R radio');
+}
+
+// --- Traffic update.
+function updateTraffic(dt, now) {
+  for (const t of traffic) {
+    const [wx, wz] = t.loop[t.wp];
+    const dx = wx - t.car.position.x, dz = wz - t.car.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 4) {
+      t.wp = (t.wp + 1) % t.loop.length;
+      continue;
+    }
+    const targetHeading = Math.atan2(dx, dz);
+    let dh = targetHeading - t.car.rotation.y;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    t.car.rotation.y += THREE.MathUtils.clamp(dh, -1.6 * dt, 1.6 * dt);
+    // Slow down for the player ahead.
+    const toPlayer = t.car.position.distanceTo(player.pos);
+    const speed = toPlayer < 8 && state.driveMode === 'car' ? t.speed * 0.25 : t.speed;
+    t.car.position.x += Math.sin(t.car.rotation.y) * speed * dt;
+    t.car.position.z += Math.cos(t.car.rotation.y) * speed * dt;
+    for (const w of t.car.userData.wheels) w.rotation.x += (speed * dt) / 0.34;
+    // Near miss: player screams past a traffic car without touching it.
+    if (state.driveMode === 'car' && Math.abs(state.speed) * 3.6 > 80) {
+      const d = t.car.position.distanceTo(player.pos);
+      if (d < TUNE.nearMissDist && d > 2.6 && now - t.nearMissAt > 6) {
+        t.nearMissAt = now;
+        state.money += TUNE.nearMissReward;
+        hud.floatText(`NEAR MISS +$${TUNE.nearMissReward}`, 'good');
+        audio.nearMiss();
+      }
+    }
+    // Collision with the player car.
+    if (state.driveMode === 'car') {
+      const d = t.car.position.distanceTo(player.pos);
+      if (d < 2.7) {
+        const push = new THREE.Vector3().subVectors(t.car.position, player.pos).normalize();
+        t.car.position.addScaledVector(push, 1.2);
+        state.speed *= 0.55;
+        damageCar(8);
+        police.raise(8);
+        crowd.panicNear(player.pos, 20, now);
+      }
+    }
+  }
+}
+
+// --- Camera.
+const camTarget = new THREE.Vector3();
+const camPos = new THREE.Vector3(12, 6, 80);
+function updateCamera(dt, t) {
+  if (state.cameraMode === 'fixed' && state.fixedCam) {
+    camera.position.lerp(state.fixedCam.pos, 1 - Math.pow(0.001, dt));
+    camera.lookAt(state.fixedCam.look);
+    return;
+  }
+  if (state.mode === 'title') {
+    // Slow cinematic dolly across the Strip.
+    const a = t * 0.03;
+    camera.position.set(Math.sin(a) * 40, 9 + Math.sin(t * 0.11) * 2, 110 + Math.cos(a) * 20);
+    camera.lookAt(0, 6, -40);
+    return;
+  }
+  if (state.driveMode === 'car') {
+    // LOW close chase cam: behind and slightly right of the car.
+    const back = new THREE.Vector3(-Math.sin(state.heading), 0, -Math.cos(state.heading));
+    const right = new THREE.Vector3(Math.cos(state.heading), 0, -Math.sin(state.heading));
+    const speedBoost = Math.min(2.5, Math.abs(state.speed) * 0.03);
+    camTarget.copy(drivenCar.position)
+      .addScaledVector(back, 9.5 + speedBoost)
+      .addScaledVector(right, 1.8);
+    camTarget.y = 3.4 + Math.abs(state.speed) * 0.008;
+    camPos.lerp(camTarget, 1 - Math.pow(0.0001, dt));
+    camera.position.copy(camPos);
+    const look = new THREE.Vector3().copy(drivenCar.position);
+    look.y = 1.6;
+    look.addScaledVector(new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading)), 6);
+    camera.lookAt(look);
+  } else {
+    const back = new THREE.Vector3(-Math.sin(state.heading), 0, -Math.cos(state.heading));
+    camTarget.copy(rico.position).addScaledVector(back, 5.5);
+    camTarget.y = 2.9;
+    camPos.lerp(camTarget, 1 - Math.pow(0.0001, dt));
+    camera.position.copy(camPos);
+    const look = new THREE.Vector3().copy(rico.position);
+    look.y = 1.5;
+    camera.lookAt(look);
+  }
+}
+
+// --- Title screen + start.
+const titleScreen = document.getElementById('title-screen');
+const hudRoot = document.getElementById('hud');
+hudRoot.style.display = 'none'; // HUD stays hidden until the game starts
+function startGame() {
+  state.mode = 'playing';
+  titleScreen.style.display = 'none';
+  hudRoot.style.display = 'block';
+  input.clearPressed();
+  audio.init();
+  if (saved) {
+    // Resume exactly where the save left off — never restart the job's stages.
+    missions.setState(state.jobIndex, state.stageIndex, state.completedJobs);
+    const j = missions.job();
+    hud.showDialogue(j.giver, `${CREW[j.giver].name}: ${missions.stage().text}`);
+    hud.setHint(`Welcome back — ${missions.job().title}, stage ${state.stageIndex + 1}`);
+  } else {
+    missions.startJob(state.jobIndex);
+    if (missions.currentDialogue) {
+      hud.showDialogue(missions.job().giver, missions.currentDialogue);
+    }
+  }
+  hud.setHint('WASD drive  ·  E exit car  ·  M map  ·  R radio  ·  J dialogue');
+  window.setTimeout(() => hud.setHint(''), 9000);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- HUD snapshot.
+function hudSnapshot(wanted) {
+  const p = missions.progress();
+  const nextJob = missions.JOBS[state.jobIndex + 1];
+  return {
+    money: state.money,
+    respect: state.respect,
+    respectLevel: 1 + Math.floor(state.respect / 250),
+    wanted,
+    day: state.day,
+    timeStr: timeStr(),
+    district: districtAt(player.pos.x, player.pos.z),
+    mission: {
+      chapter: p.chapter, jobTitle: p.jobTitle, stageText: p.stageText,
+      stageNum: p.stageNum, stageTotal: p.stageTotal,
+      next: nextJob ? `${nextJob.chapter} ${nextJob.title}` : 'Free roam',
+    },
+    radioStation: audio.currentStation().name,
+    radioTrack: audio.currentTrack(),
+    carName: drivenCar.userData.name || 'VULPINE S',
+    condition: state.condition,
+    speedKmh: Math.abs(state.speed) * 3.6,
+    gear: state.driveMode === 'car'
+      ? Math.min(6, 1 + Math.floor(Math.abs(state.speed) * 3.6 / 32)) : 0,
+    driving: state.driveMode === 'car',
+    player: { x: player.pos.x, z: player.pos.z },
+    heading: state.heading,
+    objective: p.target ? { x: p.target.x, z: p.target.z } : null,
+    police: police.cars.map((c) => ({ x: c.car.position.x, z: c.car.position.z })),
+  };
+}
+
+// --- Main loop.
+const clock = new THREE.Clock();
+let frame = 0;
+let shotReadySent = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+  // dt clamp 0.1 s: at 60 fps this never binds; on a slow machine the game
+  // still advances at a playable rate instead of crawling.
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const t = clock.elapsedTime;
+  const now = performance.now() / 1000;
+
+  // Title screen: Enter starts.
+  if (state.mode === 'title') {
+    if (input.pressed('Enter') || input.pressed('Space')) startGame();
+    world.update(dt, t, camera.position);
+    updateCamera(dt, t);
+    renderer.render(scene, camera);
+    input.endFrame();
+    frame += 1;
+    maybeShotReady();
+    return;
+  }
+
+  // Keys that work while playing.
+  if (input.pressed('KeyM')) {
+    state.mapOpen = !state.mapOpen;
+    if (state.mapOpen) {
+      hud.showMap(hudSnapshot(police.wantedLevel()));
+      hudRoot.style.display = 'none';
+    } else {
+      hud.hideMap();
+      hudRoot.style.display = 'block';
+    }
+  }
+  if (input.pressed('KeyR')) {
+    audio.setStation(state.radioIndex + 1);
+    state.radioIndex = audio.radioIndex;
+    hud.floatText(`♪ ${audio.currentStation().name}`, 'radio');
+  }
+  if (input.pressed('KeyJ')) {
+    const line = missions.nextDialogue();
+    if (line) hud.showDialogue(missions.job().giver, line);
+    else hud.hideDialogue();
+  }
+  if (input.pressed('KeyE') && !state.mapOpen) {
+    if (state.driveMode === 'car') exitCar();
+    else {
+      const car = nearestCar(4.5);
+      if (car) enterCar(car);
+      else hud.setHint('No car nearby');
+    }
+  }
+  if (input.pressed('Escape') && state.mapOpen) {
+    state.mapOpen = false;
+    hud.hideMap();
+    hudRoot.style.display = 'block';
+  }
+
+  if (!state.mapOpen && !state.shotFrozen) {
+    // Advance the clock: 1 game minute per 2 real seconds.
+    state.timeMin += dt * 0.5;
+    if (state.timeMin >= 24 * 60) { state.timeMin -= 24 * 60; state.day += 1; }
+
+    if (state.driveMode === 'car') updateDriving(dt);
+    else updateOnFoot(dt);
+    updateTraffic(dt, now);
+
+    // Pedestrian collisions.
+    if (state.driveMode === 'car' && Math.abs(state.speed) > 3) {
+      for (const ped of crowd.peds) {
+        if (ped.userData.state === 'down') continue;
+        if (ped.position.distanceTo(player.pos) < 1.9) {
+          crowd.knock(ped, now);
+          police.raise(12);
+          damageCar(2);
+          crowd.panicNear(player.pos, 24, now);
+          hud.floatText('PEDESTRIAN DOWN', 'bad');
+        }
+      }
+    }
+    // Panic: speeding car near peds.
+    if (state.driveMode === 'car' && Math.abs(state.speed) * 3.6 > 70) {
+      crowd.panicNear(player.pos, 12, now);
+    }
+
+    // Police + wanted.
+    const wanted = police.update(dt, t, player, () => {
+      state.speed *= 0.7;
+      damageCar(5);
+      hud.floatText('RAMMED BY POLICE', 'bad');
+    });
+    if (wanted !== state.lastWanted) {
+      if (wanted > state.lastWanted) {
+        hud.showWantedBanner(wanted >= 3 ? `WANTED ★${wanted} — ${'AIR-1'} OVERHEAD` : `WANTED ★${wanted}`);
+        police.raise(0);
+      } else if (wanted === 0 && state.lastWanted > 0) {
+        hud.showWantedBanner('YOU LOST THEM — HEAT OFF');
+        state.money += 200;
+      }
+      state.lastWanted = wanted;
+    }
+
+    // Missions.
+    const event = missions.update({
+      playerPos: player.pos, wanted, onFoot: state.driveMode === 'foot', dt,
+    });
+    if (event) {
+      if (event.jobComplete) {
+        state.money += event.reward;
+        state.respect = Math.min(1000, state.respect + 120);
+        audio.missionDone();
+        hud.floatText(`JOB DONE  +$${event.reward}`, 'good');
+        hud.showWantedBanner(`JOB COMPLETE — ${missions.job().title}`);
+        state.jobIndex += 1;
+        state.stageIndex = 0;
+        if (state.jobIndex < missions.JOBS.length) {
+          missions.startJob(state.jobIndex);
+          if (missions.currentDialogue) hud.showDialogue(missions.job().giver, missions.currentDialogue);
+        } else {
+          hud.showWantedBanner('ALL JOBS DONE — YOU OWN SOLMAR BAY');
+        }
+        saveGame(snapshotForSave());
+      } else if (event.stageComplete) {
+        state.stageIndex = missions.progress().stageIndex;
+        state.money += 150;
+        hud.floatText('OBJECTIVE CLEAR  +$150', 'good');
+        audio.blip(990, 0.15, 0.2);
+      } else if (event.hint) {
+        hud.setHint(event.hint);
+      } else if (event.failed) {
+        hud.floatText(event.failed, 'bad');
+      }
+    }
+
+    // Garage repair near the Midnight Garage.
+    if (state.driveMode === 'car' && state.condition < 100) {
+      const d = Math.hypot(player.pos.x - 20, player.pos.z - 96);
+      if (d < 12) {
+        state.condition = Math.min(100, state.condition + 25 * dt);
+        if (state.condition >= 100) hud.floatText('CAR REPAIRED', 'good');
+      }
+    }
+
+    // Autosave every 20 s.
+    if (now - state.lastSaveAt > 20) {
+      state.lastSaveAt = now;
+      saveGame(snapshotForSave());
+    }
+
+    // Audio follows speed + wanted.
+    audio.update(Math.abs(state.speed) * 3.6, police.wantedLevel(), state.driveMode === 'car');
+  } else if (state.shotFrozen) {
+    // Shot mode: the world breathes (rain, strobes, heli) but nothing drives.
+    police.update(dt, t, player, null, true);
+  }
+
+  world.update(dt, t, player.pos);
+  crowd.update(dt, now);
+  updateCamera(dt, t);
+  hud.update(hudSnapshot(police.wantedLevel()));
+  renderer.render(scene, camera);
+  input.endFrame();
+  frame += 1;
+  maybeShotReady();
+}
+
+function snapshotForSave() {
+  return {
+    money: state.money, respect: state.respect,
+    jobIndex: state.jobIndex, stageIndex: missions.progress().stageIndex,
+    radioIndex: state.radioIndex, garage: ['VULPINE S'],
+    playerX: player.pos.x, playerZ: player.pos.z, playerHeading: state.heading,
+    completedJobs: state.completedJobs,
+  };
+}
+
+function maybeShotReady() {
+  if (SHOT && !shotReadySent && frame >= 10) {
+    shotReadySent = true;
+    window.__SHOT_READY__ = true;
+  }
+}
+
+// --- Shot presets (deterministic scenes for the dossier screenshots).
+const gameAPI = {
+  state, player, police, missions, hud, audio, heroCar, traffic, crowd,
+  crewMembers, scene, camera, drivenCar: () => drivenCar,
+  startPlaying() {
+    if (state.mode === 'title') {
+      state.mode = 'playing';
+      titleScreen.style.display = 'none';
+      hudRoot.style.display = 'block';
+      input.clearPressed();
+      missions.startJob(state.jobIndex);
+    }
+  },
+  setHero(x, z, heading, speedKmh) {
+    heroCar.position.set(x, 0, z);
+    heroCar.rotation.y = heading;
+    state.heading = heading;
+    state.speed = speedKmh / 3.6;
+    state.driveMode = 'car';
+    drivenCar = heroCar;
+  },
+  setFixedCamera(x, y, z, lx, ly, lz) {
+    state.cameraMode = 'fixed';
+    state.fixedCam = { pos: new THREE.Vector3(x, y, z), look: new THREE.Vector3(lx, ly, lz) };
+    camera.position.set(x, y, z);
+    camera.lookAt(lx, ly, lz);
+  },
+  setMoney(n) { state.money = n; },
+  setTime(day, minutes) { state.day = day; state.timeMin = minutes; },
+  setMission(job, stage) {
+    state.jobIndex = job;
+    missions.setState(job, stage, state.completedJobs);
+  },
+  freezeShot() { state.shotFrozen = true; },
+  placeOnFoot(x, z, heading) {
+    state.driveMode = 'foot';
+    rico.position.set(x, 0, z);
+    rico.rotation.y = heading;
+    rico.visible = true;
+    state.heading = heading;
+  },
+  placeCrew(spots) {
+    for (const [key, x, z, heading] of spots) {
+      const p = crewMembers[key];
+      if (!p) continue;
+      p.position.set(x, 0, z);
+      p.rotation.y = heading;
+      p.visible = true;
+    }
+  },
+  openMap() {
+    state.mapOpen = true;
+    hud.showMap(hudSnapshot(police.wantedLevel()));
+    hudRoot.style.display = 'none';
+  },
+};
+
+if (SHOT) {
+  applyShot(SHOT, gameAPI);
+}
+
+// --- Playtest / debug API (used by the automated playtest, harmless in play).
+window.__GAME = {
+  get state() { return state.mode; },
+  get driveMode() { return state.driveMode; },
+  get speedKmh() { return Math.abs(state.speed) * 3.6; },
+  get wanted() { return police.wantedLevel(); },
+  get money() { return state.money; },
+  get condition() { return state.condition; },
+  get policeCount() { return police.cars.length; },
+  get trafficCount() { return traffic.length; },
+  get pedCount() { return crowd.peds.length; },
+  get mission() { return missions.progress(); },
+  get playerPos() { return { x: player.pos.x, z: player.pos.z }; },
+  get carPos() { return { x: drivenCar.position.x, z: drivenCar.position.z }; },
+  get heading() { return state.heading; },
+  get frames() { return frame; },
+  get mapOpen() { return state.mapOpen; },
+  get radio() { return audio.currentStation().name; },
+  get heliVisible() { return police.heli.visible; },
+  get shotReady() { return !!window.__SHOT_READY__; },
+  setWanted: (n) => police.setWanted(n),
+  advanceMission: () => missions.advanceStage(),
+  teleport: (x, z) => {
+    if (state.driveMode === 'car') drivenCar.position.set(x, 0, z);
+    else rico.position.set(x, 0, z);
+  },
+  save: () => saveGame(snapshotForSave()),
+  start: () => { if (state.mode === 'title') startGame(); },
+};
+
+animate();

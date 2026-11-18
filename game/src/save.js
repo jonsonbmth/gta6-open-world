@@ -1,32 +1,43 @@
-// Save/load + garage shop, kept separate from the render loop.
-import { saveGame, loadSave } from './state.js';
+// SOLMAR BAY — save/load via localStorage. Progress survives a reload:
+// money, respect, current job + stage, radio station, garage, position.
 
-export function autosave(state) {
-  return saveGame(state);
+const KEY = 'solmar-bay-save-v6';
+
+export function saveGame(state) {
+  try {
+    const data = {
+      version: 6,
+      money: state.money,
+      respect: state.respect,
+      jobIndex: state.jobIndex,
+      stageIndex: state.stageIndex,
+      radioIndex: state.radioIndex,
+      garage: state.garage,
+      playerX: state.playerX,
+      playerZ: state.playerZ,
+      playerHeading: state.playerHeading,
+      completedJobs: state.completedJobs,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function hasSave() {
-  return loadSave() !== null;
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data.version !== 6) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
-export function garageItems(state) {
-  return [
-    { key: '1', name: 'Engine tune', desc: `Level ${state.upgrades.engine + 1} — more top speed`, price: 1500 + state.upgrades.engine * 1200, can: state.money >= 1500 + state.upgrades.engine * 1200 },
-    { key: '2', name: 'Armour plating', desc: `Level ${state.upgrades.armour + 1} — tougher car`, price: 1200 + state.upgrades.armour * 1000, can: state.money >= 1200 + state.upgrades.armour * 1000 },
-    { key: '3', name: 'Respray', desc: 'Fresh paint — rotate the colour', price: 400, can: state.money >= 400 },
-    { key: '4', name: 'Lose the heat', desc: 'Lena calls in a favour — wanted level cleared', price: 800, can: state.money >= 800 && state.wanted > 0 },
-  ];
-}
-
-export function buyGarageItem(state, key) {
-  const items = garageItems(state);
-  const item = items.find((i) => i.key === key);
-  if (!item || !item.can) return null;
-  state.money -= item.price;
-  if (key === '1') state.upgrades.engine += 1;
-  if (key === '2') { state.upgrades.armour += 1; state.carCondition = 100; }
-  if (key === '3') state.paint = (state.paint + 1) % 4;
-  if (key === '4') state.wanted = 0;
-  saveGame(state);
-  return item;
+export function clearSave() {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
 }
