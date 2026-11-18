@@ -7,7 +7,7 @@
 
 import { STEP, PLACES, GARAGE_UPGRADES, RADIO } from './config.js';
 import { createRandom } from './random.js';
-import { createRenderer } from './render.js';
+import { createRenderer, THREE } from './render.js';
 import { createCity } from './city.js';
 import { createTraffic, createVehicle } from './vehicles.js';
 import { createPedestrians } from './pedestrians.js';
@@ -35,8 +35,8 @@ const city = createCity(r, random);
 const audio = createAudio();
 const hud = createHud();
 const camera = createCamera(r.camera);
-const traffic = createTraffic(r, city, random, 16);
-const peds = createPedestrians(r, city, random, 26);
+const traffic = createTraffic(r, city, random, 20);
+const peds = createPedestrians(r, city, random, 34);
 const police = createPolice(r, city, random, audio);
 const player = createPlayer(r, city, audio, { x: PLACES.safehouse.x, z: PLACES.safehouse.z + 8 });
 const missions = createMissions(r, city, random, hud, audio);
@@ -57,6 +57,8 @@ const world = {
     return [...traffic.cars, ...missions.jobVehicles, ...jobCars, ...parkedCars];
   },
 };
+// Debug/verification handle (used by the screenshot probe scripts).
+window.__world = world;
 
 let screen = 'title';
 let input = null;
@@ -64,6 +66,55 @@ let recentShotTimer = 0;
 let overReason = 'wasted';
 let pauseIndex = 0;
 let garageIndex = 0;
+let nearMissCd = 0;
+let driftTimer = 0;
+let dustTimer = 0;
+
+// Dust puffs behind the rear wheels at speed — the motion cue.
+const dustTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,255,0.8)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const dustPool = [];
+function spawnDust(x, z, dx, dz) {
+  if (dustPool.length >= 36) return;
+  const mat = new THREE.SpriteMaterial({ map: dustTex, color: 0xe8d9b8, transparent: true, opacity: 0.85, depthWrite: false });
+  const s = new THREE.Sprite(mat);
+  s.position.set(x, 0.9, z);
+  s.scale.set(3.5, 3.5, 1);
+  s.userData.life = 0.6;
+  s.userData.dx = dx; // drift sideways as it ages, so the wake spreads out
+  s.userData.dz = dz; // from behind the car instead of hiding under it
+  r.scene.add(s);
+  dustPool.push(s);
+}
+function updateDust(dt) {
+  for (let i = dustPool.length - 1; i >= 0; i -= 1) {
+    const s = dustPool[i];
+    s.userData.life -= dt;
+    if (s.userData.life <= 0) {
+      r.scene.remove(s);
+      s.material.dispose();
+      dustPool.splice(i, 1);
+      continue;
+    }
+    const k = 1 - s.userData.life / 0.6;
+    s.material.opacity = 0.85 * (1 - k);
+    const sc = 3.5 + k * 5;
+    s.scale.set(sc, sc, 1);
+    s.position.y = 0.9 + k * 2.4;
+    s.position.x += s.userData.dx * 2.2 * dt;
+    s.position.z += s.userData.dz * 2.2 * dt;
+  }
+}
 
 const screens = {
   title: document.getElementById('title-screen'),
@@ -213,6 +264,52 @@ function stepWorld(dt, inp, doRender = true) {
   peds.update(dt, player.pos, danger);
   police.update(dt, player, player.inCar);
   missions.update(dt, player, police, () => doSave());
+
+  // Motion cues: dust behind the rear wheels, a NEAR MISS bonus for flashing
+  // past traffic at speed, and DRIFT for a handbrake slide.
+  if (player.inCar && Math.abs(player.speed) > 20) {
+    dustTimer -= dt;
+    if (dustTimer <= 0) {
+      dustTimer = 0.06;
+      const bx = player.x - Math.cos(player.angle) * 2.2;
+      const bz = player.z + Math.sin(player.angle) * 2.2;
+      // Two puffs, offset sideways (perpendicular to the heading) so they
+      // peek out from behind the car body, drifting further out as they age.
+      const px = Math.sin(player.angle) * 1.6;
+      const pz = Math.cos(player.angle) * 1.6;
+      spawnDust(bx + px + (Math.random() - 0.5), bz + pz, px, pz);
+      spawnDust(bx - px + (Math.random() - 0.5), bz - pz, -px, -pz);
+    }
+  }
+  updateDust(dt);
+  nearMissCd = Math.max(0, nearMissCd - dt);
+  if (player.inCar && Math.abs(player.speed) > 25 && nearMissCd <= 0) {
+    const fx = Math.cos(player.angle);
+    const fz = -Math.sin(player.angle);
+    for (const v of world.vehicles) {
+      if (v === player.vehicle) continue;
+      const dx = v.x - player.x;
+      const dz = v.z - player.z;
+      const along = dx * fx + dz * fz;
+      const lat = Math.abs(dx * -fz + dz * fx);
+      if (along > -2 && along < 9 && lat < 3.4) {
+        player.addMoney(250);
+        hud.actionText('NEAR MISS +$250');
+        nearMissCd = 3;
+        break;
+      }
+    }
+  }
+  if (player.inCar && inp.isDown('handbrake') && Math.abs(player.speed) > 18) {
+    driftTimer += dt;
+    if (driftTimer > 0.8) {
+      driftTimer = 0;
+      player.addMoney(150);
+      hud.actionText('DRIFT x3');
+    }
+  } else {
+    driftTimer = 0;
+  }
   if (player.dead && screen === 'play') gameOver('wasted');
   else if (police.busted && screen === 'play') gameOver('busted');
 
@@ -297,6 +394,8 @@ function frameLoop() {
     const mapPressed = input.wasPressed('map');
     const radioPressed = input.wasPressed('radio');
     const garagePressed = input.wasPressed('garage');
+    const weapon1Pressed = input.wasPressed('weapon1');
+    const weapon2Pressed = input.wasPressed('weapon2');
     accumulator += frameDt;
     while (accumulator >= STEP) {
       stepWorld(STEP, input, false);
@@ -306,6 +405,8 @@ function frameLoop() {
     if (screen === 'play') r.render();
 
     if (pausePressed) showScreen('pause');
+    if (weapon1Pressed) player.selectWeapon('fists');
+    if (weapon2Pressed) player.selectWeapon('pistol');
     if (mapPressed) {
       showScreen('map');
       hud.drawBigMap(world);

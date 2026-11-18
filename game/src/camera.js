@@ -5,10 +5,10 @@
 import * as THREE from 'three';
 
 export function createCamera(camera) {
-  let yaw = Math.PI / 2;   // looking north by default
+  let yaw = Math.PI / 2; // looking north by default
   let pitch = 0.32;
-  let distance = 5.5;
-  let targetDistance = 5.5;
+  let distance = 4.7; // low and close: the hero car dominates the frame
+  let targetDistance = 4.7;
   const pos = new THREE.Vector3(0, 12, 30);
   const look = new THREE.Vector3(0, 2, 0);
   let titleAngle = 0;
@@ -38,7 +38,7 @@ export function createCamera(camera) {
         return;
       }
       const back = mode === 'car' ? 1 : 0.85;
-      const height = mode === 'car' ? 2.5 + pitch * 2.2 : 3.1 + pitch * 3.4;
+      const height = mode === 'car' ? 2.1 + pitch * 1.6 : 3.1 + pitch * 3.4;
       const dist = distance * back;
       const desired = new THREE.Vector3(
         focus.x - Math.cos(yaw - Math.PI / 2) * dist,
@@ -46,12 +46,12 @@ export function createCamera(camera) {
         focus.z + Math.sin(yaw - Math.PI / 2) * dist,
       );
       // Never go under the street or inside a building's roofline guess.
-      desired.y = Math.max(desired.y, 2.2);
+      desired.y = Math.max(desired.y, 2.0);
       const smooth = mode === 'car' ? Math.min(1, 20 * dt) : Math.min(1, 9 * dt);
       pos.lerp(desired, smooth);
       const lookTarget = new THREE.Vector3(
         focus.x + (focus.vx ?? 0) * 0.25,
-        mode === 'car' ? 1.6 : 1.8,
+        mode === 'car' ? 1.3 : 1.8,
         focus.z + (focus.vz ?? 0) * 0.25,
       );
       look.lerp(lookTarget, Math.min(1, 10 * dt));

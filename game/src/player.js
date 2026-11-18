@@ -9,7 +9,7 @@ import { driveVehicle } from './vehicles.js';
 import { buildPersonMesh, animateWalk } from './pedestrians.js';
 
 export function createPlayer(r, city, audio, start) {
-  const mesh = buildPersonMesh(r, { shirt: 0x2b6cb0, pants: 0x2c3a4a, skin: 0xc9976b, hair: 0x1a1210 });
+  const mesh = buildPersonMesh(r, { shirt: 0x2b6cb0, pants: 0x2c3a4a, skin: 0xc9976b, hair: 0x1a1210, hat: false });
   mesh.position.set(start.x, 0, start.z);
   r.scene.add(mesh);
 
@@ -25,9 +25,11 @@ export function createPlayer(r, city, audio, start) {
     mesh, x: start.x, z: start.z, angle: 0, vx: 0, vz: 0, speed: 0,
     mode: 'foot', car: null,
     health: PLAYER.health, maxHealth: PLAYER.health,
+    armour: 50, maxArmour: 50, // armour absorbs damage before health does
+    weapon: 'pistol', ammo: 24, // 1 fists · 2 pistol
     money: 1250, rep: 120,
     upgrades: { engine: false, armor: false, tires: false },
-    punchCd: 0, shootCd: 0, flashTimer: 0,
+    punchCd: 0, shootCd: 0, flashTimer: 0, ramCd: 0,
     dead: false,
   };
 
@@ -39,10 +41,6 @@ export function createPlayer(r, city, audio, start) {
       if (d < bestD) { best = v; bestD = d; }
     }
     return best;
-  }
-
-  function faceTarget(tx, tz) {
-    state.angle = Math.atan2(-(tz - state.z), tx - state.x);
   }
 
   return {
@@ -59,6 +57,10 @@ export function createPlayer(r, city, audio, start) {
     get car() { return state.car; },
     get health() { return state.health; },
     get maxHealth() { return state.maxHealth; },
+    get armour() { return state.armour; },
+    get maxArmour() { return state.maxArmour; },
+    get weapon() { return state.weapon; },
+    get ammo() { return state.ammo; },
     get money() { return state.money; },
     get rep() { return state.rep; },
     get upgrades() { return state.upgrades; },
@@ -71,6 +73,7 @@ export function createPlayer(r, city, audio, start) {
     update(dt, input, world, cameraYaw) {
       state.punchCd = Math.max(0, state.punchCd - dt);
       state.shootCd = Math.max(0, state.shootCd - dt);
+      state.ramCd = Math.max(0, state.ramCd - dt);
       if (state.flashTimer > 0) {
         state.flashTimer -= dt;
         if (state.flashTimer <= 0) flash.visible = false;
@@ -97,9 +100,11 @@ export function createPlayer(r, city, audio, start) {
             audio.crash();
           }
         }
-        // Ramming a cop car hard raises the heat.
+        // Ramming a cop car hard raises the heat — once per contact, not
+        // every step, or a tailgating cruiser maxes the wanted level instantly.
         for (const c of world.police.cops) {
-          if (Math.hypot(c.vehicle.x - state.x, c.vehicle.z - state.z) < 4.5 && Math.abs(v.speed) > 20) {
+          if (Math.hypot(c.vehicle.x - state.x, c.vehicle.z - state.z) < 4.5 && Math.abs(v.speed) > 20 && state.ramCd <= 0) {
+            state.ramCd = 2;
             world.police.addWanted(1);
           }
         }
@@ -226,6 +231,8 @@ export function createPlayer(r, city, audio, start) {
     },
 
     shoot(world) {
+      if (state.weapon !== 'pistol' || state.ammo <= 0) return false;
+      state.ammo -= 1;
       state.shootCd = 0.28;
       audio.shot();
       flash.position.set(
@@ -250,9 +257,15 @@ export function createPlayer(r, city, audio, start) {
       return !!best;
     },
 
+    selectWeapon(w) {
+      if (w === 'fists' || w === 'pistol') state.weapon = w;
+    },
     damage(amount) {
       if (state.dead) return;
-      state.health -= amount;
+      // Armour takes the hit first; whatever gets through hits health.
+      const absorbed = Math.min(state.armour, amount);
+      state.armour -= absorbed;
+      state.health -= (amount - absorbed);
       if (state.health <= 0) {
         state.health = 0;
         state.dead = true;
@@ -264,6 +277,8 @@ export function createPlayer(r, city, audio, start) {
     revive(at) {
       state.dead = false;
       state.health = state.maxHealth;
+      state.armour = state.maxArmour;
+      state.ammo = 24;
       if (state.car) {
         state.car = null;
         state.mode = 'foot';
@@ -280,6 +295,8 @@ export function createPlayer(r, city, audio, start) {
       if (id === 'armor') {
         state.maxHealth += 50;
         state.health = state.maxHealth;
+        state.maxArmour = 100;
+        state.armour = 100;
       }
     },
   };

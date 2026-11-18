@@ -55,7 +55,7 @@ function createRival(r, city, x, z, random) {
 }
 
 export function createMissions(r, city, random, hud, audio) {
-  let jobIndex = 0;      // 0-based; 7 means the story is done
+  let jobIndex = 0; // 0-based; 7 means the story is done
   let stepIndex = 0;
   let active = false;
   let jobVehicles = [];
@@ -90,7 +90,7 @@ export function createMissions(r, city, random, hud, audio) {
       jobVehicles.push(createVehicle(r, city, 'truck', place.x + 6, place.z, Math.PI / 2, 0xd9a441, random));
     }
     if (step.type === 'chase') {
-      chaseTarget = createVehicle(r, city, 'truck', place.x, place.z, 0, 0x3f7a5a, random);
+      chaseTarget = createVehicle(r, city, 'truck', place.x, place.z, 0, 0xe8b93b, random);
       chaseTarget.cruise = 18;
       chaseTarget.speed = 18; // already rolling when the job starts
       jobVehicles.push(chaseTarget);
@@ -111,7 +111,7 @@ export function createMissions(r, city, random, hud, audio) {
     city.showBeacon(step.target, true);
     spawnStepEntities(step);
     if (step.say) hud.say(step.say[0], step.say[1], 5);
-    hud.setMission(currentJob(), step);
+    hud.setMission(currentJob(), step, stepIndex);
   }
 
   function startJob(index) {
@@ -157,6 +157,7 @@ export function createMissions(r, city, random, hud, audio) {
 
   return {
     get jobIndex() { return jobIndex; },
+    get stepIndex() { return stepIndex; },
     get active() { return active; },
     get completed() { return completed; },
     get rivals() { return rivals; },
@@ -210,7 +211,7 @@ export function createMissions(r, city, random, hud, audio) {
         const t = chaseTarget;
         ramCooldown = Math.max(0, ramCooldown - dt);
         if (chaseHp > 0) {
-          t.angle = 0;
+          t.angle = Math.PI; // the money truck flees west, into the sunset
           t.speed += (t.cruise - t.speed) * Math.min(1, dt);
           t.update(dt);
           const pd = Math.hypot(player.x - t.x, player.z - t.z);

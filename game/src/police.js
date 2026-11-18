@@ -10,10 +10,19 @@ import { range, pick } from './random.js';
 
 function buildHelicopter(r) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(r.geo.box, r.mat(0x1c2f4a));
+  // Dark-slate SBPD helicopter with a white stripe: it has to silhouette
+  // against a bright pink sunset sky (a white body vanishes into the glow).
+  // A touch of emissive keeps the camera-facing side from going black, since
+  // the sun is behind it.
+  const heliBody = r.mat(0x2b3a55, { emissive: 0x2b3a55, emissiveIntensity: 0.35 });
+  const body = new THREE.Mesh(r.geo.box, heliBody);
   body.scale.set(4.2, 1.6, 1.9);
   body.castShadow = true;
   g.add(body);
+  const stripe = new THREE.Mesh(r.geo.box, r.mat(0xe8e8e8));
+  stripe.scale.set(4.25, 0.4, 1.95);
+  stripe.position.y = -0.3;
+  g.add(stripe);
   const glass = new THREE.Mesh(r.geo.box, r.mat(0x9fd4e8));
   glass.scale.set(1.2, 1.0, 1.7);
   glass.position.set(2.2, 0.2, 0);
@@ -30,15 +39,39 @@ function buildHelicopter(r) {
   tailRotor.scale.set(0.08, 2.2, 0.3);
   tailRotor.position.set(-5.2, 0.5, 0);
   g.add(tailRotor);
+  // Searchlight cone + a bright pool on the ground below, so the helicopter
+  // reads clearly even at a glance. The cone is scaled in update() so its
+  // tip stays at the helicopter and its base lands exactly on the ground
+  // under it (heights are in the group's local units — divide by the group
+  // scale — or the cone ends up buried below the road).
   const light = new THREE.Mesh(
-    new THREE.ConeGeometry(6, 42, 16, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.ConeGeometry(4, 46, 16, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }),
   );
-  light.position.set(1.5, -21, 0);
-  light.rotation.z = Math.PI;
+  light.position.set(1.5, -7, 0);
   g.add(light);
+  const pool = new THREE.Mesh(
+    new THREE.CircleGeometry(4, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.55, depthWrite: false }),
+  );
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(1.5, -13, 0);
+  g.add(pool);
+  // Red anti-collision beacon on the tail, blinking in update().
+  const beacon = new THREE.Mesh(
+    r.geo.sph,
+    r.mat(0xff2222, { emissive: 0xff2222, emissiveIntensity: 3 }),
+  );
+  beacon.scale.set(0.7, 0.7, 0.7);
+  beacon.position.set(-4.6, 1.3, 0);
+  g.add(beacon);
+  // The helicopter is big on purpose: it has to loom over the chase.
+  g.scale.setScalar(1.8);
   g.userData.rotor = rotor;
   g.userData.tailRotor = tailRotor;
+  g.userData.pool = pool;
+  g.userData.cone = light;
+  g.userData.beacon = beacon;
   return g;
 }
 
@@ -49,6 +82,7 @@ export function createPolice(r, city, random, audio) {
   let busted = false;
   const cops = []; // {vehicle, name, status, stuckTimer, reverseTimer}
   let heli = null;
+  let heliAlt = 24; // helicopter cruise altitude (staging can lower it)
   let flash = 0;
 
   function spawnCop(near) {
@@ -89,6 +123,9 @@ export function createPolice(r, city, random, audio) {
     get busted() { return busted; },
     get cops() { return cops; },
     get heliUp() { return heli !== null; },
+    get heli() { return heli; },
+    // Staging only: fly the helicopter lower so it looms in the frame.
+    setHeliAlt(v) { heliAlt = v; },
     addWanted(n) {
       if (stars < WANTED.maxStars) {
         stars = Math.min(WANTED.maxStars, stars + n);
@@ -174,26 +211,45 @@ export function createPolice(r, city, random, audio) {
           c.status = dist < 8 ? pick(random, ['RAMMING', 'BOXING IN']) : dist < 30 ? 'PURSUIT' : dist < 60 ? 'CLOSING IN' : 'PURSUIT';
         }
         c.distance = Math.round(dist);
-        // Flashing light bar.
+        // Flashing light bar + the red/blue spill on the asphalt.
         const on = Math.floor(flash * 6) % 2 === 0;
         const lights = v.mesh.userData.lights;
         if (lights) {
           lights.red.visible = on;
           lights.blue.visible = !on;
         }
+        const glow = v.mesh.userData.glow;
+        if (glow) {
+          glow.red.visible = on;
+          glow.blue.visible = !on;
+        }
       }
 
       // Helicopter shadows the player from above, leading their motion so it
-      // stays in view ahead of a fast car.
+      // stays in view ahead of a fast car — offset well to the side (south),
+      // so the camera sees its 3/4 profile instead of a foreshortened sliver.
       if (heli) {
         const lead = 0.7;
         const target = {
-          x: player.x + (player.vx ?? 0) * lead + 6,
-          z: player.z + (player.vz ?? 0) * lead - 8,
+          x: player.x + (player.vx ?? 0) * lead + 2,
+          z: player.z + (player.vz ?? 0) * lead + 14,
         };
         heli.position.x += (target.x - heli.position.x) * Math.min(1, 2.5 * dt);
         heli.position.z += (target.z - heli.position.z) * Math.min(1, 2.5 * dt);
-        heli.position.y = 24 + Math.sin(flash * 1.4) * 1.5;
+        heli.position.y = heliAlt + Math.sin(flash * 1.4) * 1.5;
+        // The spotlight sweeps diagonally across the street, RIPTIDE-style:
+        // tilt the cone and keep the pool under its base on the ground. The
+        // cone and pool are children of the scaled heli group, so their
+        // heights are local units: local height = world height / group scale.
+        const sweep = Math.sin(flash * 0.8) * 0.35;
+        const s = heli.scale.x;
+        const lh = heli.position.y / s; // local height from heli to ground
+        heli.userData.cone.rotation.z = sweep;
+        heli.userData.cone.position.y = -lh / 2;
+        heli.userData.cone.scale.y = Math.max(0.1, (lh / 46) / Math.cos(sweep));
+        heli.userData.pool.position.y = -lh + 0.2;
+        heli.userData.pool.position.x = (1.5 + Math.sin(sweep) * heli.position.y) / s;
+        heli.userData.beacon.visible = Math.floor(flash * 2) % 2 === 0;
         heli.rotation.y = Math.atan2(-(player.z - heli.position.z), player.x - heli.position.x);
         heli.userData.rotor.rotation.y += dt * 28;
         heli.userData.tailRotor.rotation.x += dt * 30;

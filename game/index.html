@@ -15,6 +15,13 @@
   #mission .title { font-size: 19px; font-weight: 800; margin: 2px 0; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
   #mission .obj { font-size: 13px; color: #dfe6ee; line-height: 1.35; }
   #mission .dist { font-size: 12px; color: #9fb3c8; margin-top: 4px; }
+  #mission .stage-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  #mission .stage { font-size: 11px; letter-spacing: 1px; color: #ffd166; font-weight: 800; }
+  #mission .segs { display: flex; gap: 3px; flex: 1; }
+  #mission .segs span { height: 5px; flex: 1; background: rgba(255,255,255,.2); border-radius: 2px; }
+  #mission .segs span.on { background: #ffd166; }
+  #mission .next { font-size: 11px; color: #9fb3c8; margin-top: 5px; }
+  #mission .timer { font-size: 11px; color: #7cf29c; font-weight: 700; }
   #stats { position: absolute; top: 16px; right: 16px; padding: 10px 14px; text-align: right; min-width: 210px; }
   #stars { font-size: 22px; letter-spacing: 3px; color: #ffd166; text-shadow: 0 0 10px rgba(255,180,0,.55); }
   #stars .off { color: rgba(255,255,255,.25); text-shadow: none; }
@@ -23,26 +30,57 @@
   #repfill { height: 100%; width: 30%; background: linear-gradient(90deg,#ffd166,#ff7b54); }
   #reptext { font-size: 11px; color: #c9d4e0; margin-top: 3px; letter-spacing: 1px; }
   #clock { font-size: 12px; color: #9fb3c8; margin-top: 4px; letter-spacing: 1px; }
-  #units { position: absolute; top: 176px; right: 16px; padding: 9px 12px; font-size: 12px; line-height: 1.7; color: #dfe6ee; text-align: right; min-width: 210px; }
+  #units { position: absolute; top: 196px; left: 16px; padding: 9px 12px; font-size: 12px; line-height: 1.9; color: #dfe6ee; text-align: left; min-width: 240px; }
   #units b { color: #ff9a8a; }
+  .pill { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 1px 7px; border-radius: 9px; color: #fff; margin: 0 2px; }
+  .pill.ram { background: #e5534b; }
+  .pill.pur { background: #e8821e; }
+  .pill.rb { background: #d9a400; color: #14100a; }
+  .pill.cl { background: #2b6cb0; }
+  #weapons { display: flex; gap: 4px; margin-top: 8px; justify-content: flex-end; }
+  .wslot { min-width: 44px; padding: 3px 5px; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #c9d4e0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); border-radius: 5px; }
+  .wslot .ammo { display: block; font-size: 11px; color: #fff; }
+  .wslot.sel { border-color: #ffd166; color: #ffd166; background: rgba(255,209,102,.14); }
+  .wslot.locked { opacity: .45; }
+  .wslot.locked .ammo { color: #9fb3c8; }
   #minimap-wrap { position: absolute; left: 18px; bottom: 18px; width: 232px; height: 232px; }
   #minimap { width: 232px; height: 232px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 4px 18px rgba(0,0,0,.55); background: #101c2a; }
-  #health { position: absolute; left: 262px; bottom: 44px; width: 190px; }
-  #health .bar { height: 10px; background: rgba(255,255,255,.18); border-radius: 5px; overflow: hidden; }
+  #health { position: absolute; left: 262px; bottom: 30px; width: 210px; }
+  #health .row { margin-top: 6px; }
+  #health .bar { height: 9px; background: rgba(255,255,255,.18); border-radius: 5px; overflow: hidden; }
   #healthfill { height: 100%; width: 100%; background: linear-gradient(90deg,#37d67a,#a5f3a0); }
-  #health .lbl { font-size: 11px; letter-spacing: 2px; color: #dfe6ee; margin-bottom: 4px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #armourfill { height: 100%; width: 100%; background: linear-gradient(90deg,#4fc3f7,#a5e3ff); }
+  #repfill2 { height: 100%; width: 30%; background: linear-gradient(90deg,#ffd166,#ff7b54); }
+  #health .lbl { font-size: 11px; letter-spacing: 2px; color: #dfe6ee; margin-bottom: 3px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #health .lbl b { color: #ffd166; }
   #speedo { position: absolute; right: 20px; bottom: 20px; text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
-  #speed { font-size: 44px; font-weight: 900; line-height: 1; }
+  #speed { font-size: 56px; font-weight: 900; line-height: 1; }
   #speedunit { font-size: 12px; letter-spacing: 3px; color: #c9d4e0; }
   #carname { font-size: 13px; color: #ffd166; font-weight: 700; margin-top: 4px; }
-  #radio { position: absolute; right: 20px; bottom: 118px; text-align: right; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+  #condition { margin-top: 6px; text-align: right; }
+  #condition .lbl { font-size: 10px; letter-spacing: 2px; color: #dfe6ee; }
+  #condition .bar { height: 7px; width: 170px; margin-left: auto; background: rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; margin-top: 3px; }
+  #condfill { height: 100%; width: 100%; background: linear-gradient(90deg,#ffd166,#ff7b54); }
+  #radio { position: absolute; right: 20px; bottom: 138px; text-align: right; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
   #radio .station { font-size: 15px; font-weight: 800; color: #fff; }
   #radio .track { font-size: 12px; color: #ffd166; }
-  #dialog { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); max-width: 640px; padding: 10px 18px; text-align: center; }
+  #radio .eq { display: flex; gap: 2px; justify-content: flex-end; align-items: flex-end; height: 14px; margin-top: 4px; }
+  #radio .eq span { width: 3px; background: #ffd166; animation: eq 0.7s infinite ease-in-out; }
+  #radio .eq span:nth-child(1) { height: 6px; animation-delay: 0s; }
+  #radio .eq span:nth-child(2) { height: 12px; animation-delay: .15s; }
+  #radio .eq span:nth-child(3) { height: 8px; animation-delay: .3s; }
+  #radio .eq span:nth-child(4) { height: 13px; animation-delay: .1s; }
+  #radio .eq span:nth-child(5) { height: 7px; animation-delay: .45s; }
+  @keyframes eq { 0%,100% { transform: scaleY(.5); } 50% { transform: scaleY(1.15); } }
+  #dialog { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); max-width: 640px; padding: 10px 18px; text-align: left; display: flex; gap: 12px; align-items: center; }
+  #dialog-portrait { width: 56px; height: 56px; border-radius: 8px; border: 2px solid rgba(255,209,102,.6); flex: none; }
   #dialog .who { font-size: 11px; letter-spacing: 2px; color: #ffd166; font-weight: 800; }
   #dialog .line { font-size: 16px; font-weight: 600; line-height: 1.35; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
   #hint { position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%); font-size: 14px; font-weight: 700; color: #fff; background: rgba(8,12,20,.62); border: 1px solid rgba(255,255,255,.2); padding: 7px 14px; border-radius: 8px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+  #action-text { position: absolute; left: 50%; top: 36%; transform: translate(-50%,-50%); font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #ffd166; text-shadow: 0 4px 20px rgba(0,0,0,.9), 0 0 30px rgba(255,180,0,.5); display: none; white-space: nowrap; background: rgba(0,0,0,.45); padding: 6px 22px; border-radius: 12px; }
   #banner { position: absolute; left: 50%; top: 34%; transform: translate(-50%,-50%); text-align: center; display: none; }
+  #action-text.pop { animation: actionpop 1.6s ease-out forwards; }
+  @keyframes actionpop { 0% { transform: translate(-50%,-50%) scale(.6); opacity: 0; } 12% { transform: translate(-50%,-50%) scale(1.12); opacity: 1; } 22% { transform: translate(-50%,-50%) scale(1); opacity: 1; } 100% { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
   #banner .big { font-size: 52px; font-weight: 900; letter-spacing: 4px; color: #ffd166; text-shadow: 0 4px 24px rgba(0,0,0,.85); }
   #banner .sub { font-size: 18px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.85); }
   #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 22px; color: rgba(255,255,255,.9); text-shadow: 0 0 6px rgba(0,0,0,.9); display: none; }
@@ -79,20 +117,35 @@
     <div class="title" id="mission-title">Harbor Lights</div>
     <div class="obj" id="mission-obj">Drive to the marina.</div>
     <div class="dist" id="mission-dist"></div>
+    <div class="stage-row"><span class="stage" id="mission-stage">STAGE 1/3</span><span class="segs" id="mission-segs"></span><span class="timer" id="mission-timer">⏱ 00:00</span></div>
+    <div class="next" id="mission-next"></div>
   </div>
   <div id="stats" class="panel">
     <div id="stars">☆☆☆☆☆</div>
     <div id="money">$1,250</div>
+    <div id="weapons">
+      <div class="wslot" id="wslot-fists">1 FISTS<span class="ammo">∞</span></div>
+      <div class="wslot sel" id="wslot-pistol">2 PISTOL<span class="ammo" id="wammo">24</span></div>
+      <div class="wslot locked">3 SMG<span class="ammo">LOCKED</span></div>
+      <div class="wslot locked">4 SHOTGUN<span class="ammo">LOCKED</span></div>
+      <div class="wslot locked">5 RIFLE<span class="ammo">LOCKED</span></div>
+    </div>
     <div id="repbar"><div id="repfill"></div></div>
     <div id="reptext">REP 120 · STREET</div>
     <div id="clock">SOLMAR BAY · 17:42</div>
   </div>
   <div id="units" class="panel" style="display:none"></div>
   <div id="minimap-wrap"><canvas id="minimap" width="232" height="232"></canvas></div>
-  <div id="health"><div class="lbl">RICO MARÍN</div><div class="bar"><div id="healthfill"></div></div></div>
-  <div id="speedo" style="display:none"><div id="speed">0</div><div id="speedunit">KM/H</div><div id="carname"></div></div>
-  <div id="radio" style="display:none"><div class="station" id="radio-station">SOLMAR FM 101.2</div><div class="track" id="radio-track">The Palms — "Neon Tide"</div></div>
-  <div id="dialog" class="panel" style="display:none"><div class="who" id="dialog-who">LENA</div><div class="line" id="dialog-line"></div></div>
+  <div id="health">
+    <div class="lbl">RICO MARÍN</div>
+    <div class="row"><div class="lbl"><span id="healthtext">HEALTH 100</span></div><div class="bar"><div id="healthfill"></div></div></div>
+    <div class="row"><div class="lbl"><span id="armourtext">ARMOUR 50</span></div><div class="bar"><div id="armourfill"></div></div></div>
+    <div class="row"><div class="lbl"><span id="reptext2">REP 120 · STREET</span></div><div class="bar"><div id="repfill2"></div></div></div>
+  </div>
+  <div id="speedo" style="display:none"><div id="speed">0</div><div id="speedunit">KM/H</div><div id="carname"></div><div id="condition" style="display:none"><div class="lbl">CONDITION <span id="cond-num">100%</span></div><div class="bar"><div id="condfill"></div></div></div></div>
+  <div id="radio" style="display:none"><div class="station" id="radio-station">SOLMAR FM 101.2</div><div class="track" id="radio-track">The Palms — "Neon Tide"</div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+  <div id="dialog" class="panel" style="display:none"><canvas id="dialog-portrait" width="64" height="64"></canvas><div><div class="who" id="dialog-who">LENA</div><div class="line" id="dialog-line"></div></div></div>
+  <div id="action-text" style="display:none"></div>
   <div id="hint" style="display:none"></div>
   <div id="banner"><div class="big" id="banner-big">JOB COMPLETE</div><div class="sub" id="banner-sub">+$2,500 · +150 REP</div></div>
   <div id="crosshair">＋</div>
@@ -107,7 +160,7 @@
   <div class="prompt" id="title-prompt">PRESS ENTER TO PLAY</div>
   <div class="controls">
     <b>WASD</b> move / drive &nbsp;·&nbsp; <b>Mouse</b> camera &nbsp;·&nbsp; <b>E</b> enter / exit car &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>Click</b> shoot<br>
-    <b>SPACE</b> handbrake &nbsp;·&nbsp; <b>R</b> radio &nbsp;·&nbsp; <b>M</b> map &nbsp;·&nbsp; <b>P</b> pause &nbsp;·&nbsp; <b>G</b> garage
+    <b>SPACE</b> handbrake &nbsp;·&nbsp; <b>R</b> radio &nbsp;·&nbsp; <b>M</b> map &nbsp;·&nbsp; <b>P</b> pause &nbsp;·&nbsp; <b>G</b> garage &nbsp;·&nbsp; <b>1 / 2</b> weapons
   </div>
 </div>
 

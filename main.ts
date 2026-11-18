@@ -23,6 +23,12 @@ cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
 if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
+// Fail loudly instead of handing in an entry with no screenshots: the cover
+// is the first thing the judge sees, and a silent skip would hide that.
+if (!existsSync(join(here, 'screenshots')) || !existsSync(join(here, 'screenshots', '1-chase.jpg'))) {
+  throw new Error('screenshots/1-chase.jpg missing — take the four shots before building');
+}
+
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
 // bytes; the others refuse an entry the scorer would refuse (more than 4
 // screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of

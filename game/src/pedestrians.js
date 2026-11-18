@@ -30,6 +30,29 @@ export function buildPersonMesh(r, opts = {}) {
   hair.scale.set(0.46, 0.3, 0.46);
   hair.position.y = 1.94;
   g.add(hair);
+  // Headwear variety: caps and sun hats so the crowd is not clones.
+  // (Rico passes hat: false — the protagonist keeps his own look.)
+  const hatRoll = Math.random();
+  if (opts.hat !== false && hatRoll < 0.3) {
+    const cap = new THREE.Mesh(r.geo.cyl, r.mat(pick(Math.random, [0xc23b3b, 0x2b6cb0, 0xd9a441, 0x22262c])));
+    cap.scale.set(0.48, 0.16, 0.48);
+    cap.position.y = 2.02;
+    g.add(cap);
+    const brim = new THREE.Mesh(r.geo.box, r.mat(0x22262c));
+    brim.scale.set(0.4, 0.05, 0.3);
+    brim.position.set(0, 1.98, 0.28);
+    g.add(brim);
+  } else if (opts.hat !== false && hatRoll < 0.45) {
+    const hat = new THREE.Mesh(r.geo.cyl, r.mat(0xd9c1a7));
+    hat.scale.set(0.85, 0.08, 0.85);
+    hat.position.y = 2.0;
+    g.add(hat);
+    const crown = new THREE.Mesh(r.geo.sph, r.mat(0xd9c1a7));
+    crown.scale.set(0.4, 0.3, 0.4);
+    crown.position.y = 2.06;
+    g.add(crown);
+  }
+  const arms = [];
   const legs = [];
   for (const s of [-1, 1]) {
     const leg = new THREE.Mesh(r.geo.box, r.mat(pants));
@@ -42,9 +65,10 @@ export function buildPersonMesh(r, opts = {}) {
     arm.scale.set(0.2, 0.66, 0.24);
     arm.position.set(s * 0.42, 1.12, 0);
     g.add(arm);
-    legs.push(arm);
+    arms.push(arm);
   }
-  g.userData.legs = legs;
+  g.userData.legs = [legs[0], arms[0], legs[1], arms[1]];
+  g.userData.arms = arms;
   g.userData.walkPhase = Math.random() * Math.PI * 2;
   return g;
 }
@@ -64,15 +88,7 @@ export function animateWalk(mesh, dt, speed) {
 
 export function createPedestrians(r, city, random, count = 26) {
   const peds = [];
-  function spawnPed(farFrom) {
-    // Sidewalks: just off a road line, inside a block edge.
-    const line = pick(random, city.roadLines);
-    const along = range(random, -CITY.half + 20, CITY.half - 20);
-    const horizontal = random() < 0.5;
-    const off = (random() < 0.5 ? -1 : 1) * (CITY.roadWidth / 2 + 3);
-    const x = horizontal ? along : line + off;
-    const z = horizontal ? line + off : along;
-    if (farFrom && Math.hypot(x - farFrom.x, z - farFrom.z) < 40) return null;
+  function makePed(x, z) {
     const mesh = buildPersonMesh(r);
     mesh.position.set(x, 0, z);
     r.scene.add(mesh);
@@ -101,14 +117,23 @@ export function createPedestrians(r, city, random, count = 26) {
         if (fleeing) {
           this.state = 'flee';
           const t = threats[0];
-          const away = Math.atan2(-(this.z - t.z), this.x - t.x);
-          this.angle = away;
+          // Arms up: a fleeing crowd reads as panic, not a stroll.
+          const [armL, armR] = this.mesh.userData.arms ?? [];
+          if (armL) armL.rotation.z = 2.4;
+          if (armR) armR.rotation.z = -2.4;
+          if (t) {
+            const away = Math.atan2(-(this.z - t.z), this.x - t.x);
+            this.angle = away;
+          }
           const sp = 6.5;
           this.x += Math.cos(this.angle) * sp * dt;
           this.z += -Math.sin(this.angle) * sp * dt;
           animateWalk(this.mesh, dt, sp);
-          if (Math.hypot(this.x - t.x, this.z - t.z) > 60) this.state = 'walk';
+          if (t && Math.hypot(this.x - t.x, this.z - t.z) > 60) this.state = 'walk';
         } else {
+          const [armL, armR] = this.mesh.userData.arms ?? [];
+          if (armL) armL.rotation.z = 0;
+          if (armR) armR.rotation.z = 0;
           this.wanderTimer -= dt;
           if (this.wanderTimer <= 0) {
             this.wanderTimer = range(random, 3, 9);
@@ -136,6 +161,17 @@ export function createPedestrians(r, city, random, count = 26) {
       },
     };
   }
+  function spawnPed(farFrom) {
+    // Sidewalks: just off a road line, inside a block edge.
+    const line = pick(random, city.roadLines);
+    const along = range(random, -CITY.half + 20, CITY.half - 20);
+    const horizontal = random() < 0.5;
+    const off = (random() < 0.5 ? -1 : 1) * (CITY.roadWidth / 2 + 3);
+    const x = horizontal ? along : line + off;
+    const z = horizontal ? line + off : along;
+    if (farFrom && Math.hypot(x - farFrom.x, z - farFrom.z) < 40) return null;
+    return makePed(x, z);
+  }
   for (let i = 0; i < count; i += 1) {
     const p = spawnPed(null);
     if (p) peds.push(p);
@@ -143,6 +179,16 @@ export function createPedestrians(r, city, random, count = 26) {
 
   return {
     peds,
+    // Staging helper: drop extra people around a spot (the marina foot shot).
+    spawnNear(x, z, n) {
+      const made = [];
+      for (let i = 0; i < n; i += 1) {
+        const p = makePed(x + range(random, -14, 14), z + range(random, -10, 10));
+        peds.push(p);
+        made.push(p);
+      }
+      return made;
+    },
     update(dt, playerPos, danger) {
       const threats = [];
       if (danger) threats.push(danger);

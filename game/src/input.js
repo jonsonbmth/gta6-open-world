@@ -12,6 +12,8 @@ export const ACTION_GARAGE = 'garage';
 export const ACTION_HANDBRAKE = 'handbrake';
 export const ACTION_RUN = 'run';
 export const ACTION_SHOOT = 'shoot';
+export const ACTION_WEAPON1 = 'weapon1';
+export const ACTION_WEAPON2 = 'weapon2';
 
 const KEY_ACTIONS = {
   Enter: ACTION_CONFIRM,
@@ -23,6 +25,8 @@ const KEY_ACTIONS = {
   KeyF: ACTION_PUNCH,
   KeyR: ACTION_RADIO,
   KeyG: ACTION_GARAGE,
+  Digit1: ACTION_WEAPON1,
+  Digit2: ACTION_WEAPON2,
   ShiftLeft: ACTION_RUN,
   ShiftRight: ACTION_RUN,
 };

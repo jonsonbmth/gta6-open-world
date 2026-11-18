@@ -1,11 +1,12 @@
-// Every tuning number, name and story beat in one place. The city is a fixed
-// 480x480-unit coastal grid; nothing below depends on the screen size.
+// Every tuning number, name and story beat in one place. The city is a
+// fixed 480x480-unit coastal grid; nothing here depends on screen size.
 export const STEP = 1 / 60;
 export const CITY = { half: 240, roadGap: 48, roadWidth: 14, block: 34 };
 
 // Golden-hour sun: warm, low, long shadows — the whole look of Solmar Bay.
+// The sky is a pink-orange-purple sunset, never a flat orange band.
 export const SUN = { azimuth: 2.3, elevation: 0.42, color: 0xffd9a0, intensity: 2.6 };
-export const SKY = { top: 0x2e6fb7, mid: 0xf7b267, low: 0xff8c5a, fog: 0xf2a56b };
+export const SKY = { top: 0x6a4a9e, mid: 0xf78fb0, low: 0xff8c5a, fog: 0xf2a56b };
 
 export const PLAYER = {
   walkSpeed: 7, runSpeed: 12, turnSpeed: 9, health: 100,
@@ -19,16 +20,16 @@ export const CAR = {
 
 export const WANTED = {
   maxStars: 5,
-  decaySeconds: 26,           // unseen seconds before a star drops
-  heliAtStars: 3,             // helicopter joins at 3 stars
+  decaySeconds: 26, // unseen seconds before one star drops
+  heliAtStars: 3, // the helicopter joins the chase at 3 stars
   copCarsPerStar: [0, 1, 2, 3, 4, 5],
   bustRadius: 3.2, bustSeconds: 2.5,
 };
 
 export const SAVE_KEY = 'solmar-bay.save.v1';
 
-// The seven story jobs. Each job is a chain of steps; a step is one objective
-// with a map target and a line of dialogue that plays when it starts.
+// The seven story jobs. Each job is a chain of steps; every step is one
+// objective with a map target and a line of dialogue when it starts.
 export const JOBS = [
   {
     id: 1, name: 'Harbor Lights', giver: 'MAMA ROSA', pay: 1500, rep: 120,
@@ -95,7 +96,7 @@ export const JOBS = [
   },
 ];
 
-// Named map anchors, in city coordinates (x east, z south; beach is south).
+// Named map anchors in city coordinates (x east, z south; the beach is south).
 export const PLACES = {
   safehouse: { x: -72, z: 96, label: 'Safehouse' },
   garage: { x: -24, z: 96, label: 'Lena\u2019s Garage' },
@@ -129,5 +130,15 @@ export const GARAGE_UPGRADES = [
 export const PALETTE = {
   asphalt: 0x2b2f36, sidewalk: 0x8d9299, sand: 0xe8d29a, ocean: 0x1e6f8e,
   grass: 0x5d8a4a, building: [0xd8cfc0, 0xc4b8a4, 0xb0c4cc, 0xd9c1a7, 0xa8b8a0, 0xcfd6da],
-  palm: 0x3f7a3a, trunk: 0x7a5a3a,
+  palm: 0x3f7a3a, trunk: 0xc75b39, // palms with orange-red trunks, Miami style
 };
+
+// Named streets, drawn on the minimap and the big map so the city feels
+// written, not generated.
+export const STREETS = [
+  { name: 'COASTAL HWY', x1: -240, z1: 192, x2: 240, z2: 192 },
+  { name: 'SUNSET BLVD', x1: -240, z1: 0, x2: 240, z2: 0 },
+  { name: 'OCEAN DR', x1: -240, z1: 144, x2: 240, z2: 144 },
+  { name: 'PALM AVE', x1: 48, z1: -240, x2: 48, z2: 240 },
+  { name: 'MARINA DR', x1: 144, z1: -240, x2: 144, z2: 192 },
+];
