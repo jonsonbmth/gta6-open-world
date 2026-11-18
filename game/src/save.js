@@ -1,43 +1,41 @@
-// Saving: the whole campaign state (money, REP, job progress, upgrades, the
-// player's spot in the city) in one localStorage row, written after every
-// completed job and from the pause menu.
+// Save / load: localStorage slot for money, REP, mission, day, owned cars.
+import { S } from './state.js';
 
-import { SAVE_KEY } from './config.js';
+const KEY = 'solmar-bay-save-v1';
 
-export function saveGame(state) {
+export function hasSave() {
+  try { return !!localStorage.getItem(KEY); } catch (e) { return false; }
+}
+
+export function saveGame() {
   try {
     const data = {
-      v: 1,
-      money: state.player.money,
-      rep: state.player.rep,
-      jobIndex: state.missions.jobIndex,
-      completed: state.missions.completed,
-      upgrades: state.player.upgrades,
-      health: state.player.health,
-      x: state.player.x,
-      z: state.player.z,
-      station: state.station,
-      savedAt: Date.now(),
+      v: 1, day: S.day, money: S.money, rep: S.rep, respect: S.respect,
+      health: S.health, armour: S.armour, mission: S.mission, stage: S.stage,
+      time: S.time, ammo: S.ammo.slice(1), radio: S.radio,
+      px: S.player.x, pz: S.player.z,
+      savedAt: new Date().toISOString(),
     };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(KEY, JSON.stringify(data));
     return true;
-  } catch {
-    return false;
-  }
+  } catch (e) { return false; }
 }
 
 export function loadGame() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (!data || data.v !== 1) return null;
-    return data;
-  } catch {
-    return null;
-  }
+    const d = JSON.parse(raw);
+    if (d.v !== 1) return null;
+    S.day = d.day; S.money = d.money; S.rep = d.rep; S.respect = d.respect;
+    S.health = d.health; S.armour = d.armour; S.mission = d.mission; S.stage = d.stage;
+    S.time = d.time; S.radio = d.radio || 0;
+    if (Array.isArray(d.ammo)) for (let i = 0; i < d.ammo.length; i++) S.ammo[i + 1] = d.ammo[i];
+    S.player.x = d.px ?? 0; S.player.z = d.pz ?? 40;
+    return d;
+  } catch (e) { return null; }
 }
 
-export function hasSave() {
-  return loadGame() !== null;
+export function clearSave() {
+  try { localStorage.removeItem(KEY); } catch (e) { /* noop */ }
 }

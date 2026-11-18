@@ -1,23 +1,49 @@
-# gta6-open-world
+# SOLMAR BAY — Night Rain
 
-[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+An open-world crime game for make.fun's "Make GTA 6" bounty (gta6-01), $1,666 in USDC.
 
-**SOLMAR BAY** — a 3D open-world crime game in the spirit of GTA 6, built with three.js (vendored, offline). Explore a sunlit coastal city on foot and by car: steal cars, outrun the SBPD through five wanted stars with a police helicopter overhead, run 7 story jobs with a named crew, fight rivals, tune cars at Lena's garage, switch radio stations, and save your progress. Everything is original — the city, the characters, the cars, the story, the art and the music.
+Rico Marín is a getaway driver in Solmar Bay, a neon coastal city in the middle
+of a night storm. Seven story jobs with Mama Rosa, Lena "Wrench" Ortiz and Dario
+"Fuze" Kane. Steal cars, outrun the SBPD, lose the helicopter, upgrade your ride
+at Lena's garage, and save the city one wet night at a time.
 
-## Run it
+## Play
 
 ```sh
-node serve.ts
-# open http://localhost:8080
+node serve.ts   # http://localhost:8080
 ```
 
-## Controls
+WASD drive & walk · E enter/exit car · F punch · Click shoot · 1–5 weapons ·
+R radio · M map · G garage · P pause · Space handbrake · Shift sprint.
 
-- **WASD** move / drive · **Mouse** camera · **E** enter / exit car · **F** punch · **Click** shoot
-- **SPACE** handbrake · **R** radio · **M** map · **P** pause · **G** garage
+## What is in the game
 
----
+- **A city to explore** — Lumen Avenue's neon shopfronts, Downtown towers,
+  Westside and Eastside blocks, the Old Harbour marina with docks and boats.
+- **Night rain** — falling rain, wet asphalt with fake neon reflections, fog,
+  glowing signs, palm silhouettes, a gradient night sky.
+- **Traffic and pedestrians** — cars that drive the grid, people with umbrellas
+  who run screaming when a chase passes.
+- **Wanted 0–5 stars** — named SBPD units (UNIT 7, UNIT 12, UNIT 21…) that
+  pursue, ram and roadblock; AIR-1 helicopter with a searchlight at 3+ stars.
+- **7 story jobs** with stages, objectives, crew dialogue and portraits.
+- **Combat** — fists, pistol, SMG, shotgun, rifle; health and armour.
+- **Garage** — engine, armour, repair, repaint, fake plates.
+- **HUD** — mission panel, police response panel, money/stars/weapons, round
+  rotating minimap, health/armour/REP, dialogue, radio + speedometer.
+- **Sound** — synthesized WebAudio: engine, sirens, rain, three radio stations.
+- **Save** — localStorage, autosaves after every job.
 
-<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+## Tech
+
+three.js 0.160.0 (vendored, `game/vendor/three.module.min.js`), ES modules, no
+build step, fully offline. All art is procedural — canvas-drawn signs, window
+grids and portraits; no external assets.
+
+## Hand in
+
+```sh
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
+
+Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.

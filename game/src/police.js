@@ -1,272 +1,208 @@
-// The heat: wanted stars, SBPD cruisers that chase, ram and roadblock, the
-// police helicopter at three stars, and the bust. Cops see the player when
-// they are near or the helicopter is up; unseen, the heat cools off.
-
+// Wanted system: stars, named SBPD units that pursue, ram and roadblock,
+// the AIR-1 helicopter with its searchlight cone, BUSTED / WASTED.
 import * as THREE from 'three';
-import { COP_STATUS, COP_UNITS, WANTED } from './config.js';
-import { createVehicle, driveVehicle } from './vehicles.js';
-import { nearestRoadPoint, onRoad } from './city.js';
-import { range, pick } from './random.js';
+import { S, clamp, TAU } from './state.js';
+import { makeCar, syncCarMesh, CAR_TYPES } from './vehicles.js';
+import { glowTexture } from './util.js';
 
-function buildHelicopter(r) {
-  const g = new THREE.Group();
-  // Dark-slate SBPD helicopter with a white stripe: it has to silhouette
-  // against a bright pink sunset sky (a white body vanishes into the glow).
-  // A touch of emissive keeps the camera-facing side from going black, since
-  // the sun is behind it.
-  const heliBody = r.mat(0x2b3a55, { emissive: 0x2b3a55, emissiveIntensity: 0.35 });
-  const body = new THREE.Mesh(r.geo.box, heliBody);
-  body.scale.set(4.2, 1.6, 1.9);
-  body.castShadow = true;
-  g.add(body);
-  const stripe = new THREE.Mesh(r.geo.box, r.mat(0xe8e8e8));
-  stripe.scale.set(4.25, 0.4, 1.95);
-  stripe.position.y = -0.3;
-  g.add(stripe);
-  const glass = new THREE.Mesh(r.geo.box, r.mat(0x9fd4e8));
-  glass.scale.set(1.2, 1.0, 1.7);
-  glass.position.set(2.2, 0.2, 0);
-  g.add(glass);
-  const tail = new THREE.Mesh(r.geo.box, r.mat(0x1c2f4a));
-  tail.scale.set(3.4, 0.5, 0.5);
-  tail.position.set(-3.6, 0.4, 0);
-  g.add(tail);
-  const rotor = new THREE.Mesh(r.geo.box, r.mat(0x14171c));
-  rotor.scale.set(9.5, 0.08, 0.4);
-  rotor.position.y = 1.1;
-  g.add(rotor);
-  const tailRotor = new THREE.Mesh(r.geo.box, r.mat(0x14171c));
-  tailRotor.scale.set(0.08, 2.2, 0.3);
-  tailRotor.position.set(-5.2, 0.5, 0);
-  g.add(tailRotor);
-  // Searchlight cone + a bright pool on the ground below, so the helicopter
-  // reads clearly even at a glance. The cone is scaled in update() so its
-  // tip stays at the helicopter and its base lands exactly on the ground
-  // under it (heights are in the group's local units — divide by the group
-  // scale — or the cone ends up buried below the road).
-  const light = new THREE.Mesh(
-    new THREE.ConeGeometry(4, 46, 16, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  light.position.set(1.5, -7, 0);
-  g.add(light);
-  const pool = new THREE.Mesh(
-    new THREE.CircleGeometry(4, 24),
-    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.55, depthWrite: false }),
-  );
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.set(1.5, -13, 0);
-  g.add(pool);
-  // Red anti-collision beacon on the tail, blinking in update().
-  const beacon = new THREE.Mesh(
-    r.geo.sph,
-    r.mat(0xff2222, { emissive: 0xff2222, emissiveIntensity: 3 }),
-  );
-  beacon.scale.set(0.7, 0.7, 0.7);
-  beacon.position.set(-4.6, 1.3, 0);
-  g.add(beacon);
-  // The helicopter is big on purpose: it has to loom over the chase.
-  g.scale.setScalar(1.8);
-  g.userData.rotor = rotor;
-  g.userData.tailRotor = tailRotor;
-  g.userData.pool = pool;
-  g.userData.cone = light;
-  g.userData.beacon = beacon;
-  return g;
+const GLOW = glowTexture();
+export const units = []; // police cars on the road
+export let heli = null;
+let heliLight = null, spotCone = null, spotPool = null;
+let roadblock = null;
+let spawnT = 0;
+
+const UNIT_NAMES = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 4', 'UNIT 9', 'UNIT 15'];
+const STATUSES = ['PURSUIT', 'CLOSING IN', 'RAMMING', 'ROADBLOCK', 'CUTTING OFF'];
+
+export function wantedFor(stars) {
+  // how many units the wanted level fields
+  return [0, 1, 2, 3, 4, 5][clamp(stars, 0, 5)];
 }
 
-export function createPolice(r, city, random, audio) {
-  let stars = 0;
-  let unseenTimer = 0;
-  let bustTimer = 0;
-  let busted = false;
-  const cops = []; // {vehicle, name, status, stuckTimer, reverseTimer}
-  let heli = null;
-  let heliAlt = 24; // helicopter cruise altitude (staging can lower it)
-  let flash = 0;
+export function addWanted(n, reason) {
+  const before = S.wanted;
+  S.wanted = clamp(S.wanted + n, 0, 5);
+  if (S.wanted > before) S.wantedTimer = 0;
+  return reason;
+}
 
-  function spawnCop(near) {
-    // Spawn on the player's road, behind their direction of travel, so the
-    // cruiser joins the chase on asphalt instead of inside a building.
-    const road = nearestRoadPoint(near.x, near.z);
-    const heading = Math.hypot(near.vx ?? 0, near.vz ?? 0) > 3
-      ? Math.atan2(-(near.vz ?? 0), near.vx ?? 0)
-      : near.angle ?? 0;
-    const back = range(random, 25, 45);
-    let x;
-    let z;
-    if (road.axis === 'z') {
-      x = road.x;
-      z = near.z - Math.sin(heading) * back;
-    } else {
-      x = near.x - Math.cos(heading) * back;
-      z = road.z;
+export function clearWanted() { S.wanted = 0; S.wantedTimer = 0; }
+
+export function spawnUnit(scene, name, x, z) {
+  const car = makeCar(scene, 'police', x, z, 0);
+  car.unitName = name;
+  car.status = STATUSES[Math.floor(Math.random() * STATUSES.length)];
+  car.statusT = 2 + Math.random() * 3;
+  car.ramT = 0;
+  units.push(car);
+  return car;
+}
+
+function ensureUnits(scene, px, pz) {
+  const want = wantedFor(S.wanted);
+  while (units.length < want) {
+    const name = UNIT_NAMES[units.length % UNIT_NAMES.length];
+    const a = Math.random() * TAU, r = 45 + Math.random() * 40;
+    spawnUnit(scene, name, px + Math.cos(a) * r, pz + Math.sin(a) * r);
+  }
+  while (units.length > want) {
+    const u = units.pop();
+    scene.remove(u.mesh);
+  }
+}
+
+function buildHeli(scene) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2030, roughness: 0.4, metalness: 0.6 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 5.2), bodyMat);
+  g.add(body);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.0, 1.6),
+    new THREE.MeshStandardMaterial({ color: 0x0a1428, roughness: 0.1, metalness: 0.9 }));
+  glass.position.set(0, 0.3, -2.0); g.add(glass);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.5), bodyMat);
+  tail.position.set(0, 0.3, 4.4); g.add(tail);
+  const rotor = new THREE.Mesh(new THREE.BoxGeometry(11, 0.08, 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x0c0e16, roughness: 0.6 }));
+  rotor.position.y = 1.1; rotor.name = 'rotor'; g.add(rotor);
+  const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.4, 0.3), rotor.material);
+  tailRotor.position.set(0.35, 0.4, 6.4); g.add(tailRotor);
+  const skids = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 3.4), bodyMat);
+  skids.position.y = -1.0; g.add(skids);
+  // searchlight cone (additive, fake volumetric)
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  spotCone = new THREE.Mesh(new THREE.ConeGeometry(6, 42, 20, 1, true), coneMat);
+  spotCone.position.y = -21; spotCone.rotation.x = Math.PI; g.add(spotCone);
+  heliLight = new THREE.SpotLight(0xfff2b0, 320, 70, 0.22, 0.6, 1.2);
+  heliLight.position.set(0, -1, 0); g.add(heliLight);
+  heliLight.target.position.set(0, -40, 0); g.add(heliLight.target);
+  // light pool on the ground (positioned each frame under the heli)
+  spotPool = new THREE.Mesh(new THREE.CircleGeometry(5, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false }));
+  spotPool.rotation.x = -Math.PI / 2; spotPool.position.y = 0.06;
+  scene.add(spotPool);
+  g.position.set(0, 42, 0);
+  scene.add(g);
+  heli = { mesh: g, x: 0, z: 0, hoverT: 0 };
+  return heli;
+}
+
+function buildRoadblock(scene, px, pz, heading) {
+  clearRoadblock(scene);
+  const g = new THREE.Group();
+  for (const off of [-4, 0, 4]) {
+    const car = makeCar(scene, 'police', 0, 0, heading + Math.PI / 2);
+    car.mesh.position.set(off, 0, 0);
+    car.mesh.rotation.y = heading + Math.PI / 2 + (Math.random() - 0.5) * 0.3;
+    g.add(car.mesh);
+    car.mesh.userData.rb = true;
+  }
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(14, 0.15, 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x222222 }));
+  strip.position.y = 0.1; g.add(strip);
+  g.position.set(px, 0, pz);
+  scene.add(g);
+  roadblock = g;
+}
+function clearRoadblock(scene) {
+  if (roadblock) { scene.remove(roadblock); roadblock = null; }
+}
+
+// Pursuit steering: chase the player, ram when close, back off and re-approach.
+export function updatePolice(scene, dt, px, pz, playerSpeed, playerHeading) {
+  ensureUnits(scene, px, pz);
+  spawnT += dt;
+  const t = performance.now() / 1000;
+
+  for (const u of units) {
+    u.statusT -= dt;
+    if (u.statusT <= 0) {
+      u.status = STATUSES[Math.floor(Math.random() * STATUSES.length)];
+      u.statusT = 2 + Math.random() * 3;
     }
-    const v = createVehicle(r, city, 'police', x, z, heading, 0xf2f2f2, random);
-    v.speed = 40; // already rolling: the chase is on when they arrive
-    const name = COP_UNITS[cops.length % COP_UNITS.length];
-    cops.push({ vehicle: v, name, status: 'PURSUIT', stuckTimer: 0, reverseTimer: 0, statusTimer: 0 });
+    const dx = px - u.x, dz = pz - u.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    u.dist = Math.round(dist);
+    const targetHeading = Math.atan2(-dx, -dz);
+    let d = targetHeading - u.heading;
+    while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
+    // ram: when close and roughly aligned, surge forward
+    const ramming = dist < 14 && Math.abs(d) < 0.5;
+    if (ramming) { u.status = 'RAMMING'; u.ramT = 0.8; }
+    if (u.ramT > 0) u.ramT -= dt;
+    const top = CAR_TYPES.police.top * (u.ramT > 0 ? 1.15 : 1);
+    const want = dist > 6 ? top : top * 0.4;
+    u.speed += (want - u.speed) * Math.min(1, dt * 1.6);
+    u.heading += clamp(d, -1, 1) * Math.min(1, dt * 2.2) * (u.speed > 1 ? 1 : 0);
+    u.x += -Math.sin(u.heading) * u.speed * dt;
+    u.z += -Math.cos(u.heading) * u.speed * dt;
+    syncCarMesh(u);
+    // light bar strobe: red / blue alternate
+    const uData = u.mesh.userData;
+    if (uData.lightBar) {
+      const phase = Math.sin(t * 9 + u.sirenPhase) > 0;
+      const gR = uData.lightBar.getObjectByName('glowR');
+      const gB = uData.lightBar.getObjectByName('glowB');
+      const pR = uData.lightBar.getObjectByName('poolR');
+      const pB = uData.lightBar.getObjectByName('poolB');
+      if (gR) gR.material.opacity = phase ? 0.95 : 0.08;
+      if (gB) gB.material.opacity = phase ? 0.08 : 0.95;
+      if (pR) pR.material.opacity = phase ? 0.3 : 0.03;
+      if (pB) pB.material.opacity = phase ? 0.03 : 0.3;
+    }
+    // contact with the player car: shove + damage
+    if (dist < 4.5 && playerSpeed !== undefined) {
+      const push = 3.2;
+      u.x += (dx / dist) * -push * dt * 8; u.z += (dz / dist) * -push * dt * 8;
+    }
   }
 
-  function spawnHeli(at) {
-    heli = buildHelicopter(r);
-    heli.position.set(at.x + 30, 42, at.z - 30);
-    r.scene.add(heli);
+  // helicopter at 3+ stars
+  if (S.wanted >= 3) {
+    if (!heli) buildHeli(scene);
+    heli.hoverT += dt;
+    const hx = px + Math.sin(heli.hoverT * 0.25) * 14;
+    const hz = pz + Math.cos(heli.hoverT * 0.2) * 14 - 10;
+    heli.x += (hx - heli.x) * Math.min(1, dt * 0.7);
+    heli.z += (hz - heli.z) * Math.min(1, dt * 0.7);
+    heli.mesh.position.set(heli.x, 42 + Math.sin(heli.hoverT * 0.8) * 2, heli.z);
+    heli.mesh.rotation.y = Math.atan2(-(px - heli.x), -(pz - heli.z));
+    const rotor = heli.mesh.getObjectByName('rotor');
+    if (rotor) rotor.rotation.y += dt * 28;
+    // searchlight sweeps around the player
+    const sweep = Math.sin(heli.hoverT * 0.6) * 8;
+    heliLight.target.position.set(px - heli.x + sweep, -40, pz - heli.z);
+    heliLight.target.updateMatrixWorld();
+    spotPool.position.set(px + sweep, 0.06, pz);
+    spotPool.material.opacity = 0.1 + Math.sin(t * 3) * 0.04;
+    spotCone.lookAt(px + sweep, 0, pz);
+  } else if (heli) {
+    scene.remove(heli.mesh); scene.remove(spotPool);
+    heli = null; heliLight = null; spotCone = null; spotPool = null;
   }
 
-  function removeHeli() {
-    if (heli) { r.scene.remove(heli); heli = null; }
+  // roadblock at 4+ stars, ahead of the player
+  if (S.wanted >= 4 && !roadblock && spawnT > 6) {
+    const ahead = 55;
+    buildRoadblock(scene, px - Math.sin(playerHeading) * ahead, pz - Math.cos(playerHeading) * ahead, playerHeading);
+    spawnT = 0;
   }
+  if (S.wanted < 4 && roadblock) clearRoadblock(scene);
 
-  return {
-    get stars() { return stars; },
-    get busted() { return busted; },
-    get cops() { return cops; },
-    get heliUp() { return heli !== null; },
-    get heli() { return heli; },
-    // Staging only: fly the helicopter lower so it looms in the frame.
-    setHeliAlt(v) { heliAlt = v; },
-    addWanted(n) {
-      if (stars < WANTED.maxStars) {
-        stars = Math.min(WANTED.maxStars, stars + n);
-        unseenTimer = 0;
-      }
-    },
-    clearWanted() {
-      stars = 0;
-      unseenTimer = 0;
-      bustTimer = 0;
-      for (const c of cops) c.vehicle.destroy();
-      cops.length = 0;
-      removeHeli();
-    },
-    setStars(n) {
-      stars = Math.max(0, Math.min(WANTED.maxStars, n));
-      unseenTimer = 0;
-    },
-    resetBusted() { busted = false; bustTimer = 0; },
-    update(dt, player, playerInCar) {
-      flash += dt;
-      const want = WANTED.copCarsPerStar[stars] ?? 0;
-      while (cops.length < want) spawnCop(player);
-      while (cops.length > want) {
-        const c = cops.pop();
-        c.vehicle.destroy();
-      }
-      if (stars >= WANTED.heliAtStars && !heli) spawnHeli(player);
-      if (stars < WANTED.heliAtStars && heli) removeHeli();
+  // wanted decays when hidden (slow, off-road, no line of sight approximation)
+  if (S.wanted > 0) {
+    const nearest = units.length ? Math.min(...units.map(u => u.dist || 999)) : 999;
+    if (nearest > 70 && playerSpeed < 2) {
+      S.wantedTimer += dt;
+      if (S.wantedTimer > 14) { S.wanted--; S.wantedTimer = 0; }
+    } else S.wantedTimer = 0;
+  }
+}
 
-      // Is the player seen? A cop within 85 units, or the helicopter, sees all.
-      let seen = heli !== null;
-      let nearestCop = Infinity;
-      for (const c of cops) {
-        const d = Math.hypot(c.vehicle.x - player.x, c.vehicle.z - player.z);
-        nearestCop = Math.min(nearestCop, d);
-        if (d < 85) seen = true;
-      }
-      if (stars > 0) {
-        if (seen) unseenTimer = 0;
-        else {
-          unseenTimer += dt;
-          if (unseenTimer >= WANTED.decaySeconds) {
-            stars -= 1;
-            unseenTimer = 0;
-          }
-        }
-      }
-
-      // Chase AI: steer at the player's predicted position, ram when close,
-      // reverse out when stuck. Status names feed the HUD's unit list.
-      for (const c of cops) {
-        const v = c.vehicle;
-        // Off the road, head for the nearest road first; on it, chase.
-        let px = player.x + (player.vx ?? 0) * 0.6;
-        let pz = player.z + (player.vz ?? 0) * 0.6;
-        if (!onRoad(v.x, v.z)) {
-          const road = nearestRoadPoint(v.x, v.z);
-          px = road.x;
-          pz = road.z;
-        }
-        const dx = px - v.x;
-        const dz = pz - v.z;
-        const dist = Math.hypot(player.x - v.x, player.z - v.z);
-        const wantAngle = Math.atan2(-dz, dx);
-        let diff = wantAngle - v.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        const steer = Math.max(-1, Math.min(1, diff * 2.2));
-        if (Math.abs(v.speed) < 1.5) c.stuckTimer += dt;
-        else c.stuckTimer = 0;
-        if (c.stuckTimer > 1.2) { c.reverseTimer = 0.8; c.stuckTimer = 0; }
-        if (c.reverseTimer > 0) {
-          c.reverseTimer -= dt;
-          driveVehicle(v, -1, -steer, false, dt);
-        } else {
-          driveVehicle(v, 1, steer, false, dt);
-        }
-        v.update(dt);
-        c.statusTimer -= dt;
-        if (c.statusTimer <= 0) {
-          c.statusTimer = 1.2;
-          c.status = dist < 8 ? pick(random, ['RAMMING', 'BOXING IN']) : dist < 30 ? 'PURSUIT' : dist < 60 ? 'CLOSING IN' : 'PURSUIT';
-        }
-        c.distance = Math.round(dist);
-        // Flashing light bar + the red/blue spill on the asphalt.
-        const on = Math.floor(flash * 6) % 2 === 0;
-        const lights = v.mesh.userData.lights;
-        if (lights) {
-          lights.red.visible = on;
-          lights.blue.visible = !on;
-        }
-        const glow = v.mesh.userData.glow;
-        if (glow) {
-          glow.red.visible = on;
-          glow.blue.visible = !on;
-        }
-      }
-
-      // Helicopter shadows the player from above, leading their motion so it
-      // stays in view ahead of a fast car — offset well to the side (south),
-      // so the camera sees its 3/4 profile instead of a foreshortened sliver.
-      if (heli) {
-        const lead = 0.7;
-        const target = {
-          x: player.x + (player.vx ?? 0) * lead + 2,
-          z: player.z + (player.vz ?? 0) * lead + 14,
-        };
-        heli.position.x += (target.x - heli.position.x) * Math.min(1, 2.5 * dt);
-        heli.position.z += (target.z - heli.position.z) * Math.min(1, 2.5 * dt);
-        heli.position.y = heliAlt + Math.sin(flash * 1.4) * 1.5;
-        // The spotlight sweeps diagonally across the street, RIPTIDE-style:
-        // tilt the cone and keep the pool under its base on the ground. The
-        // cone and pool are children of the scaled heli group, so their
-        // heights are local units: local height = world height / group scale.
-        const sweep = Math.sin(flash * 0.8) * 0.35;
-        const s = heli.scale.x;
-        const lh = heli.position.y / s; // local height from heli to ground
-        heli.userData.cone.rotation.z = sweep;
-        heli.userData.cone.position.y = -lh / 2;
-        heli.userData.cone.scale.y = Math.max(0.1, (lh / 46) / Math.cos(sweep));
-        heli.userData.pool.position.y = -lh + 0.2;
-        heli.userData.pool.position.x = (1.5 + Math.sin(sweep) * heli.position.y) / s;
-        heli.userData.beacon.visible = Math.floor(flash * 2) % 2 === 0;
-        heli.rotation.y = Math.atan2(-(player.z - heli.position.z), player.x - heli.position.x);
-        heli.userData.rotor.rotation.y += dt * 28;
-        heli.userData.tailRotor.rotation.x += dt * 30;
-      }
-
-      // Bust: on foot, slow, and a cruiser right on top of you.
-      if (stars > 0 && !playerInCar && nearestCop < WANTED.bustRadius && Math.abs(player.speed ?? 0) < 2) {
-        bustTimer += dt;
-        if (bustTimer >= WANTED.bustSeconds) {
-          busted = true;
-          audio.busted();
-        }
-      } else {
-        bustTimer = Math.max(0, bustTimer - dt);
-      }
-      audio.siren(stars > 0);
-      return { seen, nearestCop };
-    },
-  };
+// Busted: stopped, surrounded, on foot or slow in a car.
+export function checkBusted(playerSpeed, inCar) {
+  if (S.wanted === 0) return false;
+  const near = units.filter(u => (u.dist || 999) < 9).length;
+  if (inCar) return playerSpeed < 1.5 && near >= 2 && S.wanted >= 2;
+  return near >= 1 && playerSpeed < 1;
 }

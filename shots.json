@@ -1,1 +1,1 @@
-[{"name":"1-chase.jpg","query":"?shot=chase&seed=20261118"},{"name":"2-start.jpg","query":"?shot=start&seed=20261118"},{"name":"3-map.jpg","query":"?shot=map&seed=20261118"},{"name":"4-foot.jpg","query":"?shot=foot&seed=20261118"}]
+[{"name":"1-chase.jpg","query":"?shot=chase&seed=7","wait_ms":2600},{"name":"2-title.jpg","query":"?shot=title&seed=7","wait_ms":1200},{"name":"3-map.jpg","query":"?shot=map&seed=7","wait_ms":1200},{"name":"4-marina.jpg","query":"?shot=marina&seed=7","wait_ms":1800}]
