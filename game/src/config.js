@@ -1,165 +1,105 @@
-// SOLMAR BAY — shared constants: world layout, districts, jobs, radio, names.
-// The city is a grid of avenues running north (-Z) and streets running east-west.
-// Solmar Avenue (x = 0) is the main north-south spine; the marina sits on the bay
-// to the east (+X); the sun sets in the south-west so the chase camera, which looks
-// north, always sees the lit side of the hero car.
+// SOLMAR BAY — shared tuning, layout and palette.
+// One source of truth for the city plan so the 3D world, the minimap and the
+// big map all draw the same streets, districts and checkpoints.
 
-export const STEP = 1 / 60;
-export const SAVE_KEY = 'solmar-bay-save-v13';
-export const BEST_KEY = 'solmar-bay-best-v13';
+export const CFG = {
+  title: 'SOLMAR BAY',
+  subtitle: 'A Golden Hour in Neon',
+  seed: 20261120,
 
-// World extents (metres). The playable city is roughly 220 x 200.
-export const WORLD = {
-  minX: -110,
-  maxX: 110,
-  minZ: -105,
-  maxZ: 105,
-  avenueX: [-72, -36, 0, 36, 72], // north-south avenues
-  streetZ: [-72, -36, 0, 36, 72], // east-west streets
-  roadHalf: 5.5,
+  // World extents in metres. x runs west(-) to east(+), z runs north(-) to
+  // south(+). The ocean sits on the east edge; the marina on the south-east.
+  world: { minX: -320, maxX: 320, minZ: -320, maxZ: 320, ground: 700 },
+
+  // North-south avenues (x positions) and east-west streets (z positions).
+  avenues: [
+    { x: -240, name: 'Coral Ave' },
+    { x: -160, name: 'Hibiscus St' },
+    { x: -80, name: 'Flamingo Ave' },
+    { x: 0, name: 'Sunset Blvd' },
+    { x: 80, name: 'Palmetto Ave' },
+    { x: 160, name: 'Royal Palm Ave' },
+    { x: 235, name: 'Ocean Drive', width: 16 },
+  ],
+  streets: [
+    { z: -240, name: 'North Bay Rd' },
+    { z: -160, name: 'Harbor St' },
+    { z: -80, name: 'Meridian Ave' },
+    { z: 0, name: 'Central Ave' },
+    { z: 80, name: 'Gull St' },
+    { z: 160, name: 'Marina Way' },
+    { z: 240, name: 'South Pointe Dr' },
+  ],
+  roadWidth: 12,
+
+  beach: { x0: 252, x1: 320 }, // sand strip; ocean starts at x = 320
+  ocean: { x0: 320, x1: 720 },
+
+  districts: [
+    { name: 'DOWNTOWN', x0: -120, z0: -320, x1: 120, z1: -40, color: '#7fb2d9' },
+    { name: 'OLD TOWN', x0: -320, z0: -320, x1: -120, z1: -40, color: '#d9a07f' },
+    { name: 'HARBOR HEIGHTS', x0: -320, z0: -40, x1: -120, z1: 320, color: '#9fd97f' },
+    { name: 'SUNSET FLATS', x0: -120, z0: -40, x1: 120, z1: 320, color: '#d9d07f' },
+    { name: 'PALM ROW', x0: 120, z0: -320, x1: 200, z1: 320, color: '#7fd9b2' },
+    { name: 'SOLMAR BEACH', x0: 200, z0: -320, x1: 320, z1: 120, color: '#f2d492' },
+    { name: 'MARINA BAY', x0: 200, z0: 120, x1: 320, z1: 320, color: '#8fd0e8' },
+  ],
+
+  // Player spawn: Ocean Drive heading north, in the right-hand lane, camera
+  // to the south, sun in the south-west behind the camera so the car's
+  // camera side is always lit.
+  spawn: { x: 238, z: 60, heading: Math.PI }, // heading PI = facing -z (north)
+
+  // Sunset Sprint checkpoint loop.
+  checkpoints: [
+    { x: 235, z: -200, name: 'Ocean Drive North' },
+    { x: 80, z: -240, name: 'Downtown Gate' },
+    { x: -240, z: -160, name: 'Coral Corner' },
+    { x: -240, z: 160, name: 'Harbor Bend' },
+    { x: 0, z: 240, name: 'South Pointe' },
+    { x: 160, z: 200, name: 'Marina Approach' },
+  ],
+  missionTime: 150, // seconds for the whole loop
+  checkpointBonus: 12, // seconds added per checkpoint
+
+  // Arcade driving tuning.
+  car: {
+    maxSpeed: 56, // m/s
+    maxReverse: 13,
+    accel: 24,
+    brake: 38,
+    drag: 0.42,
+    rollDrag: 1.6,
+    steerMax: 0.62,
+    steerSpeed: 2.6,
+    grip: 8.5, // lateral grip; lower while drifting
+    driftGrip: 2.1,
+    handbrakeDecel: 9,
+  },
+  onFoot: { walkSpeed: 5.2, runSpeed: 8.5 },
+
+  police: { maxCars: 4, chaseSpeed: 47, ramRange: 7, bustTime: 3 },
+  traffic: { count: 14, speed: 11 },
+
+  palette: {
+    fog: 0xf6c489,
+    sky: 0xffd9a0,
+    sun: 0xffd9a3,
+    sunIntensity: 2.2,
+    hemiSky: 0xffe3b3,
+    hemiGround: 0x8a6a4f,
+    heroRed: 0xd92027,
+    asphalt: 0x3b3b42,
+    sand: 0xe9d29e,
+    ocean: 0x2e7f9e,
+    glass: 0x9fc6dd,
+  },
 };
 
-// Six districts, each with a map colour and a centre. The map draws them in this order.
-export const DISTRICTS = [
-  { name: 'CROWN HEIGHTS', x: -72, z: -72, w: 62, h: 52, color: '#7c6bd6', label: '#b7a8ff' },
-  { name: 'MIRAMAR', x: 30, z: -72, w: 62, h: 52, color: '#d97b4a', label: '#ffb287' },
-  { name: 'VELA QUARTER', x: -72, z: 30, w: 62, h: 52, color: '#d9b84a', label: '#ffe28a' },
-  { name: 'THE DOCKS', x: 30, z: 30, w: 62, h: 52, color: '#3fb8a6', label: '#7fe8d8' },
-  { name: 'HARBOUR LIGHTS', x: 30, z: 62, w: 62, h: 34, color: '#4a90d9', label: '#8fc3ff' },
-  { name: 'PALM ROW', x: -36, z: 62, w: 62, h: 34, color: '#d94a8a', label: '#ff8fc0' },
-];
-
-export const LANDMARKS = [
-  { name: 'CROWN TOWER', x: -54, z: -54, icon: '▲' },
-  { name: 'LIGHTHOUSE', x: 78, z: -78, icon: '▲' },
-  { name: 'VELA MARKET', x: -54, z: 54, icon: '▲' },
-  { name: "LENA'S WORKSHOP", x: 54, z: 54, icon: '▲' },
-  { name: 'DOCKSIDE YARD', x: 78, z: 78, icon: '▲' },
-  { name: 'OLD PIER', x: 84, z: 92, icon: '▲' },
-  { name: 'PALM ROW PLAZA', x: -18, z: 90, icon: '▲' },
-  { name: 'PELICAN ISLE', x: 96, z: -18, icon: '◆' },
-];
-
-export const STREETS = [
-  { name: 'CROWN ROAD', z: -72, horizontal: true },
-  { name: 'CANAL STREET', z: -36, horizontal: true },
-  { name: 'PALM BOULEVARD', z: 72, horizontal: true },
-  { name: 'SOLMAR AVENUE', x: 0, horizontal: false },
-  { name: 'HARBOUR WAY', x: 72, horizontal: false },
-  { name: 'VELA STREET', x: -72, horizontal: false },
-];
-
-// Shop signs along Solmar Avenue (fresh names, never the competitor's).
-export const SHOPS = [
-  'RAMEN YOKO', 'PIZZA LUNA', 'TACOS EL FARO', 'CAFÉ BRISA', 'SURF & SOLE',
-  'MERCADO SOL', 'BAR LUCERO', 'DONUT DORADO', 'LIBROS MAR', 'FLOWER KIOSK',
-];
-
-// Radio: three stations, each a loop of procedural chord pads + bass.
-export const RADIO = [
-  { name: 'VAPOR 101.3', track: 'Glass Horizon — Neon Palms', hue: 'synth' },
-  { name: 'SOL FM 88.1', track: 'Golden Hour — The Tides', hue: 'chill' },
-  { name: 'BAY BEAT 95.6', track: 'Night Drive — Coastline', hue: 'drive' },
-];
-
-// The seven story jobs. Each stage is one objective; `target` is a world position
-// the GPS routes to. Stages: drive, enter-car, meet, wanted, escape, deliver, finale.
-export const JOBS = [
-  {
-    id: 1, title: 'First Run',
-    brief: 'Drive to the garage on Crown Road',
-    stages: [
-      { type: 'enter-car', text: 'Get in the VULPINE S', target: { x: 0, z: 30 } },
-      { type: 'drive', text: 'Follow the GPS route to Crown Road', target: { x: -36, z: -72 } },
-      { type: 'meet', text: 'Meet Lena at the garage', target: { x: -36, z: -72 } },
-    ],
-    dialogue: [
-      { who: 'Lena "Wrench" Ortiz', line: 'Two units on your tail, Rico — lose them on Palm Row!' },
-      { who: 'Lena "Wrench" Ortiz', line: 'The VULPINE is tuned and ready. Do not scratch the paint.' },
-    ],
-  },
-  {
-    id: 2, title: 'Harbour Lights',
-    brief: 'Meet the contact at the marina',
-    stages: [
-      { type: 'drive', text: 'Head east to the docks', target: { x: 84, z: 40 } },
-      { type: 'enter-car', text: 'Park and get out at the marina', target: { x: 84, z: 40 } },
-      { type: 'meet', text: 'Meet Mama Rosa on the quay', target: { x: 92, z: 24 } },
-    ],
-    dialogue: [
-      { who: 'Mama Rosa', line: 'Tonight the city learns our name, Rico. Drive it home.' },
-    ],
-  },
-  {
-    id: 3, title: 'Heat Wave',
-    brief: 'Lose a 3-star wanted level',
-    stages: [
-      { type: 'wanted', text: 'The heat is on — shake the pursuit', target: { x: 0, z: -36 } },
-      { type: 'escape', text: 'Break line of sight and cool down', target: { x: -72, z: 72 } },
-    ],
-    dialogue: [
-      { who: 'Dario "Fuze" Kane', line: 'Three stars already? You drive like the city owes you money.' },
-    ],
-  },
-  {
-    id: 4, title: 'Neon Delivery',
-    brief: 'Deliver the package to Vela Market',
-    stages: [
-      { type: 'drive', text: 'Pick up the package at the docks', target: { x: 72, z: 72 } },
-      { type: 'drive', text: 'Deliver it to Vela Market — no scratches', target: { x: -54, z: 54 } },
-    ],
-    dialogue: [
-      { who: 'Lena "Wrench" Ortiz', line: 'Fragile cargo. If you roll it, you pay for it.' },
-    ],
-  },
-  {
-    id: 5, title: 'Air Support',
-    brief: 'Outrun the AIR-1 helicopter',
-    stages: [
-      { type: 'wanted', text: 'AIR-1 is overhead — keep moving', target: { x: 36, z: 0 } },
-      { type: 'escape', text: 'Lose the helicopter under the bridge', target: { x: 72, z: -72 } },
-    ],
-    dialogue: [
-      { who: 'Dario "Fuze" Kane', line: 'The heli cannot follow you under the bridge. Go!' },
-    ],
-  },
-  {
-    id: 6, title: 'The Long Way Home',
-    brief: 'Cross the city to Palm Row Plaza',
-    stages: [
-      { type: 'drive', text: 'Take the ring highway north', target: { x: -72, z: -72 } },
-      { type: 'drive', text: 'Cut through Miramar to Palm Row', target: { x: -18, z: 90 } },
-    ],
-    dialogue: [
-      { who: 'Mama Rosa', line: 'Every street in this city knows your name now.' },
-    ],
-  },
-  {
-    id: 7, title: 'Golden Hour',
-    brief: 'The final run — outrun them all to the lighthouse',
-    stages: [
-      { type: 'wanted', text: 'Five stars. Everything is on you', target: { x: 0, z: 0 } },
-      { type: 'drive', text: 'Reach the lighthouse before sundown', target: { x: 78, z: -78 } },
-    ],
-    dialogue: [
-      { who: 'Lena "Wrench" Ortiz', line: 'Last run, Rico. Make it the one they tell stories about.' },
-    ],
-  },
-];
-
-// Police units that call out during a pursuit.
-export const UNITS = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 4', 'AIR-1'];
-
-// Golden-hour palette — natural, never purple/magenta.
-export const PALETTE = {
-  skyTop: 0x3f74b8,
-  skyHorizon: 0xf7c873,
-  sun: 0xffd9a0,
-  sunIntensity: 2.4,
-  hemiSky: 0x9ec3e2,
-  hemiGround: 0x8a6f4d,
-  hemiIntensity: 0.95,
-  heroPaint: 0xe8232a,
-  heroLight: 0xffe6b8,
-  fog: 0xd9c49a,
-};
+// District lookup for a world position.
+export function districtAt(x, z) {
+  for (const d of CFG.districts) {
+    if (x >= d.x0 && x <= d.x1 && z >= d.z0 && z <= d.z1) return d.name;
+  }
+  return 'SOLMAR BAY';
+}

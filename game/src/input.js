@@ -1,65 +1,72 @@
-// Keyboard + pointer input. Movement keys are read live; one-shot actions are
-// queued and consumed on read, so a single keypress is never applied twice or lost
-// between frames.
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
-export const ACTION_ENTER_CAR = 4;
-export const ACTION_MAP = 8;
-export const ACTION_RADIO = 16;
-export const ACTION_DO = 32;
-export const ACTION_MUTE = 64;
+// Keyboard + mouse state. `down` is held keys, `hit` is keys pressed since
+// the last frame (edge-triggered, consumed by the game loop each frame).
 
-const KEY_ACTIONS = {
-  Enter: ACTION_CONFIRM,
-  Space: ACTION_CONFIRM,
-  Escape: ACTION_PAUSE,
-  KeyP: ACTION_PAUSE,
-  KeyE: ACTION_ENTER_CAR,
-  KeyM: ACTION_MAP,
-  KeyR: ACTION_RADIO,
-  KeyF: ACTION_DO,
-  KeyN: ACTION_MUTE,
-};
+export const keysDown = new Set();
+export const keysHit = new Set();
+export const mouse = { x: 0, y: 0, down: false };
 
-export function createInput(canvas) {
-  const held = new Set();
-  let queued = 0;
+let attached = false;
 
-  function onKeyDown(event) {
-    if (event.repeat) return;
-    held.add(event.code);
-    const action = KEY_ACTIONS[event.code];
-    if (action) queued |= action;
-    if (event.code === 'Space') event.preventDefault();
-  }
-  function onKeyUp(event) {
-    held.delete(event.code);
-  }
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
+export function initInput() {
+  if (attached) return;
+  attached = true;
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    keysDown.add(e.code);
+    keysHit.add(e.code);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', (e) => keysDown.delete(e.code));
+  window.addEventListener('blur', () => {
+    keysDown.clear();
+    keysHit.clear();
+  });
+  window.addEventListener('mousemove', (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  });
+  window.addEventListener('mousedown', () => {
+    mouse.down = true;
+  });
+  window.addEventListener('mouseup', () => {
+    mouse.down = false;
+  });
+}
 
-  function onPointer() {
-    queued |= ACTION_CONFIRM;
-  }
-  if (canvas) canvas.addEventListener('pointerdown', onPointer);
+export function isDown(code) {
+  return keysDown.has(code);
+}
 
-  return {
-    // -1/0/1 steering and throttle from the held keys.
-    drive() {
-      const steer = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0);
-      const throttle = (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0);
-      return { steer, throttle, brake: held.has('Space'), run: held.has('ShiftLeft') || held.has('ShiftRight') };
-    },
-    // One-shot actions since the last call; reading consumes them.
-    takeActions() {
-      const out = queued;
-      queued = 0;
-      return out;
-    },
-    destroy() {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      if (canvas) canvas.removeEventListener('pointerdown', onPointer);
-    },
-  };
+export function wasHit(code) {
+  return keysHit.has(code);
+}
+
+// Call once per frame after all systems read input.
+export function endFrameInput() {
+  keysHit.clear();
+}
+
+// Steering / throttle helpers: arrows or WASD.
+export function driveInput() {
+  const throttle =
+    (isDown('KeyW') || isDown('ArrowUp') ? 1 : 0) -
+    (isDown('KeyS') || isDown('ArrowDown') ? 1 : 0);
+  const steer =
+    (isDown('KeyA') || isDown('ArrowLeft') ? 1 : 0) -
+    (isDown('KeyD') || isDown('ArrowRight') ? 1 : 0);
+  const handbrake = isDown('Space');
+  return { throttle, steer, handbrake };
+}
+
+export function walkInput() {
+  const fwd =
+    (isDown('KeyW') || isDown('ArrowUp') ? 1 : 0) -
+    (isDown('KeyS') || isDown('ArrowDown') ? 1 : 0);
+  const strafe =
+    (isDown('KeyD') || isDown('ArrowRight') ? 1 : 0) -
+    (isDown('KeyA') || isDown('ArrowLeft') ? 1 : 0);
+  const run = isDown('ShiftLeft') || isDown('ShiftRight');
+  return { fwd, strafe, run };
 }

@@ -1,9 +1,9 @@
-// Deterministic seeded random numbers (mulberry32). Every procedural choice in
-// the world — building heights, traffic colours, pedestrian clothes — draws from
-// one stream per seed, so the same seed always builds the same city.
-export function createRandom(seed) {
+// Seeded random numbers (mulberry32). The city layout is deterministic from
+// CFG.seed so every run — and every screenshot — shows the same Solmar Bay.
+
+export function mulberry32(seed) {
   let a = seed >>> 0;
-  return function random() {
+  return function next() {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -12,14 +12,21 @@ export function createRandom(seed) {
   };
 }
 
-export function pick(random, list) {
-  return list[Math.floor(random() * list.length) % list.length];
-}
-
-export function range(random, min, max) {
-  return min + random() * (max - min);
-}
-
-export function rangeInt(random, min, max) {
-  return Math.floor(range(random, min, max + 1));
+export function makeRng(seed) {
+  const next = mulberry32(seed);
+  return {
+    next,
+    range(min, max) {
+      return min + next() * (max - min);
+    },
+    int(min, max) {
+      return Math.floor(min + next() * (max - min + 1));
+    },
+    pick(list) {
+      return list[Math.floor(next() * list.length)];
+    },
+    chance(p) {
+      return next() < p;
+    },
+  };
 }

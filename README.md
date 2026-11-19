@@ -1,39 +1,95 @@
-# SOLMAR BAY — A Golden Hour in Neon
-
-[![Play on make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![Make GTA 6](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![Rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![Reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An original open-world crime game in the spirit of GTA 6, built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+# SOLMAR BAY — A Golden Hour in Neon
 
-**Rico Marín is back in Solmar Bay** — a sun-soaked coastal city at golden hour. Seven story jobs, five stars of heat, one red VULPINE S. Drive it home.
-
-## What is in the game
-
-- A complete open world: downtown avenues, the canal district, the marina, Pelican Isle, the harbour bridge, beaches and the ring highway.
-- Driving and walking: steal any car, enter and exit with E, traffic AI, pedestrians who panic and run when the heat is on.
-- Wanted 0–5 stars with named police units (UNIT 7, UNIT 12, UNIT 21) and the AIR-1 helicopter with a searchlight.
-- 7 story jobs with objectives, GPS routes, dialogue and a save that resumes where you left off.
-- A dense HUD: mission tracker, money, wanted stars, speed, radio (3 stations), a round minimap with real streets, and a full AAA city map (M).
-- Golden-hour look: natural blue-to-gold sky, warm sunlight that lights the hero car from the camera side, procedural textures everywhere, real bloom, ACES tone mapping, shadows, vignette and film grain.
+An original open-world crime game in the spirit of GTA 6, built for the
+[make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+"Make GTA 6" bounty. A sun-drenched coastal Florida-style city at golden hour:
+seven districts, a palm-lined beach boulevard, a marina, downtown towers,
+traffic, pedestrians, police, and the Sunset Sprint checkpoint race — all
+playable offline in a desktop browser from static files.
 
 ## Play it
 
+Serve `game/` with any static HTTP server and open `game/index.html`:
+
 ```sh
-node serve.ts
+cd game && python3 -m http.server 8080
+# open http://localhost:8080
 ```
 
-Then open http://localhost:8080. WASD drive / walk, E enter or exit a car, SPACE handbrake, SHIFT run, M city map, R radio, F action, N mute.
+No build step, no network request: three.js is vendored as the minified
+`game/vendor/three.min.js`, and every texture, sound and model is generated
+in code at run time.
 
-## Shots
+## Controls
 
-The four screenshots in `screenshots/` are staged renders of the real game (`?shot=chase|title|map|marina&seed=1`), captured with a headless browser and reviewed by hand.
+| Key | Action |
+| --- | --- |
+| WASD / arrows | Drive / walk |
+| Space | Handbrake drift |
+| E | Enter / exit a car (walk up to a traffic car to steal it) |
+| F | Punch (on foot) |
+| M | City map (districts, street names, GPS route) |
+| P / Esc | Pause |
+| R | Reset car to Ocean Drive |
+| N | Sound on/off |
+
+## What's in the city
+
+- **Driving** — arcade physics with drift scoring, a low 3/4 chase camera, and
+  a sculpted bright-red hero sports car (extruded body, spoked wheels,
+  full-width taillight bar, diffuser, dual exhausts).
+- **On foot** — get out, walk the sidewalks, punch a pedestrian (the cops
+  will notice), steal any traffic car.
+- **Wanted system** — stars rise with crimes; police interceptors chase with
+  flashing light bars and sirens. Stand still next to them and you're busted.
+- **Sunset Sprint** — a six-checkpoint timed race across all seven districts,
+  with cash prizes and a countdown.
+- **The map** — a full city map with district zones, street names, a GPS route
+  to the next checkpoint, compass and legend, plus a live minimap.
+- **The marina** — docked boats with rounded hulls and a three-person crew on
+  the piers.
+- **Sound** — a fully synthesized WebAudio soundscape: engine, tyre screech,
+  sirens, chimes. No audio files.
+- **Save** — cash, best drift and missions won persist in localStorage.
 
 ## Layout
 
-- `game/` — the playable game as static files (three.js 0.160.0 vendored under `game/vendor/`).
-- `game/src/` — one file per system: config, world, cars, people, police, missions, HUD, audio, save, post-processing, shots, playtest.
-- `main.ts` — hands the game and screenshots in and writes `dossier.json` with the make.fun library.
-- `serve.ts` — a tiny static server for local play.
+```
+game/
+  index.html            page, HUD, title screen, map overlay
+  vendor/three.min.js   three.js 0.186.1, minified (MIT, see three-LICENSE.txt)
+  src/
+    main.js             game loop, camera, driving + on-foot play
+    config.js           city plan, tuning, palette
+    world.js            city, beach, ocean, marina builder
+    cars.js             hero/traffic/police cars + driving physics
+    people.js           pedestrians + marina crew
+    traffic.js          traffic loops
+    police.js           wanted system + pursuit AI
+    missions.js         Sunset Sprint + drift scoring
+    hud.js              HUD, minimap, city map
+    render.js           renderer, golden-hour light rig, bloom
+    audio.js            synthesized WebAudio sound
+    input.js            keyboard + mouse
+    random.js           seeded RNG
+    save.js             localStorage save
+    shots.js            ?shot= setups + built-in 20-check playtest
+main.ts                 entry program: copies game/ + screenshots/ to /output
+                        and writes dossier.json with buildDossier
+shots.json              the four screenshot setups
+screenshots/            1-chase, 2-title, 3-map, 4-marina
+```
+
+Run the built-in playtest with `?playtest=1` — it exercises the real game
+code and reports 20 checks on `window.__playtest`.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Three.js is MIT-licensed by the Three.js
+authors; see `game/vendor/three-LICENSE.txt`.
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

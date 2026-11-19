@@ -1,425 +1,455 @@
-// The HUD: dense DOM panels in all four corners, a round minimap with real
-// streets and a GPS route, and a full AAA city map overlay.
-//
-// Performance rules: no backdrop-filter anywhere, DOM writes are cached (a value
-// is only written when it changes), and the minimap redraws every 2nd frame.
-import { DISTRICTS, LANDMARKS, RADIO } from './config.js';
+// HUD: the four-corner display, the live minimap, and the full city map
+// (M key) with districts, street names, a GPS route, compass and legend.
 
-function $(id) {
+import { CFG, districtAt } from './config.js';
+
+function el(id) {
   return document.getElementById(id);
 }
 
-export function createHud() {
-  const cache = {};
-  let frame = 0;
+function fmtTime(s) {
+  const m = Math.floor(Math.max(0, s) / 60);
+  const r = Math.floor(Math.max(0, s) % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
 
-  function setText(id, value) {
-    if (cache[id] !== value) {
-      cache[id] = value;
-      const el = $(id);
-      if (el) el.textContent = value;
-    }
+function fmtCash(n) {
+  return '$' + Math.floor(n).toLocaleString('en-US');
+}
+
+// --- Minimap ---------------------------------------------------------------
+const MM = 190;
+function mmX(x) {
+  return ((x + 320) / 640) * MM;
+}
+function mmZ(z) {
+  return ((z + 320) / 640) * MM;
+}
+
+function drawMinimap(ctx, data, time) {
+  ctx.clearRect(0, 0, MM, MM);
+  ctx.fillStyle = '#0d1b2a';
+  ctx.fillRect(0, 0, MM, MM);
+  // Districts, faint.
+  for (const d of CFG.districts) {
+    ctx.fillStyle = d.color + '44';
+    ctx.fillRect(mmX(d.x0), mmZ(d.z0), mmX(d.x1) - mmX(d.x0), mmZ(d.z1) - mmZ(d.z0));
   }
-  function setHtml(id, value) {
-    if (cache[id] !== value) {
-      cache[id] = value;
-      const el = $(id);
-      if (el) el.innerHTML = value;
-    }
+  // Beach strip.
+  ctx.fillStyle = '#e9d29e';
+  ctx.fillRect(mmX(252), 0, mmX(320) - mmX(252), MM);
+  // Roads.
+  ctx.strokeStyle = '#cfd6dd';
+  ctx.lineWidth = 2.5;
+  for (const a of CFG.avenues) {
+    ctx.beginPath();
+    ctx.moveTo(mmX(a.x), 0);
+    ctx.lineTo(mmX(a.x), MM);
+    ctx.stroke();
   }
-  function setStyle(id, prop, value) {
-    const key = `${id}:${prop}`;
-    if (cache[key] !== value) {
-      cache[key] = value;
-      const el = $(id);
-      if (el) el.style[prop] = value;
-    }
+  for (const s of CFG.streets) {
+    ctx.beginPath();
+    ctx.moveTo(0, mmZ(s.z));
+    ctx.lineTo(MM, mmZ(s.z));
+    ctx.stroke();
+  }
+  // Checkpoints.
+  data.checkpoints.forEach((cp, i) => {
+    ctx.beginPath();
+    ctx.arc(mmX(cp.x), mmZ(cp.z), i === data.checkpointIndex ? 5 + Math.sin(time * 5) : 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = i < data.checkpointIndex ? '#2ecc71' : '#ff8c1a';
+    ctx.fill();
+  });
+  // Police.
+  ctx.fillStyle = '#4d7cff';
+  for (const p of data.police) {
+    ctx.beginPath();
+    ctx.arc(mmX(p.x), mmZ(p.z), 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Player arrow.
+  const px = mmX(data.player.x);
+  const pz = mmZ(data.player.z);
+  ctx.save();
+  ctx.translate(px, pz);
+  ctx.rotate(Math.atan2(Math.sin(data.heading), -Math.cos(data.heading)));
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(5, 6);
+  ctx.lineTo(0, 3);
+  ctx.lineTo(-5, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  // North tick.
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('N', MM / 2, 12);
+}
+
+// --- Big map ---------------------------------------------------------------
+const MAP_W = 1100;
+const MAP_H = 760;
+const MAP_S = 1.1;
+const MAP_OX = (MAP_W - 720 * MAP_S) / 2;
+const MAP_OY = (MAP_H - 640 * MAP_S) / 2;
+function mapX(x) {
+  return MAP_OX + (x + 320) * MAP_S;
+}
+function mapZ(z) {
+  return MAP_OY + (z + 320) * MAP_S;
+}
+
+function gpsRoute(player, target) {
+  // Manhattan route through the road grid: nearest avenue, then the street
+  // nearest the target, then the target.
+  let ax = CFG.avenues[0].x;
+  for (const a of CFG.avenues) if (Math.abs(a.x - player.x) < Math.abs(ax - player.x)) ax = a.x;
+  let sz = CFG.streets[0].z;
+  for (const s of CFG.streets) if (Math.abs(s.z - target.z) < Math.abs(sz - target.z)) sz = s.z;
+  return [
+    { x: player.x, z: player.z },
+    { x: ax, z: player.z },
+    { x: ax, z: sz },
+    { x: target.x, z: sz },
+    { x: target.x, z: target.z },
+  ];
+}
+
+function drawBigMap(ctx, data, time) {
+  ctx.clearRect(0, 0, MAP_W, MAP_H);
+  const bg = ctx.createLinearGradient(0, 0, 0, MAP_H);
+  bg.addColorStop(0, '#0e2233');
+  bg.addColorStop(1, '#0a1a28');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+  // Grid + coordinates.
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '10px Arial';
+  ctx.textAlign = 'left';
+  for (let gx = -320; gx <= 400; gx += 80) {
+    ctx.beginPath();
+    ctx.moveTo(mapX(gx), MAP_OY);
+    ctx.lineTo(mapX(gx), MAP_OY + 640 * MAP_S);
+    ctx.stroke();
+    ctx.fillText(String(gx), mapX(gx) + 3, MAP_OY + 640 * MAP_S + 14);
+  }
+  for (let gz = -320; gz <= 320; gz += 80) {
+    ctx.beginPath();
+    ctx.moveTo(MAP_OX, mapZ(gz));
+    ctx.lineTo(MAP_OX + 720 * MAP_S, mapZ(gz));
+    ctx.stroke();
+    ctx.fillText(String(gz), MAP_OX - 26, mapZ(gz) + 3);
   }
 
-  // --- Minimap: round, with streets, GPS route, player arrow, police, target. ---
-  const minimap = $('minimap');
-  const mctx = minimap ? minimap.getContext('2d') : null;
-  const MM = 150; // canvas size
-  const MM_RANGE = 70; // metres shown from the centre to the edge
+  // Ocean + beach.
+  const oc = ctx.createLinearGradient(mapX(320), 0, mapX(400), 0);
+  oc.addColorStop(0, '#2e7f9e');
+  oc.addColorStop(1, '#155a75');
+  ctx.fillStyle = oc;
+  ctx.fillRect(mapX(320), MAP_OY, mapX(400) - mapX(320), 640 * MAP_S);
+  ctx.fillStyle = '#e9d29e';
+  ctx.fillRect(mapX(252), MAP_OY, mapX(320) - mapX(252), 640 * MAP_S);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font = 'italic bold 15px Arial';
+  ctx.save();
+  ctx.translate(mapX(362), MAP_OY + 320 * MAP_S);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('S O L M A R   B A Y', 0, 0);
+  ctx.restore();
 
-  function drawMinimap(state) {
-    if (!mctx) return;
-    const scale = MM / 2 / MM_RANGE;
-    const cx = MM / 2;
-    const cy = MM / 2;
-    const px = state.player.x;
-    const pz = state.player.z;
-    mctx.clearRect(0, 0, MM, MM);
-    mctx.save();
-    mctx.beginPath();
-    mctx.arc(cx, cy, MM / 2 - 2, 0, Math.PI * 2);
-    mctx.clip();
-    // Base: brightened dark blue so streets read against it.
-    mctx.fillStyle = '#24384e';
-    mctx.fillRect(0, 0, MM, MM);
-    // Bay water on the east side.
-    const bayX = cx + (88 - px) * scale;
-    if (bayX < MM) {
-      mctx.fillStyle = '#2a5a74';
-      mctx.fillRect(Math.max(0, bayX), 0, MM, MM);
-    }
-    // Streets: avenues vertical, streets horizontal, 2px light lines.
-    mctx.strokeStyle = '#8fb8d8';
-    mctx.lineWidth = 2;
-    for (const ax of [-72, -36, 0, 36, 72]) {
-      const x = cx + (ax - px) * scale;
-      mctx.beginPath();
-      mctx.moveTo(x, 0);
-      mctx.lineTo(x, MM);
-      mctx.stroke();
-    }
-    for (const sz of [-72, -36, 0, 36, 72]) {
-      const y = cy + (sz - pz) * scale;
-      mctx.beginPath();
-      mctx.moveTo(0, y);
-      mctx.lineTo(MM, y);
-      mctx.stroke();
-    }
-    // GPS route to the mission target.
-    const target = state.target;
-    if (target) {
-      const tx = cx + (target.x - px) * scale;
-      const ty = cy + (target.z - pz) * scale;
-      mctx.strokeStyle = '#37d3e0';
-      mctx.lineWidth = 3;
-      mctx.setLineDash([6, 4]);
-      mctx.beginPath();
-      mctx.moveTo(cx, cy);
-      mctx.lineTo(tx, ty);
-      mctx.stroke();
-      mctx.setLineDash([]);
-      mctx.fillStyle = '#ff3b30';
-      mctx.beginPath();
-      mctx.arc(tx, ty, 5, 0, Math.PI * 2);
-      mctx.fill();
-    }
-    // Police dots.
-    mctx.fillStyle = '#4a90d9';
-    for (const unit of state.police) {
-      const ux = cx + (unit.x - px) * scale;
-      const uy = cy + (unit.z - pz) * scale;
-      if (ux < -5 || ux > MM + 5 || uy < -5 || uy > MM + 5) continue;
-      mctx.beginPath();
-      mctx.arc(ux, uy, 3.5, 0, Math.PI * 2);
-      mctx.fill();
-    }
-    // Player arrow, rotated by heading.
-    mctx.save();
-    mctx.translate(cx, cy);
-    mctx.rotate(Math.atan2(Math.sin(state.heading), Math.cos(state.heading)) + Math.PI);
-    mctx.fillStyle = '#ffffff';
-    mctx.beginPath();
-    mctx.moveTo(0, -8);
-    mctx.lineTo(5.5, 6);
-    mctx.lineTo(-5.5, 6);
-    mctx.closePath();
-    mctx.fill();
-    mctx.restore();
-    mctx.restore();
-    // Ring border.
-    mctx.strokeStyle = '#d9a83c';
-    mctx.lineWidth = 3;
-    mctx.beginPath();
-    mctx.arc(cx, cy, MM / 2 - 2, 0, Math.PI * 2);
-    mctx.stroke();
+  // Districts.
+  for (const d of CFG.districts) {
+    ctx.fillStyle = d.color + '2e';
+    ctx.fillRect(mapX(d.x0), mapZ(d.z0), mapX(d.x1) - mapX(d.x0), mapZ(d.z1) - mapZ(d.z0));
+    ctx.strokeStyle = d.color + '66';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(mapX(d.x0), mapZ(d.z0), mapX(d.x1) - mapX(d.x0), mapZ(d.z1) - mapZ(d.z0));
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 15px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.name, (mapX(d.x0) + mapX(d.x1)) / 2, (mapZ(d.z0) + mapZ(d.z1)) / 2);
   }
 
-  // --- City map: a full AAA map on a canvas overlay. ---
-  const citymap = $('citymap');
-  const cctx = citymap ? citymap.getContext('2d') : null;
-  const MAP_W = 1060;
-  const MAP_H = 620;
-
-  function mapX(x) {
-    return 40 + ((x + 110) / 220) * (MAP_W - 80);
+  // Roads.
+  ctx.strokeStyle = '#e8e4da';
+  ctx.lineCap = 'round';
+  for (const a of CFG.avenues) {
+    ctx.lineWidth = a.name === 'Ocean Drive' ? 7 : 5;
+    ctx.beginPath();
+    ctx.moveTo(mapX(a.x), MAP_OY);
+    ctx.lineTo(mapX(a.x), MAP_OY + 640 * MAP_S);
+    ctx.stroke();
   }
-  function mapY(z) {
-    return 30 + ((z + 105) / 210) * (MAP_H - 70);
+  for (const s of CFG.streets) {
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(MAP_OX, mapZ(s.z));
+    ctx.lineTo(MAP_OX + 640 * MAP_S, mapZ(s.z));
+    ctx.stroke();
+  }
+  // Street names.
+  ctx.fillStyle = 'rgba(10,30,45,0.85)';
+  ctx.font = 'bold 10px Arial';
+  for (const a of CFG.avenues) {
+    ctx.save();
+    ctx.translate(mapX(a.x) - 4, MAP_OY + 320 * MAP_S);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillText(a.name.toUpperCase(), 0, 0);
+    ctx.restore();
+  }
+  for (const s of CFG.streets) {
+    ctx.textAlign = 'center';
+    ctx.fillText(s.name.toUpperCase(), MAP_OX + 320 * MAP_S, mapZ(s.z) - 4);
   }
 
-  function drawCityMap(state) {
-    if (!cctx) return;
-    cctx.clearRect(0, 0, MAP_W, MAP_H);
-    // Base.
-    cctx.fillStyle = '#101c2e';
-    cctx.fillRect(0, 0, MAP_W, MAP_H);
-    // Grid A–H / 1–6.
-    cctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    cctx.lineWidth = 1;
-    cctx.fillStyle = 'rgba(255,255,255,0.5)';
-    cctx.font = '11px sans-serif';
-    cctx.textAlign = 'center';
-    for (let i = 0; i < 8; i += 1) {
-      const x = 40 + (i * (MAP_W - 80)) / 8;
-      cctx.beginPath();
-      cctx.moveTo(x, 30);
-      cctx.lineTo(x, MAP_H - 40);
-      cctx.stroke();
-      cctx.fillText(String.fromCharCode(65 + i), x + (MAP_W - 80) / 16, 18);
-    }
-    for (let i = 0; i < 6; i += 1) {
-      const y = 30 + (i * (MAP_H - 70)) / 6;
-      cctx.beginPath();
-      cctx.moveTo(40, y);
-      cctx.lineTo(MAP_W - 40, y);
-      cctx.stroke();
-      cctx.fillText(String(i + 1), 22, y + (MAP_H - 70) / 12 + 4);
-    }
-    // Bay water on the east.
-    cctx.fillStyle = '#1d4258';
-    cctx.fillRect(mapX(88), 30, MAP_W - 40 - mapX(88), MAP_H - 70);
-    // Pelican Isle.
-    cctx.fillStyle = '#d9c48a';
-    cctx.beginPath();
-    cctx.ellipse(mapX(110), mapY(-18), 26, 12, 0.3, 0, Math.PI * 2);
-    cctx.fill();
-    // District zones: dashed borders, labels inside, clear of the ring line.
-    // PALM ROW's label goes at the bottom-left of its zone so it cannot collide
-    // with the VELA MARKET landmark label.
-    cctx.font = 'bold 13px sans-serif';
-    for (const d of DISTRICTS) {
-      const x0 = mapX(d.x - d.w / 2);
-      const y0 = mapY(d.z - d.h / 2);
-      const w = mapX(d.x + d.w / 2) - x0;
-      const h = mapY(d.z + d.h / 2) - y0;
-      cctx.strokeStyle = d.color;
-      cctx.lineWidth = 1.5;
-      cctx.setLineDash([6, 4]);
-      cctx.strokeRect(x0, y0, w, h);
-      cctx.setLineDash([]);
-      cctx.fillStyle = d.label;
-      cctx.textAlign = 'left';
-      if (d.name === 'PALM ROW') cctx.fillText(d.name, x0 + 8, y0 + h - 8);
-      else cctx.fillText(d.name, x0 + 8, y0 + 18);
-    }
-    // Ring highway: a yellow rounded rect around the city.
-    cctx.strokeStyle = '#d9a83c';
-    cctx.lineWidth = 3;
-    cctx.beginPath();
-    cctx.roundRect(mapX(-102), mapY(-98), mapX(86) - mapX(-102), mapY(98) - mapY(-98), 18);
-    cctx.stroke();
-    // Streets.
-    cctx.strokeStyle = 'rgba(220,230,240,0.75)';
-    cctx.lineWidth = 2;
-    for (const ax of [-72, -36, 0, 36, 72]) {
-      cctx.beginPath();
-      cctx.moveTo(mapX(ax), mapY(-100));
-      cctx.lineTo(mapX(ax), mapY(100));
-      cctx.stroke();
-    }
-    for (const sz of [-72, -36, 0, 36, 72]) {
-      cctx.beginPath();
-      cctx.moveTo(mapX(-102), mapY(sz));
-      cctx.lineTo(mapX(86), mapY(sz));
-      cctx.stroke();
-    }
-    // Street names (placed clear of the ring line and each other).
-    cctx.fillStyle = '#e8eef4';
-    cctx.font = '11px sans-serif';
-    cctx.textAlign = 'left';
-    cctx.fillText('CROWN ROAD', mapX(-100), mapY(-72) - 6);
-    cctx.fillText('CANAL STREET', mapX(-100), mapY(-36) - 6);
-    cctx.fillText('PALM BOULEVARD', mapX(-100), mapY(72) - 6);
-    // SOLMAR AVENUE's label runs horizontally at the avenue's south end, clear
-    // of the THE DOCKS zone label and the HARBOUR LIGHTS label.
-    cctx.fillText('SOLMAR AVENUE', mapX(0) + 8, mapY(96));
-    cctx.save();
-    cctx.translate(mapX(72) + 6, mapY(10));
-    cctx.rotate(Math.PI / 2);
-    cctx.fillText('HARBOUR WAY', 0, 0);
-    cctx.restore();
-    // Harbour Bridge.
-    cctx.strokeStyle = '#c85a3a';
-    cctx.lineWidth = 4;
-    cctx.beginPath();
-    cctx.moveTo(mapX(88), mapY(-60));
-    cctx.lineTo(mapX(140), mapY(-60));
-    cctx.stroke();
-    cctx.fillStyle = '#e8eef4';
-    cctx.fillText('HARBOR BRIDGE', mapX(92), mapY(-60) - 8);
-    // Landmarks.
-    cctx.font = 'bold 11px sans-serif';
-    for (const lm of LANDMARKS) {
-      const x = mapX(lm.x);
-      const y = mapY(lm.z);
-      cctx.fillStyle = '#ffd94a';
-      cctx.beginPath();
-      cctx.moveTo(x, y - 7);
-      cctx.lineTo(x + 6, y + 5);
-      cctx.lineTo(x - 6, y + 5);
-      cctx.closePath();
-      cctx.fill();
-      cctx.fillStyle = '#ffffff';
-      cctx.textAlign = 'left';
-      cctx.fillText(lm.name, x + 10, y + 4);
-    }
-    // MIRAMAR BEACH label — kept clear of the LIGHTHOUSE label.
-    cctx.fillStyle = '#ffb287';
-    cctx.font = '11px sans-serif';
-    cctx.fillText('MIRAMAR BEACH', mapX(48), mapY(-58));
-    // PELICAN ISLE label below the isle, clear of the legend.
-    cctx.fillStyle = '#d9c48a';
-    cctx.fillText('PELICAN ISLE', mapX(96), mapY(-18) + 30);
-    // GPS route: dashed cyan line + ETA text offset clear of the line.
-    const target = state.target;
-    if (target) {
-      const x0 = mapX(state.player.x);
-      const y0 = mapY(state.player.z);
-      const x1 = mapX(target.x);
-      const y1 = mapY(target.z);
-      cctx.strokeStyle = '#37d3e0';
-      cctx.lineWidth = 3;
-      cctx.setLineDash([8, 6]);
-      cctx.beginPath();
-      cctx.moveTo(x0, y0);
-      cctx.lineTo(x1, y1);
-      cctx.stroke();
-      cctx.setLineDash([]);
-      cctx.fillStyle = '#ff3b30';
-      cctx.beginPath();
-      cctx.arc(x1, y1, 7, 0, Math.PI * 2);
-      cctx.fill();
-      // ETA text with a dark backing, offset so the route line never crosses it.
-      const midX = (x0 + x1) / 2 + 34;
-      const midY = (y0 + y1) / 2 - 26;
-      const label = 'GPS 2.30 KM · ETA 5 MIN';
-      cctx.font = 'bold 12px sans-serif';
-      const tw = cctx.measureText(label).width;
-      cctx.fillStyle = 'rgba(10,18,30,0.9)';
-      cctx.fillRect(midX - 6, midY - 14, tw + 12, 20);
-      cctx.fillStyle = '#37d3e0';
-      cctx.textAlign = 'left';
-      cctx.fillText(label, midX, midY);
-    }
-    // Player marker.
-    cctx.fillStyle = '#ffffff';
-    cctx.beginPath();
-    cctx.arc(mapX(state.player.x), mapY(state.player.z), 6, 0, Math.PI * 2);
-    cctx.fill();
-    cctx.strokeStyle = '#101c2e';
-    cctx.lineWidth = 2;
-    cctx.stroke();
-    // Police markers.
-    cctx.fillStyle = '#4a90d9';
-    for (const unit of state.police) {
-      cctx.beginPath();
-      cctx.arc(mapX(unit.x), mapY(unit.z), 4, 0, Math.PI * 2);
-      cctx.fill();
-    }
-    // Compass (top-right, above the legend).
-    const ccx = MAP_W - 70;
-    const ccy = 62;
-    cctx.strokeStyle = '#d9a83c';
-    cctx.lineWidth = 2;
-    cctx.beginPath();
-    cctx.arc(ccx, ccy, 16, 0, Math.PI * 2);
-    cctx.stroke();
-    cctx.fillStyle = '#ff3b30';
-    cctx.beginPath();
-    cctx.moveTo(ccx, ccy - 12);
-    cctx.lineTo(ccx + 5, ccy + 8);
-    cctx.lineTo(ccx - 5, ccy + 8);
-    cctx.closePath();
-    cctx.fill();
-    cctx.fillStyle = '#ffffff';
-    cctx.font = 'bold 11px sans-serif';
-    cctx.textAlign = 'center';
-    cctx.fillText('N', ccx, ccy - 20);
-    // Legend: mid-right over the empty bay water — clear of the LIGHTHOUSE and
-    // HARBOR BRIDGE labels above and the PELICAN ISLE label below.
-    const lx = MAP_W - 190;
-    const ly = 320;
-    cctx.fillStyle = 'rgba(10,18,30,0.9)';
-    cctx.fillRect(lx, ly, 170, 108);
-    cctx.strokeStyle = '#d9a83c';
-    cctx.lineWidth = 1.5;
-    cctx.strokeRect(lx, ly, 170, 108);
-    cctx.fillStyle = '#d9a83c';
-    cctx.font = 'bold 12px sans-serif';
-    cctx.textAlign = 'left';
-    cctx.fillText('LEGEND', lx + 12, ly + 20);
-    const rows = [
-      ['#37d3e0', 'GPS route'],
-      ['#ff3b30', 'Mission target'],
-      ['#ffffff', 'Rico'],
-      ['#4a90d9', 'Police'],
-      ['#1d4258', 'Water / bay'],
-    ];
-    cctx.font = '11px sans-serif';
-    rows.forEach(([color, label], i) => {
-      cctx.fillStyle = color;
-      cctx.fillRect(lx + 12, ly + 32 + i * 15, 12, 10);
-      cctx.fillStyle = '#e8eef4';
-      cctx.fillText(label, lx + 30, ly + 41 + i * 15);
+  // Marina piers.
+  ctx.fillStyle = '#8a6a48';
+  for (const pz of [150, 190, 230]) {
+    ctx.fillRect(mapX(320), mapZ(pz) - 2, mapX(388) - mapX(320), 4);
+  }
+
+  // GPS route to the next checkpoint.
+  const next = data.checkpoints[Math.min(data.checkpointIndex, data.checkpoints.length - 1)];
+  if (next) {
+    const route = gpsRoute(data.player, next);
+    ctx.save();
+    ctx.strokeStyle = '#ff2e88';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.lineDashOffset = -time * 30;
+    ctx.shadowColor = '#ff2e88';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    route.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(mapX(p.x), mapZ(p.z));
+      else ctx.lineTo(mapX(p.x), mapZ(p.z));
     });
+    ctx.stroke();
+    ctx.restore();
   }
 
-  function showMap(visible) {
-    const el = $('hud-map');
-    if (el) el.style.display = visible ? 'flex' : 'none';
-  }
-  function showTitle(visible) {
-    const el = $('hud-title');
-    if (el) el.style.display = visible ? 'flex' : 'none';
-  }
-  function showHud(visible) {
-    const el = $('hud');
-    if (el) el.style.display = visible ? 'block' : 'none';
+  // Checkpoints, numbered.
+  data.checkpoints.forEach((cp, i) => {
+    const done = i < data.checkpointIndex;
+    const isNext = i === data.checkpointIndex;
+    ctx.beginPath();
+    ctx.arc(mapX(cp.x), mapZ(cp.z), isNext ? 11 + Math.sin(time * 5) * 2 : 9, 0, Math.PI * 2);
+    ctx.fillStyle = done ? '#2ecc71' : '#ff8c1a';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(i + 1), mapX(cp.x), mapZ(cp.z) + 4);
+  });
+
+  // Police.
+  for (const p of data.police) {
+    ctx.beginPath();
+    ctx.arc(mapX(p.x), mapZ(p.z), 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#4d7cff';
+    ctx.fill();
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
 
-  function update(state) {
-    frame += 1;
-    // Mission panel (top-left).
-    setText('mission-ch', `CH ${state.job.id}`);
-    setText('mission-title', state.job.title);
-    setText('mission-brief', state.job.brief);
-    setText('mission-next', `NEXT … ${state.stage.text}`);
-    setStyle('mission-bar', 'width', `${Math.round((state.stageIndex / state.job.stages.length) * 100)}%`);
-    // Money + wanted (top-right).
-    setText('money-day', `DAY 1 · ${state.clock}`);
-    setText('money-value', `$${state.money.toLocaleString('en-US')}`);
-    const stars = '★'.repeat(state.wanted) + '☆'.repeat(5 - state.wanted);
-    setText('money-stars', stars);
-    setText('money-status', state.wanted > 0 ? 'PURSUIT ACTIVE' : 'CLEAN');
-    setStyle('money-status', 'color', state.wanted > 0 ? '#ff5a4a' : '#4ade80');
-    // Wanted blink (top-centre).
-    const wantedEl = $('hud-wanted');
-    if (wantedEl) {
-      const show = state.wanted > 0 && Math.sin(state.blink * 4) > -0.25;
-      wantedEl.style.opacity = show ? '1' : '0.15';
-    }
-    // Minimap (bottom-left), every 2nd frame.
-    if (frame % 2 === 0) drawMinimap(state);
-    setText('minimap-street', state.street);
-    setText('minimap-respect', `RESPECT ${state.respectLevel} · ${state.respect} / 1000`);
-    setStyle('minimap-respect-bar', 'width', `${Math.min(100, (state.respect / 1000) * 100)}%`);
-    // Speed + radio (bottom-right).
-    const radio = RADIO[state.station];
-    setText('speed-radio', radio.name);
-    setText('speed-track', radio.track);
-    setText('speed-car', state.inCar ? 'VULPINE S' : 'ON FOOT');
-    setStyle('speed-condition', 'width', `${state.condition}%`);
-    setText('speed-value', String(Math.round(state.displaySpeedKmh)));
-    setText('speed-gear', state.inCar ? `GEAR ${state.gear}` : 'ON FOOT');
-    // Dialogue (bottom-centre).
-    const dlg = state.dialogue;
-    const dlgEl = $('hud-dialogue');
-    if (dlgEl) dlgEl.style.display = dlg ? 'flex' : 'none';
-    if (dlg) {
-      setText('dialogue-who', dlg.who);
-      setText('dialogue-line', dlg.line);
-      setText('dialogue-initial', dlg.who.charAt(0));
-      setStyle('dialogue-initial', 'background', dlg.who.startsWith('Lena') ? '#d94a8a' : dlg.who.startsWith('Mama') ? '#7a4ad9' : dlg.who.startsWith('Dario') ? '#3a3f44' : '#e8c832');
-    }
-    // NEAR MISS floating text.
-    const nm = $('hud-nearmiss');
-    if (nm) nm.style.opacity = state.nearMiss ? '1' : '0';
+  // Player arrow.
+  const px = mapX(data.player.x);
+  const pz = mapZ(data.player.z);
+  ctx.save();
+  ctx.translate(px, pz);
+  ctx.rotate(Math.atan2(Math.sin(data.heading), -Math.cos(data.heading)));
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -13);
+  ctx.lineTo(9, 11);
+  ctx.lineTo(0, 5);
+  ctx.lineTo(-9, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(px, pz, 20 + Math.sin(time * 3) * 4, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Title block.
+  ctx.fillStyle = 'rgba(8,20,32,0.85)';
+  ctx.fillRect(24, 22, 330, 64);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.strokeRect(24, 22, 330, 64);
+  ctx.fillStyle = '#ffd9a0';
+  ctx.font = 'bold 26px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('SOLMAR BAY', 40, 50);
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = '13px Arial';
+  ctx.fillText(`CITY MAP  •  ${districtAt(data.player.x, data.player.z)}`, 40, 72);
+
+  // Compass rose.
+  const cx = MAP_W - 70;
+  const cy = 70;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(8,20,32,0.85)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.stroke();
+  ctx.fillStyle = '#ff5a5a';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 26);
+  ctx.lineTo(cx + 7, cy + 6);
+  ctx.lineTo(cx - 7, cy + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('N', cx, cy - 30);
+  ctx.font = '10px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('E', cx + 24, cy + 4);
+  ctx.fillText('S', cx, cy + 28);
+  ctx.fillText('W', cx - 24, cy + 4);
+
+  // Legend.
+  const lx = 24;
+  const ly = MAP_H - 132;
+  ctx.fillStyle = 'rgba(8,20,32,0.85)';
+  ctx.fillRect(lx, ly, 230, 108);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.strokeRect(lx, ly, 230, 108);
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.fillText('LEGEND', lx + 14, ly + 20);
+  const items = [
+    ['#ffffff', 'You'],
+    ['#ff8c1a', 'Checkpoint'],
+    ['#ff2e88', 'GPS route'],
+    ['#4d7cff', 'Police'],
+    ['#2ecc71', 'Cleared'],
+  ];
+  ctx.font = '12px Arial';
+  items.forEach(([color, label], i) => {
+    const y = ly + 40 + i * 14;
+    ctx.fillStyle = color;
+    ctx.fillRect(lx + 14, y - 9, 12, 8);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(label, lx + 34, y);
+  });
+
+  // Scale bar.
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'right';
+  ctx.fillText('100 m', MAP_W - 24, MAP_H - 42);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(MAP_W - 24 - 100 * MAP_S, MAP_H - 36, 100 * MAP_S, 5);
+}
+
+// --- HUD object ------------------------------------------------------------
+export function createHUD() {
+  const minimapCtx = el('minimap').getContext('2d');
+  const mapCtx = el('map-canvas').getContext('2d');
+  let toastTimer = null;
+  let messageTimer = null;
+  let mapOpen = false;
+  const startClock = 17 * 60 + 42; // 17:42 golden hour
+
+  function toast(text, ms = 2600) {
+    const t = el('hud-toast');
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), ms);
   }
 
-  return { update, drawCityMap, drawMinimap, showMap, showTitle, showHud };
+  function showMessage(text, ms = 1900) {
+    const m = el('hud-message');
+    m.textContent = text;
+    m.classList.add('show');
+    clearTimeout(messageTimer);
+    messageTimer = setTimeout(() => m.classList.remove('show'), ms);
+  }
+
+  return {
+    toast,
+    showMessage,
+    isMapOpen() {
+      return mapOpen;
+    },
+    openMap() {
+      mapOpen = true;
+      el('map-overlay').classList.add('show');
+    },
+    closeMap() {
+      mapOpen = false;
+      el('map-overlay').classList.remove('show');
+    },
+    showBusted() {
+      el('busted-overlay').classList.add('show');
+    },
+    hideBusted() {
+      el('busted-overlay').classList.remove('show');
+    },
+    showPause(v) {
+      el('pause-overlay').classList.toggle('show', v);
+    },
+    showTitle(v) {
+      el('title-screen').classList.toggle('show', v);
+    },
+    setLoadingDone() {
+      el('loading').classList.add('done');
+    },
+
+    update(s, time) {
+      // Corners: speed bottom-left, wanted/objective top-left, map top-right.
+      el('hud-speed').textContent = String(Math.round(Math.abs(s.speed) * 3.6));
+      const kmh = Math.abs(s.speed) * 3.6;
+      el('hud-gear').textContent =
+        s.onFoot ? 'ON FOOT' : kmh < 1 ? 'N' : kmh < 30 ? '1' : kmh < 60 ? '2' : kmh < 95 ? '3' : kmh < 140 ? '4' : '5';
+      const driftEl = el('hud-drift');
+      if (s.drifting && s.driftPoints > 0) {
+        driftEl.textContent = `DRIFT +${s.driftPoints}`;
+        driftEl.classList.add('show');
+      } else {
+        driftEl.classList.remove('show');
+      }
+      el('hud-cash').textContent = fmtCash(s.cash);
+      el('hud-stars').textContent = '★'.repeat(s.wanted) + '☆'.repeat(5 - s.wanted);
+      el('hud-stars').style.color = s.wanted > 0 ? '#ffd94d' : 'rgba(255,255,255,0.55)';
+      const cp = s.checkpoints[Math.min(s.checkpointIndex, s.checkpoints.length - 1)];
+      el('hud-objective').textContent = s.missionActive
+        ? `SUNSET SPRINT  ${Math.min(s.checkpointIndex + 1, s.checkpoints.length)}/${s.checkpoints.length} — ${cp ? cp.name : ''}`
+        : 'SUNSET SPRINT — next run starting…';
+      el('hud-time').textContent = fmtTime(s.timeLeft);
+      el('hud-time').style.color = s.timeLeft < 20 && s.missionActive ? '#ff5a5a' : '#ffffff';
+      el('hud-district').textContent = districtAt(s.player.x, s.player.z);
+      const mins = startClock + Math.floor(time / 5);
+      el('hud-clock').textContent = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+      el('hud-best-drift').textContent = `BEST DRIFT ${s.bestDrift}`;
+
+      drawMinimap(minimapCtx, s, time);
+      if (mapOpen) drawBigMap(mapCtx, s, time);
+    },
+  };
 }

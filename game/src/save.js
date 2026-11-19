@@ -1,54 +1,27 @@
-// Save / resume in localStorage. The save records the job and stage the player
-// reached, so resuming never restarts a job's stages — the current objective's
-// dialogue is shown again on load.
-import { SAVE_KEY } from './config.js';
+// Save game: best drift score, cash earned, missions completed and the
+// player's last district, kept in localStorage under one key.
 
-export function readSave() {
+const KEY = 'solmar-bay-save-v14';
+
+export function defaultSave() {
+  return { cash: 0, bestDrift: 0, missionsWon: 0, checkpointsHit: 0, visits: 0 };
+}
+
+export function loadSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    return data;
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return defaultSave();
+    return { ...defaultSave(), ...JSON.parse(raw) };
   } catch {
-    return null;
+    return defaultSave();
   }
 }
 
-export function writeSave(state) {
+export function storeSave(data) {
   try {
-    const data = {
-      version: 13,
-      money: state.money,
-      respect: state.respect,
-      job: state.job,
-      stage: state.stage,
-      wanted: 0,
-      player: state.player ? { x: state.player.x, z: state.player.z, heading: state.player.heading } : null,
-      inCar: !!state.inCar,
-      savedAt: Date.now(),
-    };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    window.localStorage.setItem(KEY, JSON.stringify(data));
     return true;
   } catch {
     return false;
   }
-}
-
-export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Storage can be off: nothing to clear.
-  }
-}
-
-// The objective text a resumed game shows first, so the player knows where they are.
-export function resumeDialogue(job, stage) {
-  if (!job) return null;
-  const current = job.stages[Math.min(stage, job.stages.length - 1)];
-  return {
-    who: job.dialogue[0] ? job.dialogue[0].who : 'Lena "Wrench" Ortiz',
-    line: `Back at it — ${current.text}.`,
-  };
 }
