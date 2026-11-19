@@ -1,161 +1,117 @@
-// SOLMAR BAY — screenshot mode (?shot=chase|title|map|marina&seed=1).
-// Each shot configures a deterministic, dense scene: the cover shows the
-// chase with TWO police cars ahead, the hero big in frame, and a full HUD.
-(function () {
-  'use strict';
-  window.SB = window.SB || {};
-  var U = SB.utils;
+// Screenshot modes: frozen, composed scenes for the 4 dossier screenshots.
+// In shot mode the camera SNAPS to its target (no lerp — headless capture
+// renders only a few frames, so a lerp never converges).
 
-  var Sh = {
-    mode: null,
-    ready: false,
+export const SHOT_NAMES = ['chase', 'title', 'map', 'marina'];
+
+function snapCamera(game, x, y, z, lx, ly, lz) {
+  game.shotCamera = {
+    pos: new THREE.Vector3(x, y, z),
+    look: new THREE.Vector3(lx, ly, lz),
   };
+  game.camera.position.copy(game.shotCamera.pos);
+  game.camera.lookAt(game.shotCamera.look);
+}
 
-  function $(id) { return document.getElementById(id); }
-
-  function hideTitle() {
-    var t = $('title-screen');
-    if (t) t.style.display = 'none';
-    var h = $('hud');
-    if (h) h.style.display = 'block';
+function holdFloat(hud, text, color) {
+  hud.showFloat(text, color);
+  const el = hud.el['float-text'];
+  if (el) {
+    el.style.animation = 'none';
+    el.style.opacity = '1';
   }
+}
 
-  function showTitle() {
-    var t = $('title-screen');
-    if (t) t.style.display = 'flex';
-    var h = $('hud');
-    if (h) h.style.display = 'none';
-  }
+export function setupShot(name, game) {
+  const { hud, missions, police, hero, rico, traffic, state } = game;
+  hud.hideTitle();
+  hud.closeMap();
 
-  // The cover: night chase on Lumen Avenue. Hero big in frame, low close
-  // chase cam, TWO police cars ahead with strobing light bars, wanted 3
-  // stars, NEAR MISS bonus on screen, Lena talking.
-  function shotChase(game) {
-    hideTitle();
-    game.mode = 'playing';
-    game.inCar = true;
-    var hero = game.heroState;
-    hero.x = 2; hero.z = 20; hero.heading = Math.PI;
-    hero.speed = 46; // 167 KM/H on the speedo
-    hero.car.group.position.set(2, 0, 20);
-    hero.car.group.rotation.y = Math.PI;
-    // Two police cars clearly ahead: one right-front close, one center farther.
-    SB.police.setWanted(3);
-    SB.police.placeShotUnits(game.scene, [
-      { x: 5.5, z: 4, heading: Math.PI, speed: 40 },
-      { x: -4.5, z: 0, heading: Math.PI, speed: 40 },
-    ]);
-    // Freeze the chase in place for a deterministic frame (wheels still spin,
-    // rain still falls, lights still strobe).
-    game.shotFrozen = true;
-    game.camClose = true;
-    game.cash = 42780;
-    game.respect = 320;
-    game.missionIndex = 0;
-    SB.missions.start(0);
-    SB.missions.stage = 1; // already driving to the docks, not "get in the car"
-    SB.missions.showBeacon();
-    SB.hud.showDialogue('lena', 'Two units ahead, Rico. Thread the needle — do NOT clip them.');
-    // The mission's second dialogue line fires at 4.5s; re-show Lena after it
-    // so the cover frame carries the chase callout.
-    SB.hud.showDialogue('lena', 'Two units ahead, Rico. Thread the needle — do NOT clip them.', 5200);
-    setTimeout(function () { SB.hud.floatText('NEAR MISS  +$250', '#ffd23f'); }, 600);
-    game.camMode = 'chase';
-  }
-
-  // The title screen over the skyline, hero parked in the foreground.
-  function shotTitle(game) {
-    showTitle();
-    game.mode = 'title';
-    game.inCar = false;
-    var hero = game.heroState;
-    hero.x = 3; hero.z = 40; hero.heading = Math.PI * 0.92;
-    hero.speed = 0;
-    hero.car.group.position.set(3, 0, 40);
-    hero.car.group.rotation.y = hero.heading;
-    SB.police.setWanted(0);
-    game.camMode = 'title';
-  }
-
-  // The AAA city map, open, with a GPS route to the mission target.
-  function shotMap(game) {
-    hideTitle();
-    game.inCar = true;
-    var hero = game.heroState;
-    hero.x = 0; hero.z = 40; hero.heading = Math.PI;
-    hero.speed = 0;
-    hero.car.group.position.set(0, 0, 40);
-    hero.car.group.rotation.y = Math.PI;
-    SB.police.setWanted(3);
-    game.cash = 42780;
-    game.respect = 320;
-    SB.missions.start(0);
-    SB.missions.stage = 1; // drive-to stage, so the GPS route draws
-    SB.citymap.openMap(game.hudState());
-    game.mode = 'map'; // freeze the world behind the open map
-  }
-
-  // On foot at the marina: Rico with the crew, dialogue open, boats and lamps.
-  // Rico stands on the clear quay south of the crate field, facing the
-  // docks (heading 0 = south), so the boats, lamps and bay fill the frame.
-  function shotMarina(game) {
-    hideTitle();
-    game.mode = 'playing';
-    game.inCar = false;
-    game.rico.x = -132;
-    game.rico.z = 160;
-    game.rico.heading = 0;
-    // Place Rico's group explicitly — the frozen frame never runs the foot
-    // sync that would move it there.
-    if (game.rico.group) {
-      game.rico.group.position.set(-132, 0, 160);
-      game.rico.group.rotation.y = 0;
-      game.rico.group.visible = true;
+  if (name === 'chase') {
+    // COVER: bright neon chase, 2 police cars ahead, dense HUD, NEAR MISS.
+    state.inCar = true;
+    state.money = 42780;
+    state.respect = 320;
+    state.condition = 95;
+    state.day = 1;
+    state.minutes = 22 * 60 + 47;
+    missions.jobIndex = 0;
+    missions.stageIndex = 1;
+    missions.stageTimer = 0;
+    missions.latched = 0;
+    hero.setPose(0, 0, 0);
+    hero.speed = 0; // parked for the frozen frame — the speedo shows the override
+    state.displaySpeedKmh = 167;
+    police.setWanted(3);
+    // place BOTH pursuit units at real spots immediately (never at origin)
+    if (police.pursuit[0]) {
+      police.pursuit[0].setPose(4.2, -14, 0);
+      police.pursuit[0].group.visible = true;
+      police.pursuit[0].freezeBlink();
     }
-    // Freeze the frame: snaps the camera behind Rico and stops traffic from
-    // crashing into the parked hero car (which would add heat mid-shot).
-    game.shotFrozen = true;
-    game.camClose = true;
-    // Park the hero car nearby, visible in frame.
-    var hero = game.heroState;
-    hero.x = -127; hero.z = 159; hero.heading = 2.4;
+    if (police.pursuit[1]) {
+      police.pursuit[1].setPose(-2.2, -26, 0);
+      police.pursuit[1].group.visible = true;
+      police.pursuit[1].freezeBlink();
+    }
+    // traffic depth: one car far ahead, one in the next lane
+    if (traffic.cars[0]) traffic.cars[0].setPose(1.8, -55, 0);
+    if (traffic.cars[1]) traffic.cars[1].setPose(-5.0, -44, 0);
+    // helicopter visible in the sky, searchlight on the player
+    if (police.heli) {
+      police.heli.group.position.set(18, 30, -30);
+      police.heli.group.lookAt(0, 0, -10);
+    }
+    snapCamera(game, 2.4, 2.6, 6.8, -0.5, 1.2, -6);
+    hud.showDialogue('lena', 'Two units on your tail, Rico — lose them on Palm Row!', 999);
+    holdFloat(hud, 'NEAR MISS +$250', '#ffd23f');
+  } else if (name === 'title') {
+    state.inCar = true;
+    hero.setPose(-4.5, 3, -0.6);
     hero.speed = 0;
-    hero.car.group.position.set(-127, 0, 159);
-    hero.car.group.rotation.y = 2.4;
-    // Place three crew members near Rico (reuse pedestrians, parked in place).
-    var crewSpots = [
-      { x: -135, z: 164, coat: 0xff2d95 },
-      { x: -129, z: 163, coat: 0x00e5ff },
-      { x: -134, z: 157, coat: 0x2eff8f },
-    ];
-    crewSpots.forEach(function (spot, i) {
-      var p = SB.people.list[i];
-      if (!p) return;
-      p.x = spot.x; p.z = spot.z;
-      p.heading = 2.6;
-      p.speed = 0;
-      p.walkTarget = { x: spot.x, z: spot.z };
-      p.home = { x: spot.x, z: spot.z };
-      p.person.group.position.set(spot.x, 0, spot.z);
-      p.person.group.rotation.y = 2.6;
-    });
-    SB.police.setWanted(0);
-    SB.missions.start(0);
-    SB.hud.showDialogue('rosa', 'The boat docks at midnight, Rico. We do this clean — no heat.');
-    // The mission's second line fires at 4.5s; re-show Rosa after it.
-    SB.hud.showDialogue('rosa', 'The boat docks at midnight, Rico. We do this clean — no heat.', 5200);
-    game.camMode = 'foot';
+    police.setWanted(0);
+    snapCamera(game, 6.2, 2.0, 11, -1, 0.9, 1.5);
+    // clean title shot: no HUD, no dialogue behind the title screen
+    if (hud.el.hud) hud.el.hud.style.display = 'none';
+    hud.showTitle(false);
+  } else if (name === 'map') {
+    // AAA city map overlay with the GPS route (mission stage 1: garage).
+    state.inCar = true;
+    state.money = 42780;
+    missions.jobIndex = 0;
+    missions.stageIndex = 1;
+    hero.setPose(0, 0, 0);
+    hero.speed = 0;
+    police.setWanted(2);
+    if (police.pursuit[0]) {
+      police.pursuit[0].setPose(3.4, -24, 0);
+      police.pursuit[0].group.visible = true;
+      police.pursuit[0].freezeBlink();
+    }
+    snapCamera(game, 1.4, 2.6, 6.8, 0, 1.2, -6);
+    // the map overlay is drawn from live HUD state (see main.js)
+    game.openMapNextFrame = true;
+  } else if (name === 'marina') {
+    // On foot at the quay: Rico centre-frame, crew with umbrellas, boats, docks.
+    state.inCar = false;
+    state.money = 43980;
+    // job 1 stage 1 (enter-car) cannot auto-complete on foot, so the panel
+    // stays coherent; clear the queued dialogue so the Rosa line below stays.
+    missions.jobIndex = 0;
+    missions.stageIndex = 0;
+    missions.dialogue = [];
+    rico.group.position.set(56, 0.8, -18);
+    rico.group.rotation.y = -Math.PI / 2; // face the docks (+X)
+    hero.setPose(51, -26, 0.15);
+    hero.speed = 0;
+    police.setWanted(0);
+    snapCamera(game, 50, 2.6, -10, 56, 1.3, -18);
+    hud.showDialogue('rosa', 'Tonight the city learns our name, Rico. Drive it home.', 999);
   }
 
-  Sh.apply = function (mode, game) {
-    Sh.mode = mode;
-    if (mode === 'chase') shotChase(game);
-    else if (mode === 'title') shotTitle(game);
-    else if (mode === 'map') shotMap(game);
-    else if (mode === 'marina') shotMarina(game);
-    Sh.ready = true;
-    if (window.__shotDone) window.__shotDone(mode);
-  };
-
-  SB.shots = Sh;
-})();
+  game.shotMode = name;
+  // freeze almost immediately: the hero must not drive away from the snapped
+  // camera, and the HUD only needs a frame or two to populate.
+  game.freezeAfterFrames = 2;
+  return true;
+}

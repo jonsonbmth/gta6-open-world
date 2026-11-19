@@ -1,53 +1,47 @@
-// SOLMAR BAY — save / load in localStorage. Resume restores the exact
-// mission and stage; it never restarts a job's stages.
-(function () {
-  'use strict';
-  window.SB = window.SB || {};
+// Save / resume via localStorage. Resume restores the exact job stage —
+// it never restarts a job or a stage.
 
-  var KEY = 'solmarbay-save-v7';
-  var S = {};
+import { CFG } from './config.js';
 
-  S.save = function (state) {
-    try {
-      var data = {
-        version: 7,
-        cash: state.cash,
-        respect: state.respect,
-        missionIndex: state.missionIndex,
-        missionStage: state.missionStage,
-        completed: state.completed,
-        garage: state.garage,
-        hero: { x: state.x, z: state.z, heading: state.heading },
-        inCar: state.inCar,
-        station: state.station,
-        savedAt: Date.now(),
-      };
-      window.localStorage.setItem(KEY, JSON.stringify(data));
-      return true;
-    } catch (e) {
-      return false;
-    }
-  };
+export function saveGame(state) {
+  try {
+    const data = {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      money: state.money,
+      respect: state.respect,
+      missions: state.missions.serialize(),
+      player: { x: state.playerPos.x, z: state.playerPos.z, heading: state.heading },
+      inCar: state.inCar,
+      carName: state.carName,
+      station: state.station,
+      day: state.day,
+      minutes: state.minutes,
+      garage: state.garage,
+    };
+    localStorage.setItem(CFG.saveKey, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
-  S.load = function () {
-    try {
-      var raw = window.localStorage.getItem(KEY);
-      if (!raw) return null;
-      var data = JSON.parse(raw);
-      if (!data || data.version !== 7) return null;
-      return data;
-    } catch (e) {
-      return null;
-    }
-  };
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(CFG.saveKey);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data.v !== 1) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
 
-  S.hasSave = function () {
-    return S.load() !== null;
-  };
+export function hasSave() {
+  try { return !!localStorage.getItem(CFG.saveKey); } catch (e) { return false; }
+}
 
-  S.clear = function () {
-    try { window.localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
-  };
-
-  SB.save = S;
-})();
+export function clearSave() {
+  try { localStorage.removeItem(CFG.saveKey); } catch (e) { /* ignore */ }
+}

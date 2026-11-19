@@ -1,204 +1,192 @@
-// SOLMAR BAY — configuration: palette, names, districts, missions data.
-// Every name here is invented for this game. Nothing is copied from any
-// commercial game or from any other entry.
-(function () {
-  'use strict';
-  window.SB = window.SB || {};
-  SB.config = {
-    // --- palette: bright night-neon-rain, never muddy ---
-    skyTop: 0x070a24,
-    skyHorizon: 0x2a1e5e,
-    fogColor: 0x0b102e,
-    fogDensity: 0.0032,
-    roadColor: 0x0b0e1c,
-    roadRoughness: 0.18,
-    roadMetalness: 0.75,
-    heroRed: 0xe62129,
-    neonPink: 0xff2d95,
-    neonCyan: 0x00e5ff,
-    neonYellow: 0xffd23f,
-    neonGreen: 0x2eff8f,
-    neonOrange: 0xff7a1a,
-    policeRed: 0xff2020,
-    policeBlue: 0x2080ff,
-    lampWarm: 0xffb347,
-    cashGreen: 0x39ff88,
+// SOLMAR BAY — shared constants: palette, names, world layout, radio, districts.
+// Every name here is invented for this game; nothing is taken from any commercial game.
 
-    // --- city layout ---
-    cityHalfX: 170,
-    cityHalfZ: 200,
-    avenueX: 0,
-    avenueWidth: 16,
-    streetEvery: 40,
-    blockSize: 40,
+export const CFG = {
+  // world layout (metres)
+  avenueX: 0, // main chase avenue runs along Z at x = 0
+  avenueHalfWidth: 7,
+  avenueZMin: -260,
+  avenueZMax: 80,
+  crossStreets: [30, -40, -90, -140, -190, -230],
+  bayX: 64, // water starts east of this
+  marina: { x: 56, z: -18 }, // quay / docks
+  // chase shot framing (cover) — low, close, rear-3/4 from the right
+  chaseCam: { back: 6.8, side: 2.4, height: 2.6, lookAhead: 6, lookHeight: 1.2 },
+  // palette — night neon rain
+  skyTop: 0x070a24,
+  skyHorizon: 0x2a1a4a,
+  fogColor: 0x0d1026,
+  fogDensity: 0.0055,
+  asphalt: 0x11131c,
+  heroRed: 0xe62129,
+  neonPink: '#ff2d95',
+  neonCyan: '#00e5ff',
+  neonYellow: '#ffd23f',
+  neonGreen: '#39ff8e',
+  neonOrange: '#ff7a1a',
+  policeRed: 0xff2222,
+  policeBlue: 0x2266ff,
+  // gameplay
+  maxWanted: 5,
+  saveKey: 'solmar-bay-save-v1',
+  startMoney: 42780,
+  startRespect: 320,
+  respectMax: 1000,
+};
 
-    // --- districts (our own names) ---
-    districts: [
-      { name: 'LUMEN STRIP', color: '#ff2d95', x: -40, z: -20, w: 120, h: 160 },
-      { name: 'MARINA DEL SOL', color: '#00e5ff', x: -150, z: 120, w: 120, h: 90 },
-      { name: 'VISTA HEIGHTS', color: '#ffd23f', x: 60, z: -160, w: 150, h: 110 },
-      { name: 'OLD HARBOUR', color: '#ff7a1a', x: -150, z: -140, w: 130, h: 110 },
-      { name: 'CORAL DOCKS', color: '#2eff8f', x: 60, z: 120, w: 150, h: 100 },
+export const DISTRICTS = [
+  { name: 'PALM ROW', x: -34, z: 10, w: 46, h: 60, color: '#ff2d95' },
+  { name: 'HARBOUR LIGHTS', x: 34, z: -30, w: 44, h: 70, color: '#00e5ff' },
+  { name: 'VELA QUARTER', x: -30, z: -80, w: 44, h: 66, color: '#ffd23f' },
+  { name: 'DOCKSIDE', x: 40, z: -120, w: 40, h: 70, color: '#39ff8e' },
+  { name: 'CROWN HEIGHTS', x: -26, z: -170, w: 46, h: 80, color: '#b98cff' },
+  { name: 'MIRAMAR', x: 30, z: -210, w: 46, h: 70, color: '#ff7a1a' },
+  { name: 'OLD PIER', x: 66, z: -18, w: 30, h: 46, color: '#7fd4ff' },
+  { name: 'CANAL DISTRICT', x: -32, z: -240, w: 50, h: 40, color: '#ff5c7a' },
+];
+
+// Shop signs along the avenue — invented names, neon colours. Full street length.
+export const SHOPS = [
+  'LUMEN NOODLES', 'VOLT TATTOO', 'CORAL MART', 'NEON PETALS',
+  'TIDE & TACO', 'ORBIT GAMES', 'MARINA MOTEL', 'SALT AIR BAR',
+  'PIXEL DONUTS', 'WAVE RECORDS', 'KAIJU RAMEN', 'LOTUS LAUNDRY',
+  'EMBER GRILL', 'NOVA NAILS', 'DRIFT SURF', 'HALO BAKERY',
+  'PULSE PHONES', 'GILDED PAWN', 'AQUA SPA', 'COMET BURGERS',
+  'VELVET CINEMA', 'JUNIPER BOOKS', 'TURBO WASH', 'SIREN SUSHI',
+];
+export const NEON_COLORS = ['#ff2d95', '#00e5ff', '#ffd23f', '#39ff8e', '#ff7a1a', '#b98cff'];
+
+export const RADIO = [
+  { name: 'VAPOR 101.3', genre: 'synthwave', songs: ['Glass Horizon', 'Midnight Alloy', 'Static Bloom'] },
+  { name: 'BAIA FM 88.7', genre: 'latin', songs: ['Salsa del Mar', 'Calle Luna', 'Ritmo Rojo'] },
+  { name: 'MIDNIGHT DRIVE 96.1', genre: 'lofi', songs: ['Rain on Chrome', 'Slow Avenue', 'Neon Reverie'] },
+];
+
+export const CARS = {
+  hero: { name: 'VULPINE S', color: 0xe62129, topSpeed: 62, accel: 26 },
+  police: { name: 'INTERCEPTOR', color: 0x14161d, topSpeed: 55, accel: 24 },
+  traffic: [
+    { name: 'KOBALT GT', color: 0x2a6cff },
+    { name: 'STRATA X', color: 0xc8ccd4 },
+    { name: 'MARLIN SEDAN', color: 0x3fae6a },
+    { name: 'ORCA SUV', color: 0x8a5cff },
+    { name: 'PELICAN VAN', color: 0xd8a13c },
+    { name: 'FALCO COUPE', color: 0x37c8c0 },
+  ],
+};
+
+export const CREW = {
+  rico: { name: 'Rico Marín', role: 'Driver', color: '#ffd23f', cap: '#e62129', coat: '#ffd23f' },
+  lena: { name: 'Lena "Wrench" Ortiz', role: 'Mechanic', color: '#ff7a1a', hair: '#7a2d12' },
+  rosa: { name: 'Mama Rosa', role: 'Fixer', color: '#b98cff', hair: '#e8e8e8' },
+  dario: { name: 'Dario "Fuze" Kane', role: 'Muscle', color: '#39ff8e', hair: '#141414' },
+};
+
+// 7 story jobs. Each has stages; a stage completes by reaching a marker,
+// collecting, waiting out, or holding wanted stars (wanted stages LATCH).
+export const JOBS = [
+  {
+    id: 1, chapter: 'CH 1', title: 'First Run',
+    brief: 'Mama Rosa needs the VULPINE S moved before the rain lets up. Drive it to the garage on Palm Row.',
+    stages: [
+      { label: 'Get in the VULPINE S', type: 'enter-car', hint: 'Press E near the red sports car' },
+      { label: 'Drive to the garage on Palm Row', type: 'goto', at: { x: -14, z: -52 }, hint: 'Follow the GPS route on the map' },
+      { label: 'Lose the heat — stay unseen 20s', type: 'evade', seconds: 20, hint: 'Keep out of the police cones' },
+      { label: 'Park inside the garage', type: 'goto', at: { x: -14, z: -58 }, hint: 'Slow down and roll in' },
     ],
-
-    // --- neon shops along Lumen Avenue (invented names) ---
-    shops: [
-      { name: 'LUMEN LANES', color: '#ff2d95', kind: 'bowling' },
-      { name: 'AQUA BAR', color: '#00e5ff', kind: 'bar' },
-      { name: 'CORAL CLUB', color: '#ff7a1a', kind: 'club' },
-      { name: 'VELVET OCTOPUS', color: '#b26bff', kind: 'bar' },
-      { name: 'PIER 9 DINER', color: '#ffd23f', kind: 'diner' },
-      { name: 'MIDNIGHT RAMEN', color: '#ff2d55', kind: 'food' },
-      { name: 'SOLMAR SUSHI', color: '#2eff8f', kind: 'food' },
-      { name: 'GALAXY BOWL', color: '#00e5ff', kind: 'bowling' },
-      { name: 'BRASS ANCHOR', color: '#ffb347', kind: 'bar' },
-      { name: 'HOTEL MIRAMAR', color: '#ff2d95', kind: 'hotel' },
-      { name: 'CINEMA LUNA', color: '#7ab8ff', kind: 'cinema' },
-      { name: 'VOLTA CAFE', color: '#ffd23f', kind: 'cafe' },
-      { name: 'TURBO TACOS', color: '#ff7a1a', kind: 'food' },
-      { name: 'DRIFT GARAGE', color: '#2eff8f', kind: 'garage' },
-      { name: "SAILOR'S REST", color: '#00e5ff', kind: 'hotel' },
-      { name: 'PALM LIQUOR', color: '#ff2d55', kind: 'shop' },
+    reward: 1200,
+    dialogue: [
+      { who: 'rosa', text: 'Rico, mijo — the car is hot. Move it before the storm breaks.' },
+      { who: 'lena', text: 'Engine is tuned, brakes are new. Don\'t scratch her, capisce?' },
     ],
-
-    // --- radio (invented stations, procedural music) ---
-    radio: [
-      { name: 'WAVEFORM 88.1', dj: 'DJ MARISOL', genre: 'synthwave', bpm: 112 },
-      { name: 'CORAL FM 102.4', dj: 'EL CAPITAN', genre: 'latin', bpm: 96 },
-      { name: 'STATIC 107.7', dj: 'NADIA VOLT', genre: 'rock', bpm: 128 },
+  },
+  {
+    id: 2, chapter: 'CH 2', title: 'Wet Work, Dry Pay',
+    brief: 'Collect the drop from the Old Pier and bring it back to Lena\'s workshop.',
+    stages: [
+      { label: 'Reach the Old Pier docks', type: 'goto', at: { x: 56, z: -18 }, hint: 'Head east to the marina' },
+      { label: 'Pick up the package', type: 'collect', hint: 'Walk to the glowing crate' },
+      { label: 'Return to Lena\'s workshop', type: 'goto', at: { x: -18, z: -96 }, hint: 'Any car will do — steal one if you must' },
     ],
-
-    // --- cars ---
-    heroCar: { name: 'VULPINE S', color: 0xe62129, topSpeed: 62, accel: 26 },
-    policeCar: { name: 'INTERCEPTOR', topSpeed: 56, accel: 24 },
-    trafficCars: [
-      { name: 'CORALLO', color: 0x2e6fd8 },
-      { name: 'PIERROT', color: 0xd8d8d8 },
-      { name: 'MAMBA', color: 0x1fae5f },
-      { name: 'SOLMAR CAB', color: 0xffd23f },
-      { name: 'BRISA', color: 0xb26bff },
-      { name: 'DELFIN', color: 0x00b8a9 },
+    reward: 1800,
+    dialogue: [
+      { who: 'dario', text: 'Pier is watched. Walk in like you own the place.' },
+      { who: 'lena', text: 'Package better be dry. My workshop, my rules.' },
     ],
-
-    // --- crew ---
-    crew: {
-      rico: { name: 'RICO MARIN', role: 'wheelman', coat: '#ffd23f' },
-      rosa: { name: 'MAMA ROSA', role: 'fixer', coat: '#ff2d95' },
-      lena: { name: 'LENA "WRENCH" ORTIZ', role: 'mechanic', coat: '#00e5ff' },
-      dario: { name: 'DARIO "FUZE" KANE', role: 'muscle', coat: '#2eff8f' },
-    },
-
-    // --- police units ---
-    units: ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 4', 'UNIT 9'],
-
-    // --- the 7 story jobs ---
-    missions: [
-      {
-        id: 1, title: 'ONE LAST JOB', chapter: 'CH 1',
-        brief: 'Mama Rosa calls. Meet her at the Coral Docks. One last job, Rico.',
-        stages: [
-          { text: 'Get in the VULPINE S', type: 'enter_car' },
-          { text: 'Drive to Coral Docks', type: 'reach', x: 120, z: 150, r: 12 },
-          { text: 'Talk to Mama Rosa', type: 'reach', x: 118, z: 156, r: 6 },
-        ],
-        pay: 1200, respect: 120,
-        dialogue: [
-          { who: 'rosa', text: 'Rico. One last job and we are square. Meet me at the docks.' },
-          { who: 'rico', text: 'Last time you said that, I spent a night in a cell.' },
-        ],
-      },
-      {
-        id: 2, title: "WRENCH'S FAVOR", chapter: 'CH 1',
-        brief: 'Lena needs a gearbox from Vista Heights. Fetch it, bring it to the garage.',
-        stages: [
-          { text: 'Pick up the gearbox', type: 'reach', x: 110, z: -140, r: 10 },
-          { text: 'Deliver it to Drift Garage', type: 'reach', x: -14, z: 30, r: 10 },
-        ],
-        pay: 900, respect: 100,
-        dialogue: [
-          { who: 'lena', text: 'Gearbox is at the Vista Heights yard. Do not scratch the paint.' },
-        ],
-      },
-      {
-        id: 3, title: 'NIGHT RUN', chapter: 'CH 2',
-        brief: 'Three checkpoints, one timer. The Strip is watching. Show them the VULPINE S.',
-        stages: [
-          { text: 'Checkpoint 1: Lumen Strip', type: 'reach', x: 0, z: -80, r: 10, timer: 75 },
-          { text: 'Checkpoint 2: Old Harbour', type: 'reach', x: -110, z: -120, r: 10 },
-          { text: 'Checkpoint 3: Marina del Sol', type: 'reach', x: -120, z: 140, r: 10 },
-        ],
-        pay: 1800, respect: 160,
-        dialogue: [
-          { who: 'dario', text: 'Timer is running, Rico. Drive like you stole it. You did.' },
-        ],
-      },
-      {
-        id: 4, title: 'HEAT WAVE', chapter: 'CH 2',
-        brief: 'The cops are all over the Strip. Lose a 3-star wanted level and vanish.',
-        stages: [
-          { text: 'Raise the heat: reach 3 stars', type: 'wanted_at_least', stars: 3 },
-          { text: 'Lose the cops', type: 'lose_heat' },
-          { text: 'Reach the safehouse', type: 'reach', x: -60, z: 60, r: 10 },
-        ],
-        pay: 2200, respect: 200,
-        dialogue: [
-          { who: 'lena', text: 'Three stars and counting. Break their line of sight, Rico.' },
-        ],
-      },
-      {
-        id: 5, title: 'HARBOR LIGHTS', chapter: 'CH 3',
-        brief: 'A package is coming in by boat at Old Harbour. Collect it, deliver to the marina.',
-        stages: [
-          { text: 'Collect the package', type: 'reach', x: -140, z: -130, r: 10 },
-          { text: 'Deliver to Marina del Sol', type: 'reach', x: -130, z: 150, r: 10 },
-        ],
-        pay: 2600, respect: 220,
-        dialogue: [
-          { who: 'rosa', text: 'The boat docks at midnight. Do not keep the harbour waiting.' },
-        ],
-      },
-      {
-        id: 6, title: 'THE LONG WAY HOME', chapter: 'CH 3',
-        brief: 'Dario is in trouble downtown. Pick him up and drive him home through the heat.',
-        stages: [
-          { text: 'Pick up Dario downtown', type: 'reach', x: 40, z: -170, r: 10 },
-          { text: 'Drive Dario home', type: 'reach', x: -90, z: 170, r: 10 },
-        ],
-        pay: 3200, respect: 260,
-        dialogue: [
-          { who: 'dario', text: 'I am at the tower, Rico. Cops everywhere. Bring the fast car.' },
-        ],
-      },
-      {
-        id: 7, title: 'SOLMAR RUN', chapter: 'CH 4',
-        brief: 'The finale. Five stars, one city, one last run to the safehouse. Finish it.',
-        stages: [
-          { text: 'Grab the case at Coral Docks', type: 'reach', x: 130, z: 160, r: 10 },
-          { text: 'Outrun the 5-star hunt', type: 'wanted_at_least', stars: 5 },
-          { text: 'Reach the safehouse', type: 'reach', x: -60, z: 60, r: 10 },
-        ],
-        pay: 5000, respect: 400,
-        dialogue: [
-          { who: 'rosa', text: 'Five stars, Rico. This is the run they will talk about.' },
-          { who: 'rico', text: 'Then let them talk. VULPINE S, full send.' },
-        ],
-      },
+  },
+  {
+    id: 3, chapter: 'CH 3', title: 'Three Stars Over Solmar',
+    brief: 'The crew needs a distraction. Rack up 3 wanted stars and hold them — then vanish.',
+    stages: [
+      { label: 'Raise your wanted level to 3 stars', type: 'wanted', stars: 3, hint: 'Speed past patrols. They will notice.' },
+      { label: 'Hold 3 stars for 30 seconds', type: 'wanted-hold', stars: 3, seconds: 30, hint: 'Stay moving — the latch keeps your progress' },
+      { label: 'Lose the cops and reach the safehouse', type: 'goto', at: { x: -24, z: -150 }, hint: 'Break line of sight, then run' },
     ],
-
-    // --- landmarks for the AAA map ---
-    landmarks: [
-      { name: 'LUMEN TOWER', icon: 'tower', x: 30, z: -170 },
-      { name: 'PIER 9', icon: 'pier', x: -140, z: 150 },
-      { name: 'PELICAN ISLE', icon: 'isle', x: 195, z: -40 },
-      { name: 'DRIFT GARAGE', icon: 'garage', x: -14, z: 30 },
-      { name: 'CINEMA LUNA', icon: 'cinema', x: 14, z: -50 },
-      { name: 'SAFEHOUSE', icon: 'house', x: -60, z: 60 },
-      { name: 'CORAL DOCKS', icon: 'anchor', x: 120, z: 155 },
-      { name: 'OLD HARBOUR', icon: 'boat', x: -140, z: -130 },
+    reward: 2500,
+    dialogue: [
+      { who: 'rosa', text: 'Make noise, Rico. The whole city should be looking at you.' },
+      { who: 'dario', text: 'Three stars and you walk away? That\'s legend talk.' },
     ],
+  },
+  {
+    id: 4, chapter: 'CH 4', title: 'Neon Alley Getaway',
+    brief: 'Dario is pinned down in Vela Quarter. Get him out and drive him to the docks.',
+    stages: [
+      { label: 'Reach Dario in Vela Quarter', type: 'goto', at: { x: -26, z: -84 }, hint: 'He is behind the noodle shop' },
+      { label: 'Pick up Dario', type: 'collect', hint: 'Stop close and he jumps in' },
+      { label: 'Escape to Dockside with 2+ stars', type: 'goto', at: { x: 38, z: -128 }, hint: 'They will chase — drive like it' },
+    ],
+    reward: 3200,
+    dialogue: [
+      { who: 'dario', text: 'Rico! Alley behind the shop — move, move, MOVE!' },
+      { who: 'lena', text: 'His door better close. I am not fixing dents tonight.' },
+    ],
+  },
+  {
+    id: 5, chapter: 'CH 5', title: 'The Long Way Home',
+    brief: 'A client car must cross the whole city at night. Deliver it to Crown Heights untouched.',
+    stages: [
+      { label: 'Take the client car from the marina', type: 'enter-car', hint: 'The silver Strata X by the quay' },
+      { label: 'Drive north to Crown Heights', type: 'goto', at: { x: -22, z: -182 }, hint: 'Keep the paint clean — damage costs you' },
+      { label: 'Hand over the keys', type: 'collect', hint: 'Park in the marked bay' },
+    ],
+    reward: 4000,
+    dialogue: [
+      { who: 'rosa', text: 'One scratch and the client pays half. Drive like glass.' },
+      { who: 'lena', text: 'It is a Strata X, not a boat. Treat her gently.' },
+    ],
+  },
+  {
+    id: 6, chapter: 'CH 6', title: 'Storm Break',
+    brief: 'The storm peaks at midnight. Run the ring road, hit every checkpoint, beat the clock.',
+    stages: [
+      { label: 'Checkpoint 1 — Canal District', type: 'goto', at: { x: -30, z: -236 }, hint: 'North, past the towers' },
+      { label: 'Checkpoint 2 — Miramar beach', type: 'goto', at: { x: 44, z: -208 }, hint: 'Cut east across the bridge' },
+      { label: 'Checkpoint 3 — back to Palm Row', type: 'goto', at: { x: -10, z: 20 }, hint: 'Full send down the avenue' },
+    ],
+    reward: 5000,
+    dialogue: [
+      { who: 'dario', text: 'Ring road, three flags, one storm. You in or you in?' },
+      { who: 'lena', text: 'Wipers on, foot down. The city is yours tonight.' },
+    ],
+  },
+  {
+    id: 7, chapter: 'CH 7', title: 'Solmar by Night',
+    brief: 'The final job: one last run through every district, then meet the crew at the marina.',
+    stages: [
+      { label: 'Tour Palm Row, Vela, Crown Heights', type: 'goto', at: { x: -24, z: -170 }, hint: 'The GPS route covers the tour' },
+      { label: 'Meet the crew at the Old Pier', type: 'goto', at: { x: 56, z: -18 }, hint: 'End of the road — and the beginning' },
+    ],
+    reward: 8000,
+    dialogue: [
+      { who: 'rosa', text: 'Tonight the city learns our name, Rico. Drive it home.' },
+      { who: 'lena', text: 'Whatever happens — the crew rides together.' },
+    ],
+  },
+];
 
-    startCash: 42780,
-    startRespect: 320,
-    respectMax: 1000,
-  };
-})();
+export const TIPS = [
+  'WASD drive / walk · E enter car · M map · R radio · F action · Space handbrake',
+  'Steal any parked car. Police notice speeding and collisions.',
+  'Missions pay cash. Cash buys respect. Respect opens the city.',
+];

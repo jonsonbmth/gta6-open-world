@@ -1,157 +1,144 @@
-// SOLMAR BAY — pedestrians: capsule torsos, sphere heads, cylinder limbs,
-// raincoats and umbrellas. They stroll the sidewalks and panic-run when a
-// chase comes through.
-(function () {
-  'use strict';
-  window.SB = window.SB || {};
-  var U = SB.utils;
+// People: Rico on foot, pedestrians, panicking runners, the crew at the marina.
+// Bodies are capsule torso + sphere head + cylinder limbs — never boxy.
 
-  var P = { list: [] };
-  var COATS = [0xffd23f, 0xff2d55, 0x00e5ff, 0x2eff8f, 0xb26bff, 0xff7a1a, 0xe8e8e8];
+import { mulberry32 } from './utils.js';
 
-  function makePerson(rng, coatColor) {
-    var g = new THREE.Group();
-    var skin = new THREE.MeshStandardMaterial({
-      color: U.pick(rng, [0xc98a5e, 0x8a5a34, 0xd9a06f, 0x6b4226, 0xe8b48a]),
-      roughness: 0.7,
-    });
-    var coat = new THREE.MeshStandardMaterial({ color: coatColor, roughness: 0.45, metalness: 0.15 });
-    var dark = new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: 0.8 });
-    // Torso: capsule.
-    var torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.55, 4, 10), coat);
-    torso.position.y = 1.05;
-    g.add(torso);
-    // Head: sphere + hair cap.
-    var head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10), skin);
-    head.position.y = 1.72;
-    g.add(head);
-    var hair = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-      new THREE.MeshStandardMaterial({ color: U.pick(rng, [0x1a1210, 0x3a2410, 0x0d0d0d, 0x7a2d12]), roughness: 0.9 })
+function limbMat(color) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+}
+
+export function createPerson({ coat = 0x33415e, skin = 0xd9a06b, hair = 0x2a1a0c, pants = 0x1c1e26, hat = null, umbrella = false, scale = 1 } = {}) {
+  const g = new THREE.Group();
+  const torso = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.26, 0.55, 4, 10),
+    limbMat(coat),
+  );
+  torso.position.y = 1.05;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 12), limbMat(skin));
+  head.position.y = 1.72;
+  g.add(head);
+  const hairM = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    limbMat(hair),
+  );
+  hairM.position.y = 1.76;
+  g.add(hairM);
+  if (hat) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.09, 12), limbMat(hat));
+    cap.position.y = 1.9;
+    g.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.22), limbMat(hat));
+    brim.position.set(0, 1.87, -0.26);
+    g.add(brim);
+  }
+  const arms = [];
+  const legs = [];
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.62, 8), limbMat(coat));
+    arm.position.set(side * 0.34, 1.12, 0);
+    g.add(arm);
+    arms.push(arm);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.72, 8), limbMat(pants));
+    leg.position.set(side * 0.13, 0.42, 0);
+    g.add(leg);
+    legs.push(leg);
+  }
+  if (umbrella) {
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 6), limbMat(0x222222));
+    stick.position.set(0.34, 1.75, 0);
+    g.add(stick);
+    const canopy = new THREE.Mesh(
+      new THREE.ConeGeometry(0.75, 0.3, 10),
+      new THREE.MeshStandardMaterial({ color: 0xff2d95, roughness: 0.5, side: THREE.DoubleSide }),
     );
-    hair.position.y = 1.74;
-    g.add(hair);
-    // Arms + legs: cylinders, pivoted for the walk swing.
-    var limbs = {};
-    [['armL', -0.32, 1.3], ['armR', 0.32, 1.3]].forEach(function (a) {
-      var pivot = new THREE.Group();
-      pivot.position.set(a[1], a[2], 0);
-      var arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.62, 6), coat);
-      arm.position.y = -0.31;
-      pivot.add(arm);
-      g.add(pivot);
-      limbs[a[0]] = pivot;
-    });
-    [['legL', -0.13, 0.78], ['legR', 0.13, 0.78]].forEach(function (a) {
-      var pivot = new THREE.Group();
-      pivot.position.set(a[1], a[2], 0);
-      var leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.72, 6), dark);
-      leg.position.y = -0.36;
-      pivot.add(leg);
-      g.add(pivot);
-      limbs[a[0]] = pivot;
-    });
-    // Umbrella for some.
-    if (rng() < 0.45) {
-      var stick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 5), dark);
-      stick.position.set(0.25, 1.85, 0);
-      g.add(stick);
-      var canopy = new THREE.Mesh(
-        new THREE.ConeGeometry(0.55, 0.3, 8),
-        new THREE.MeshStandardMaterial({
-          color: U.pick(rng, [0xff2d95, 0x00e5ff, 0xffd23f, 0xe62129]),
-          roughness: 0.5, side: THREE.DoubleSide,
-        })
-      );
-      canopy.position.set(0.25, 2.22, 0);
-      g.add(canopy);
-    }
-    return { group: g, limbs: limbs };
+    canopy.position.set(0.34, 2.2, 0);
+    g.add(canopy);
   }
+  g.scale.setScalar(scale);
+  return {
+    group: g,
+    walkPhase: Math.random() * 6,
+    animate(dt, speed) {
+      this.walkPhase += dt * (2 + speed * 3.2);
+      const s = Math.sin(this.walkPhase) * Math.min(1, speed * 0.9 + 0.12);
+      arms[0].rotation.x = s * 0.7;
+      arms[1].rotation.x = -s * 0.7;
+      legs[0].rotation.x = -s * 0.8;
+      legs[1].rotation.x = s * 0.8;
+      g.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.04 * Math.min(1, speed);
+    },
+    idle() {
+      arms[0].rotation.x = 0; arms[1].rotation.x = 0;
+      legs[0].rotation.x = 0; legs[1].rotation.x = 0;
+    },
+  };
+}
 
-  function spawn(scene, count, rng) {
-    for (var i = 0; i < count; i++) {
-      var coat = U.pick(rng, COATS);
-      var person = makePerson(rng, coat);
-      scene.add(person.group);
-      // Stroll along a sidewalk or the marina.
-      var onMarina = rng() < 0.25;
-      var x, z;
-      if (onMarina) {
-        x = -160 + rng() * 50;
-        z = 125 + rng() * 45;
-      } else {
-        x = (rng() < 0.5 ? -12 : 12) + U.rand(rng, -1.5, 1.5);
-        z = U.rand(rng, -170, 170);
-      }
-      P.list.push({
-        person: person,
-        x: x, z: z,
-        heading: rng() * Math.PI * 2,
-        speed: 1.1 + rng() * 0.8,
-        phase: rng() * Math.PI * 2,
-        panicked: false,
-        panicTime: 0,
-        walkTarget: { x: x, z: z },
-        home: { x: x, z: z },
-      });
-      person.group.position.set(x, 0, z);
-    }
-  }
+export function createRico() {
+  const rico = createPerson({ coat: 0xffd23f, skin: 0xd9a06b, hair: 0x3a2410, pants: 0x22242e, hat: 0xe62129 });
+  rico.group.rotation.y = Math.PI; // face the camera start view
+  return rico;
+}
 
-  function update(dt, time, playerX, playerZ, playerSpeed, wanted) {
-    P.list.forEach(function (p) {
-      var d2 = U.dist2(p.x, p.z, playerX, playerZ);
-      // Panic when a fast car or a chase is near.
-      if (!p.panicked && wanted >= 2 && d2 < 900) {
-        p.panicked = true;
-        p.panicTime = 4 + Math.random() * 3;
-      }
-      if (!p.panicked && playerSpeed > 25 && d2 < 200) {
-        p.panicked = true;
-        p.panicTime = 2.5 + Math.random() * 2;
-      }
-      var speed = p.speed;
-      if (p.panicked) {
-        p.panicTime -= dt;
-        speed = 4.6; // run!
-        // Flee directly away from the player.
-        var dx = p.x - playerX, dz = p.z - playerZ;
-        var d = Math.sqrt(dx * dx + dz * dz) || 1;
-        p.heading = Math.atan2(dx / d, dz / d);
-        if (p.panicTime <= 0) p.panicked = false;
-      } else {
-        // Wander: pick a new nearby target when reached.
-        var td2 = U.dist2(p.x, p.z, p.walkTarget.x, p.walkTarget.z);
-        if (td2 < 4) {
-          p.walkTarget = {
-            x: U.clamp(p.home.x + U.rand(Math.random, -25, 25), -165, 165),
-            z: U.clamp(p.home.z + U.rand(Math.random, -25, 25), -190, 190),
-          };
-        }
-        var tx = p.walkTarget.x - p.x, tz = p.walkTarget.z - p.z;
-        p.heading = U.angleLerp(p.heading, Math.atan2(tx, tz), Math.min(1, dt * 3));
-      }
-      p.x += Math.sin(p.heading) * speed * dt;
-      p.z += Math.cos(p.heading) * speed * dt;
-      p.x = U.clamp(p.x, -165, 165);
-      p.z = U.clamp(p.z, -195, 195);
-      // Keep out of buildings.
-      var hit = SB.world.collideCircle(p.x, p.z, 0.4);
-      if (hit) { p.x = hit.x; p.z = hit.z; }
-      p.person.group.position.set(p.x, 0, p.z);
-      p.person.group.rotation.y = p.heading;
-      // Walk swing.
-      p.phase += dt * (p.panicked ? 11 : 5.5);
-      var swing = Math.sin(p.phase) * (p.panicked ? 0.9 : 0.55);
-      p.person.limbs.armL.rotation.x = swing;
-      p.person.limbs.armR.rotation.x = -swing;
-      p.person.limbs.legL.rotation.x = -swing;
-      p.person.limbs.legR.rotation.x = swing;
+// Pedestrians strolling the sidewalks; some panic and run when the heat is on.
+export function buildPedestrians(scene, count = 16) {
+  const rnd = mulberry32(4242);
+  const coats = [0x33415e, 0x6e3b3b, 0x2f5e4a, 0x5e4a2f, 0x4a3a6e, 0x8a8f9e, 0xb8455c];
+  const skins = [0xd9a06b, 0xc98d5f, 0xb97f52, 0x8a5a33, 0xe8b88a];
+  const peds = [];
+  for (let i = 0; i < count; i++) {
+    const p = createPerson({
+      coat: coats[i % coats.length],
+      skin: skins[i % skins.length],
+      hair: 0x1a120a + (i % 3) * 0x101010,
+      umbrella: rnd() < 0.4,
+      scale: 0.94 + rnd() * 0.12,
     });
+    const side = rnd() < 0.5 ? -1 : 1;
+    const x = side * (8.4 + rnd() * 1.6);
+    const z = 40 - rnd() * 260;
+    const dir = rnd() < 0.5 ? -1 : 1;
+    p.group.position.set(x, 0, z);
+    p.group.rotation.y = dir < 0 ? 0 : Math.PI;
+    p.dir = dir;
+    p.side = side;
+    p.speed = 1.1 + rnd() * 0.7;
+    p.panicking = false;
+    scene.add(p.group);
+    peds.push(p);
   }
+  return {
+    peds,
+    panicAll() { for (const p of peds) p.panicking = Math.random() < 0.6; },
+    calmAll() { for (const p of peds) p.panicking = false; },
+    update(dt) {
+      for (const p of peds) {
+        const sp = p.panicking ? p.speed * 4.2 : p.speed;
+        p.group.position.z += p.dir * sp * dt;
+        if (p.group.position.z < -245) { p.group.position.z = 55; }
+        if (p.group.position.z > 60) { p.group.position.z = -240; }
+        p.animate(dt, sp);
+      }
+    },
+  };
+}
 
-  P.spawn = spawn;
-  P.update = update;
-  SB.people = P;
-})();
+// The crew standing on the marina quay (dialogue shot).
+export function buildCrew(scene) {
+  const crew = [];
+  const defs = [
+    { who: 'lena', coat: 0xff7a1a, skin: 0xc98d5f, hair: 0x7a2d12, x: 54.5, z: -12, rot: -1.2 },
+    { who: 'rosa', coat: 0xb98cff, skin: 0xb97f52, hair: 0xe8e8e8, x: 57.5, z: -10, rot: -1.6 },
+    { who: 'dario', coat: 0x39ff8e, skin: 0x8a5a33, hair: 0x141414, x: 60.5, z: -13, rot: -2.0 },
+  ];
+  for (const d of defs) {
+    const p = createPerson({ coat: d.coat, skin: d.skin, hair: d.hair, umbrella: true, scale: 1.02 });
+    p.group.position.set(d.x, 0.8, d.z);
+    p.group.rotation.y = d.rot;
+    p.who = d.who;
+    scene.add(p.group);
+    crew.push(p);
+  }
+  return crew;
+}
