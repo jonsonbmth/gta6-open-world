@@ -1,143 +1,204 @@
-// SOLMAR BAY — shared constants: palette, city layout, names.
-// Every name here is invented for this game. The night is BRIGHT neon rain:
-// a purple-blue sky, glowing streets, wet asphalt full of reflections.
+// SOLMAR BAY — configuration: palette, names, districts, missions data.
+// Every name here is invented for this game. Nothing is copied from any
+// commercial game or from any other entry.
+(function () {
+  'use strict';
+  window.SB = window.SB || {};
+  SB.config = {
+    // --- palette: bright night-neon-rain, never muddy ---
+    skyTop: 0x070a24,
+    skyHorizon: 0x2a1e5e,
+    fogColor: 0x0b102e,
+    fogDensity: 0.0032,
+    roadColor: 0x0b0e1c,
+    roadRoughness: 0.18,
+    roadMetalness: 0.75,
+    heroRed: 0xe62129,
+    neonPink: 0xff2d95,
+    neonCyan: 0x00e5ff,
+    neonYellow: 0xffd23f,
+    neonGreen: 0x2eff8f,
+    neonOrange: 0xff7a1a,
+    policeRed: 0xff2020,
+    policeBlue: 0x2080ff,
+    lampWarm: 0xffb347,
+    cashGreen: 0x39ff88,
 
-export const PALETTE = {
-  skyTop: 0x070b26,
-  skyHorizon: 0x2a1b52,
-  fog: 0x141a3a,
-  asphalt: 0x0c0f1e,
-  sidewalk: 0x1a1e30,
-  water: 0x0a1e3a,
-  sand: 0x2a2438,
-  neonPink: '#ff2d95',
-  neonCyan: '#00e5ff',
-  neonAmber: '#ffb020',
-  neonGreen: '#39ff88',
-  neonViolet: '#a06bff',
-  neonOrange: '#ff6b2d',
-  heroRed: 0xe62129,
-  policeRed: 0xff2222,
-  policeBlue: 0x2266ff,
-  lampWarm: 0xffb45e,
-  windowWarm: '#ffd489',
-  windowCool: '#9fd8ff',
-};
+    // --- city layout ---
+    cityHalfX: 170,
+    cityHalfZ: 200,
+    avenueX: 0,
+    avenueWidth: 16,
+    streetEvery: 40,
+    blockSize: 40,
 
-// City bounds (metres). The bay lies west of x = -200.
-export const CITY = {
-  minX: -320, maxX: 320, minZ: -320, maxZ: 320,
-  coastX: -200,
-  // Lumen Avenue: the main boulevard, north-south at x = 0.
-  avenueX: 0, avenueHalfWidth: 12,
-  // Cross streets (east-west) and side streets (north-south).
-  crossStreetsZ: [-240, -160, -80, 0, 80, 160, 240],
-  sideStreetsX: [-160, -80, 80, 160],
-  streetHalfWidth: 7,
-  ringRadius: 285,
-};
+    // --- districts (our own names) ---
+    districts: [
+      { name: 'LUMEN STRIP', color: '#ff2d95', x: -40, z: -20, w: 120, h: 160 },
+      { name: 'MARINA DEL SOL', color: '#00e5ff', x: -150, z: 120, w: 120, h: 90 },
+      { name: 'VISTA HEIGHTS', color: '#ffd23f', x: 60, z: -160, w: 150, h: 110 },
+      { name: 'OLD HARBOUR', color: '#ff7a1a', x: -150, z: -140, w: 130, h: 110 },
+      { name: 'CORAL DOCKS', color: '#2eff8f', x: 60, z: 120, w: 150, h: 100 },
+    ],
 
-// Five named districts. Each has a colour used by the minimap and the AAA city map.
-export const DISTRICTS = [
-  { id: 'lumen', name: 'LUMEN STRIP', x0: -80, z0: -80, x1: 80, z1: 80, color: '#ff2d95', blurb: 'Downtown neon core' },
-  { id: 'harbour', name: 'OLD HARBOUR', x0: -200, z0: 80, x1: -80, z1: 240, color: '#00e5ff', blurb: 'Piers, boats, warehouses' },
-  { id: 'marina', name: 'MARINA DEL SOL', x0: -200, z0: -240, x1: -80, z1: -80, color: '#ffb020', blurb: 'Beachfront hotels' },
-  { id: 'vista', name: 'VISTA HEIGHTS', x0: 80, z0: -240, x1: 280, z1: -80, color: '#a06bff', blurb: 'Hillside homes' },
-  { id: 'coral', name: 'CORAL DOCKS', x0: 80, z0: 80, x1: 280, z1: 240, color: '#39ff88', blurb: 'Docks and containers' },
-];
+    // --- neon shops along Lumen Avenue (invented names) ---
+    shops: [
+      { name: 'LUMEN LANES', color: '#ff2d95', kind: 'bowling' },
+      { name: 'AQUA BAR', color: '#00e5ff', kind: 'bar' },
+      { name: 'CORAL CLUB', color: '#ff7a1a', kind: 'club' },
+      { name: 'VELVET OCTOPUS', color: '#b26bff', kind: 'bar' },
+      { name: 'PIER 9 DINER', color: '#ffd23f', kind: 'diner' },
+      { name: 'MIDNIGHT RAMEN', color: '#ff2d55', kind: 'food' },
+      { name: 'SOLMAR SUSHI', color: '#2eff8f', kind: 'food' },
+      { name: 'GALAXY BOWL', color: '#00e5ff', kind: 'bowling' },
+      { name: 'BRASS ANCHOR', color: '#ffb347', kind: 'bar' },
+      { name: 'HOTEL MIRAMAR', color: '#ff2d95', kind: 'hotel' },
+      { name: 'CINEMA LUNA', color: '#7ab8ff', kind: 'cinema' },
+      { name: 'VOLTA CAFE', color: '#ffd23f', kind: 'cafe' },
+      { name: 'TURBO TACOS', color: '#ff7a1a', kind: 'food' },
+      { name: 'DRIFT GARAGE', color: '#2eff8f', kind: 'garage' },
+      { name: "SAILOR'S REST", color: '#00e5ff', kind: 'hotel' },
+      { name: 'PALM LIQUOR', color: '#ff2d55', kind: 'shop' },
+    ],
 
-export function districtAt(x, z) {
-  for (const d of DISTRICTS) {
-    if (x >= d.x0 && x <= d.x1 && z >= d.z0 && z <= d.z1) return d;
-  }
-  if (x < CITY.coastX) return { id: 'bay', name: 'SOLMAR BAY', color: '#00e5ff', blurb: 'Open water' };
-  return { id: 'outskirts', name: 'OUTSKIRTS', color: '#8899bb', blurb: 'Ring highway' };
-}
+    // --- radio (invented stations, procedural music) ---
+    radio: [
+      { name: 'WAVEFORM 88.1', dj: 'DJ MARISOL', genre: 'synthwave', bpm: 112 },
+      { name: 'CORAL FM 102.4', dj: 'EL CAPITAN', genre: 'latin', bpm: 96 },
+      { name: 'STATIC 107.7', dj: 'NADIA VOLT', genre: 'rock', bpm: 128 },
+    ],
 
-// Eight landmarks for the AAA city map.
-export const LANDMARKS = [
-  { name: 'Lumen Tower', x: 24, z: -32, icon: 'tower' },
-  { name: 'The Meridian', x: -48, z: -120, icon: 'hotel' },
-  { name: 'Pier 9', x: -216, z: 150, icon: 'anchor' },
-  { name: 'Old Lighthouse', x: -248, z: -56, icon: 'light' },
-  { name: 'Galaxy Bowl', x: 128, z: 24, icon: 'star' },
-  { name: 'Coral Market', x: 180, z: 160, icon: 'shop' },
-  { name: 'Solmar Bridge', x: -232, z: -40, icon: 'bridge' },
-  { name: 'Pelican Isle', x: -264, z: -40, icon: 'isle' },
-];
+    // --- cars ---
+    heroCar: { name: 'VULPINE S', color: 0xe62129, topSpeed: 62, accel: 26 },
+    policeCar: { name: 'INTERCEPTOR', topSpeed: 56, accel: 24 },
+    trafficCars: [
+      { name: 'CORALLO', color: 0x2e6fd8 },
+      { name: 'PIERROT', color: 0xd8d8d8 },
+      { name: 'MAMBA', color: 0x1fae5f },
+      { name: 'SOLMAR CAB', color: 0xffd23f },
+      { name: 'BRISA', color: 0xb26bff },
+      { name: 'DELFIN', color: 0x00b8a9 },
+    ],
 
-// Neon shopfronts along Lumen Avenue. All names invented for this game.
-export const SHOPS = [
-  { name: 'LA LUNA', color: '#ff2d95', kind: 'bar' },
-  { name: 'VOLT', color: '#00e5ff', kind: 'electronics' },
-  { name: 'TIDE & TACO', color: '#ffb020', kind: 'food' },
-  { name: 'MIRAGE', color: '#a06bff', kind: 'club' },
-  { name: 'HOTEL AZUL', color: '#00e5ff', kind: 'hotel' },
-  { name: 'CASA FUEGO', color: '#ff6b2d', kind: 'food' },
-  { name: 'PIER 9', color: '#39ff88', kind: 'bar' },
-  { name: 'SUENO MOTEL', color: '#ff2d95', kind: 'motel' },
-  { name: 'GALAXY BOWL', color: '#a06bff', kind: 'bowling' },
-  { name: 'EL FARO', color: '#ffb020', kind: 'cafe' },
-  { name: 'MIDNIGHT GARAGE', color: '#00e5ff', kind: 'garage' },
-  { name: 'SOL CAFE', color: '#ffb020', kind: 'cafe' },
-  { name: 'AQUA BAR', color: '#00e5ff', kind: 'bar' },
-  { name: 'LUMEN LANES', color: '#39ff88', kind: 'bowling' },
-  { name: 'CORAL CLUB', color: '#ff2d95', kind: 'club' },
-  { name: 'TURBO WASH', color: '#00aaff', kind: 'carwash' },
-];
+    // --- crew ---
+    crew: {
+      rico: { name: 'RICO MARIN', role: 'wheelman', coat: '#ffd23f' },
+      rosa: { name: 'MAMA ROSA', role: 'fixer', coat: '#ff2d95' },
+      lena: { name: 'LENA "WRENCH" ORTIZ', role: 'mechanic', coat: '#00e5ff' },
+      dario: { name: 'DARIO "FUZE" KANE', role: 'muscle', coat: '#2eff8f' },
+    },
 
-// Radio stations (procedural WebAudio, no audio files).
-export const RADIO = [
-  {
-    id: 'waveform', name: 'WAVEFORM 88.1', genre: 'Synthwave',
-    tracks: ['Midnight Overdrive', 'Rain on Lumen Ave', 'Ultraviolet'],
-    bpm: 112, root: 55, scale: [0, 3, 5, 7, 10], bright: true,
-  },
-  {
-    id: 'palma', name: 'PALMA 104.2', genre: 'Latin funk',
-    tracks: ['Harbour Lights', 'Palm Shadows', 'Coastal Run'],
-    bpm: 98, root: 65.41, scale: [0, 2, 4, 7, 9], bright: false,
-  },
-  {
-    id: 'static', name: 'STATIC 97.6', genre: 'Lo-fi beats',
-    tracks: ['Velvet Storm', 'Neon Tide', 'Slow Marina'],
-    bpm: 84, root: 49, scale: [0, 3, 5, 7, 12], bright: false,
-  },
-];
+    // --- police units ---
+    units: ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 4', 'UNIT 9'],
 
-// Traffic car models (hero car is the VULPINE S).
-export const TRAFFIC_MODELS = [
-  { name: 'COMET', type: 'sedan', colors: [0x2b6cb0, 0x718096, 0x9b2c2c] },
-  { name: 'SUNDOWN', type: 'coupe', colors: [0xd69e2e, 0x2d3748, 0x744210] },
-  { name: 'BARRACUDA', type: 'muscle', colors: [0x1a202c, 0x97266d, 0x276749] },
-  { name: 'PELICAN', type: 'van', colors: [0xe2e8f0, 0x4a5568, 0x2c5282] },
-  { name: 'TORO', type: 'suv', colors: [0x2d3748, 0x744210, 0x1a365d] },
-  { name: 'TAXI', type: 'taxi', colors: [0xf6c90e] },
-];
+    // --- the 7 story jobs ---
+    missions: [
+      {
+        id: 1, title: 'ONE LAST JOB', chapter: 'CH 1',
+        brief: 'Mama Rosa calls. Meet her at the Coral Docks. One last job, Rico.',
+        stages: [
+          { text: 'Get in the VULPINE S', type: 'enter_car' },
+          { text: 'Drive to Coral Docks', type: 'reach', x: 120, z: 150, r: 12 },
+          { text: 'Talk to Mama Rosa', type: 'reach', x: 118, z: 156, r: 6 },
+        ],
+        pay: 1200, respect: 120,
+        dialogue: [
+          { who: 'rosa', text: 'Rico. One last job and we are square. Meet me at the docks.' },
+          { who: 'rico', text: 'Last time you said that, I spent a night in a cell.' },
+        ],
+      },
+      {
+        id: 2, title: "WRENCH'S FAVOR", chapter: 'CH 1',
+        brief: 'Lena needs a gearbox from Vista Heights. Fetch it, bring it to the garage.',
+        stages: [
+          { text: 'Pick up the gearbox', type: 'reach', x: 110, z: -140, r: 10 },
+          { text: 'Deliver it to Drift Garage', type: 'reach', x: -14, z: 30, r: 10 },
+        ],
+        pay: 900, respect: 100,
+        dialogue: [
+          { who: 'lena', text: 'Gearbox is at the Vista Heights yard. Do not scratch the paint.' },
+        ],
+      },
+      {
+        id: 3, title: 'NIGHT RUN', chapter: 'CH 2',
+        brief: 'Three checkpoints, one timer. The Strip is watching. Show them the VULPINE S.',
+        stages: [
+          { text: 'Checkpoint 1: Lumen Strip', type: 'reach', x: 0, z: -80, r: 10, timer: 75 },
+          { text: 'Checkpoint 2: Old Harbour', type: 'reach', x: -110, z: -120, r: 10 },
+          { text: 'Checkpoint 3: Marina del Sol', type: 'reach', x: -120, z: 140, r: 10 },
+        ],
+        pay: 1800, respect: 160,
+        dialogue: [
+          { who: 'dario', text: 'Timer is running, Rico. Drive like you stole it. You did.' },
+        ],
+      },
+      {
+        id: 4, title: 'HEAT WAVE', chapter: 'CH 2',
+        brief: 'The cops are all over the Strip. Lose a 3-star wanted level and vanish.',
+        stages: [
+          { text: 'Raise the heat: reach 3 stars', type: 'wanted_at_least', stars: 3 },
+          { text: 'Lose the cops', type: 'lose_heat' },
+          { text: 'Reach the safehouse', type: 'reach', x: -60, z: 60, r: 10 },
+        ],
+        pay: 2200, respect: 200,
+        dialogue: [
+          { who: 'lena', text: 'Three stars and counting. Break their line of sight, Rico.' },
+        ],
+      },
+      {
+        id: 5, title: 'HARBOR LIGHTS', chapter: 'CH 3',
+        brief: 'A package is coming in by boat at Old Harbour. Collect it, deliver to the marina.',
+        stages: [
+          { text: 'Collect the package', type: 'reach', x: -140, z: -130, r: 10 },
+          { text: 'Deliver to Marina del Sol', type: 'reach', x: -130, z: 150, r: 10 },
+        ],
+        pay: 2600, respect: 220,
+        dialogue: [
+          { who: 'rosa', text: 'The boat docks at midnight. Do not keep the harbour waiting.' },
+        ],
+      },
+      {
+        id: 6, title: 'THE LONG WAY HOME', chapter: 'CH 3',
+        brief: 'Dario is in trouble downtown. Pick him up and drive him home through the heat.',
+        stages: [
+          { text: 'Pick up Dario downtown', type: 'reach', x: 40, z: -170, r: 10 },
+          { text: 'Drive Dario home', type: 'reach', x: -90, z: 170, r: 10 },
+        ],
+        pay: 3200, respect: 260,
+        dialogue: [
+          { who: 'dario', text: 'I am at the tower, Rico. Cops everywhere. Bring the fast car.' },
+        ],
+      },
+      {
+        id: 7, title: 'SOLMAR RUN', chapter: 'CH 4',
+        brief: 'The finale. Five stars, one city, one last run to the safehouse. Finish it.',
+        stages: [
+          { text: 'Grab the case at Coral Docks', type: 'reach', x: 130, z: 160, r: 10 },
+          { text: 'Outrun the 5-star hunt', type: 'wanted_at_least', stars: 5 },
+          { text: 'Reach the safehouse', type: 'reach', x: -60, z: 60, r: 10 },
+        ],
+        pay: 5000, respect: 400,
+        dialogue: [
+          { who: 'rosa', text: 'Five stars, Rico. This is the run they will talk about.' },
+          { who: 'rico', text: 'Then let them talk. VULPINE S, full send.' },
+        ],
+      },
+    ],
 
-// The crew.
-export const CREW = {
-  rico: { name: 'Rico Marín', role: 'Driver', coat: '#ffd60a', skin: '#c98d5e', hair: '#1a1210', hat: 'hood' },
-  lena: { name: "Lena 'Wrench' Ortiz", role: 'Mechanic', coat: '#ff2d95', skin: '#8d5524', hair: '#2b0f1e', hat: 'goggles' },
-  dario: { name: "Dario 'Fuze' Kane", role: 'Muscle', coat: '#00e5ff', skin: '#e8b08a', hair: '#3a2415', hat: 'bandana' },
-  rosa: { name: 'Mama Rosa', role: 'The Fixer', coat: '#a06bff', skin: '#b57a4a', hair: '#e8e8e8', hat: 'bun' },
-};
+    // --- landmarks for the AAA map ---
+    landmarks: [
+      { name: 'LUMEN TOWER', icon: 'tower', x: 30, z: -170 },
+      { name: 'PIER 9', icon: 'pier', x: -140, z: 150 },
+      { name: 'PELICAN ISLE', icon: 'isle', x: 195, z: -40 },
+      { name: 'DRIFT GARAGE', icon: 'garage', x: -14, z: 30 },
+      { name: 'CINEMA LUNA', icon: 'cinema', x: 14, z: -50 },
+      { name: 'SAFEHOUSE', icon: 'house', x: -60, z: 60 },
+      { name: 'CORAL DOCKS', icon: 'anchor', x: 120, z: 155 },
+      { name: 'OLD HARBOUR', icon: 'boat', x: -140, z: -130 },
+    ],
 
-// Police units.
-export const POLICE_UNITS = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 33', 'UNIT 45'];
-export const HELI_NAME = 'AIR-1';
-
-// Gameplay tuning.
-export const TUNE = {
-  heroTopSpeed: 62,        // m/s (~223 km/h)
-  heroAccel: 26,
-  heroBrake: 42,
-  trafficSpeed: 11,
-  policeTopSpeed: 58,
-  wantedDecayPerSec: 0.02,
-  nearMissDist: 4.5,
-  nearMissReward: 250,
-  startMoney: 42780,
-  startRespect: 320,
-  respectMax: 1000,
-};
+    startCash: 42780,
+    startRespect: 320,
+    respectMax: 1000,
+  };
+})();

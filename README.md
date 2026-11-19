@@ -1,71 +1,52 @@
-[![Make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![Rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![Reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# SOLMAR BAY — Make GTA 6
+# SOLMAR BAY — a night neon-rain open-world crime game
 
-An original open-world crime game in the spirit of GTA 6, set in the rain-soaked
-neon city of **Solmar Bay** at night. Drive the vivid red **VULPINE S** down
-Lumen Avenue, outrun named police units under the AIR-1 helicopter spotlight,
-take on 7 story jobs with Rico Marín and his crew, and explore a living coastal
-city — traffic, panicking pedestrians, a marina, garages, radio, and a full
-AAA city map.
+Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
 
-Built with three.js (vendored offline), zero network requests, zero assets
-downloaded at run time. Everything is procedural: the city, the cars, the
-people, the neon, the rain, the radio.
+**SOLMAR BAY** is a complete open-world crime game set in a rain-soaked neon coastal
+city at night. You are Rico Marín, a wheelman pulled back for one last job by Mama
+Rosa, with Lena "Wrench" Ortiz on comms and Dario "Fuze" Kane riding shotgun.
 
-## Play
+## What is in the game
 
-```sh
-node serve.ts
-# open http://localhost:8080
-```
+- **A city to explore on foot and by car** — five districts (Lumen Strip, Marina del
+  Sol, Vista Heights, Old Harbour, Coral Docks), a curved ring highway, a bay with
+  Pelican Isle, and a working marina. All original: our own names, characters,
+  vehicles, story, art and sounds.
+- **Driving** — stealable cars with arcade handling, drifting, near-miss bonuses, a
+  garage that keeps what you steal, and a hero car, the VULPINE S.
+- **Police** — a 0–5 star wanted system with named units (UNIT 7, UNIT 12, UNIT 21),
+  roadblocks at 3 stars, and the AIR-1 helicopter with a searchlight at 4.
+- **Missions** — 7 story jobs with staged objectives, dialogue with portraits,
+  payouts in cash and respect.
+- **Life** — traffic AI, pedestrians who panic and run when a chase comes through,
+  rain, neon shop signs, palms, and three procedural radio stations.
+- **HUD** — dense four-corner HUD with a round rotating minimap, a full AAA city map
+  (M), save/load in localStorage, and a start screen.
+
+## Controls
 
 | Key | Action |
 | --- | --- |
-| W / S | Drive / brake · walk forward / back |
-| A / D | Steer · strafe |
+| W / S | Accelerate / brake (on foot: move) |
+| A / D | Steer (on foot: strafe) |
+| Space | Handbrake / drift |
 | E | Enter / exit car |
-| Space | Handbrake / sprint |
+| F | Punch (on foot) |
 | M | City map |
-| R | Radio station |
-| J | Advance mission dialogue |
-| Enter | Start game |
+| R | Next radio station |
+| P | Pause / save |
+| H | Horn |
 
-## What's in the world
+## Play it
 
-- **Night neon rain** — purple-blue sky, wet asphalt with stretched neon and
-  police-light reflections, rain streaks, warm haze, fake bloom from additive
-  glow sprites.
-- **Open city** — five named districts, a curved ring highway, the Old Harbour
-  marina, Pelican Isle offshore, palm-lined boulevards, 4 building types with
-  lit windows, dense neon shopfronts.
-- **Cars** — extruded-profile bodies (low nose, sloped hood, trapezoid glass
-  cabin, fastback + wing spoiler), traffic AI, stealable cars, the VULPINE S
-  hero car with a full-width glowing taillight bar.
-- **Wanted system** — 0–5 stars, named units (UNIT 7 / 12 / 21), pursuit AI,
-  AIR-1 helicopter with a visible searchlight cone.
-- **Story** — 7 numbered jobs with dialogue and character portraits (Rico,
-  Mama Rosa, Lena "Wrench" Ortiz, Dario "Fuze" Kane), save/load via
-  localStorage, garage, respect progression.
-- **HUD** — mission panel, money + wanted stars, round minimap, radio +
-  speedometer, floating action text (NEAR MISS, DRIFT).
+Serve `game/` with any static file server and open `index.html` in desktop Chrome.
+Everything runs offline: three.js is vendored under `game/vendor/`, all textures are
+generated in code, and all sound is synthesized with WebAudio. No network request.
 
-## Layout
-
-- `game/` — the game (index.html + ES modules under `src/`, three.js vendored
-  under `game/vendor/`).
-- `main.ts` — hands the entry in: copies `game/` and `screenshots/` to
-  `/output` and writes `/output/dossier.json` with the kit's `buildDossier`.
-- `screenshots/` — 4 screenshots (chase cover, title, city map, marina).
-
-## Entry
-
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
-
-Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+`?perf=low` halves the render resolution on weaker machines.
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

@@ -1,43 +1,53 @@
-// SOLMAR BAY — save/load via localStorage. Progress survives a reload:
-// money, respect, current job + stage, radio station, garage, position.
+// SOLMAR BAY — save / load in localStorage. Resume restores the exact
+// mission and stage; it never restarts a job's stages.
+(function () {
+  'use strict';
+  window.SB = window.SB || {};
 
-const KEY = 'solmar-bay-save-v6';
+  var KEY = 'solmarbay-save-v7';
+  var S = {};
 
-export function saveGame(state) {
-  try {
-    const data = {
-      version: 6,
-      money: state.money,
-      respect: state.respect,
-      jobIndex: state.jobIndex,
-      stageIndex: state.stageIndex,
-      radioIndex: state.radioIndex,
-      garage: state.garage,
-      playerX: state.playerX,
-      playerZ: state.playerZ,
-      playerHeading: state.playerHeading,
-      completedJobs: state.completedJobs,
-      savedAt: Date.now(),
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch {
-    return false;
-  }
-}
+  S.save = function (state) {
+    try {
+      var data = {
+        version: 7,
+        cash: state.cash,
+        respect: state.respect,
+        missionIndex: state.missionIndex,
+        missionStage: state.missionStage,
+        completed: state.completed,
+        garage: state.garage,
+        hero: { x: state.x, z: state.z, heading: state.heading },
+        inCar: state.inCar,
+        station: state.station,
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(KEY, JSON.stringify(data));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
 
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (data.version !== 6) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
+  S.load = function () {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || data.version !== 7) return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  };
 
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
-}
+  S.hasSave = function () {
+    return S.load() !== null;
+  };
+
+  S.clear = function () {
+    try { window.localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+  };
+
+  SB.save = S;
+})();
