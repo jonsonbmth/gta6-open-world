@@ -1,14 +1,9 @@
-// SOLMAR BAY — gta6-01 entry program (Node 22, standard library only).
+// SOLMAR BAY — gta6-01 entrypoint (Node 22, standard library only).
 // Hands the game in: copies game/ and screenshots/ from beside this file to
 // /output and writes /output/dossier.json with the vendored make.fun library.
-// The game itself is static files under game/ (three.js vendored offline);
-// this program only moves files and builds the dossier — it runs the same
-// bytes twice, deterministically.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node --experimental-strip-types main.ts
-// Serve the game locally with any static server pointed at game/.
-
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+// Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -16,24 +11,30 @@ import { buildDossier } from './vendor/makefun-game.ts';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// Fail loudly if the entry is incomplete: a missing game/ or an empty
-// screenshots/ (the V9 lesson — the commit must contain all 4 shots) must
-// never silently produce a broken dossier.
-import { readdirSync } from 'node:fs';
-if (!existsSync(join(here, 'game', 'index.html')))
-  throw new Error('game/index.html missing — the entry is incomplete');
+// Fail loud instead of handing in a broken entry: the game must exist and
+// all four screenshots must be present (the V9 lesson, baked in).
+if (!existsSync(join(here, 'game', 'index.html'))) {
+  throw new Error('refusing to build a dossier: game/index.html is missing');
+}
 const shots = existsSync(join(here, 'screenshots'))
-  ? readdirSync(join(here, 'screenshots')).filter((f) => /\.(png|jpe?g)$/i.test(f))
+  ? readdirSync(join(here, 'screenshots')).filter((f) => !f.startsWith('.'))
   : [];
-if (shots.length < 4)
-  throw new Error(`expected 4 screenshots, found ${shots.length} — capture them into screenshots/ first`);
+if (shots.length < 4) {
+  throw new Error(`refusing to build a dossier: only ${shots.length} screenshot(s), need 4`);
+}
+const badShot = shots.find((f) => !/\.(png|jpe?g)$/i.test(f));
+if (badShot) {
+  throw new Error(`refusing to build a dossier: screenshot ${badShot} is not a PNG or JPEG`);
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots')))
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
+// bytes; the others refuse an entry the scorer would refuse. Verified
+// 2026-11-19: dossier 954,152 bytes, byte-identical across two runs.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

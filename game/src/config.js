@@ -1,121 +1,108 @@
-// SOLMAR BAY — shared constants: dusk palette, city layout, names.
-// Everything in this file is original: our own city, people, cars, stations.
-
-export const SEED_DEFAULT = 1;
-
-// --- Dusk palette (V11: BRIGHT golden hour, not midnight) -----------------
+// SOLMAR BAY — shared constants: palette, districts, chapters, shops, radio.
+// Palette rule (V12): NATURAL golden hour. Blue sky above, warm gold at the
+// horizon, buildings in cream / sand / white / pale yellow / glass blue.
+// Neon is an accent, never the dominant color. No purple or magenta sky.
 export const PALETTE = {
-  skyTop: 0x2a3a7d, // deep blue-violet, high up
-  skyMid: 0x8a5aa8, // purple band
-  skyHorizon: 0xff9e64, // warm orange at the horizon
-  sunCore: 0xfff3c4, // sun disc
-  sunGlow: 0xffb36b,
-  fog: 0xe8967a, // warm haze
-  hemiSky: 0xffd9b0,
-  hemiGround: 0x6b5570,
-  sunLight: 0xffb070,
-  ambient: 0x8a7a9a,
-  asphalt: 0x33323a,
+  skyTop: 0x4a7ec2,
+  skyMid: 0x8fb4dd,
+  skyHorizon: 0xf2b25c,
+  sun: 0xffd9a0,
+  sunLow: 0xff9e57,
+  fog: 0xe8c48d,
+  fogDensity: 0.0016,
+  ambient: 0xffe3b8,
+  ambientIntensity: 0.85,
+  sunIntensity: 2.4,
+  buildingTones: [0xf2e3c6, 0xe8d3ac, 0xf7f3e8, 0xf0d9a0, 0xcfe0ea, 0xe5cfa8, 0xf5e9d0],
+  road: 0x2b2b30,
   sidewalk: 0x9a938a,
-  heroRed: 0xd81e28,
-  policeBlack: 0x1c2230,
-  policeWhite: 0xe8ecf2,
+  water: 0x2e6f8e,
 };
 
-// --- City layout (world units; avenue runs along Z, north = +Z) ------------
-export const CITY = {
-  avenueX: 0, // Solmar Avenue centre line
-  avenueHalfWidth: 7,
-  avenueZMin: -140,
-  avenueZMax: 140,
-  crossStreets: [-90, -45, 0, 45, 90], // z of east-west streets
-  blockDepth: 30, // building blocks sit this deep off the avenue
-  marinaX: 96, // marina quay centre
-  marinaZ: 0,
-  bayX: 150, // open water starts here
-  skylineZ: -128, // downtown towers
-  bounds: 165, // playable radius-ish box half-size
+export const WORLD = {
+  avenueX: 0,
+  avenueHalf: 7,
+  avenueNorth: -120,
+  avenueSouth: 120,
+  streets: [-80, -40, 0, 40, 80],
+  marinaX0: 62,
+  marinaX1: 118,
+  marinaZ0: -30,
+  marinaZ1: 50,
+  groundSize: 320,
 };
 
-// Districts for the map + HUD labels. Each: name, rect [x0,z0,x1,z1], colour.
 export const DISTRICTS = [
-  { name: 'CROWN HEIGHTS', rect: [-120, -120, -20, -60], color: '#8a6fd0' },
-  { name: 'MIRAMAR', rect: [20, -120, 120, -60], color: '#e08a4a' },
-  { name: 'VELA QUARTER', rect: [-120, -60, -20, 20], color: '#d0b43a' },
-  { name: 'DOCKSIDE', rect: [20, -20, 120, 40], color: '#3aa88a' },
-  { name: 'PALM ROW', rect: [-120, 20, -20, 120], color: '#d05a8a' },
-  { name: 'HARBOUR LIGHTS', rect: [20, 40, 120, 120], color: '#4a8ad0' },
-  { name: 'THE DOCKS', rect: [80, -40, 140, 40], color: '#3aa88a' },
+  { name: 'CROWN HEIGHTS', x0: -104, x1: -24, z0: -104, z1: -24, color: '#8a7fd6' },
+  { name: 'VELA QUARTER', x0: -104, x1: -24, z0: 24, z1: 104, color: '#e8c832' },
+  { name: 'PALM ROW', x0: -24, x1: 24, z0: 56, z1: 104, color: '#e87fb0' },
+  { name: 'MIRAMAR', x0: 24, x1: 104, z0: -104, z1: -24, color: '#e88a4a' },
+  { name: 'THE DOCKS', x0: 24, x1: 104, z0: 24, z1: 56, color: '#4ad6b0' },
+  { name: 'HARBOUR LIGHTS', x0: 24, x1: 104, z0: 56, z1: 104, color: '#4a9ae8' },
 ];
 
-// Landmarks (name, x, z) — drawn on the map, one label each.
+export const STREETS = [
+  { name: 'SOLMAR AVENUE', vertical: true, at: 0 },
+  { name: 'CROWN ROAD', vertical: false, at: -80 },
+  { name: 'CANAL STREET', vertical: false, at: -40 },
+  { name: 'VELA STREET', vertical: false, at: 40 },
+  { name: 'PALM BOULEVARD', vertical: false, at: 80 },
+  { name: 'RICO WAY', vertical: true, at: -48 },
+  { name: 'HARBOUR WAY', vertical: true, at: 48 },
+];
+
 export const LANDMARKS = [
-  { name: 'CROWN TOWER', x: -70, z: -95 },
-  { name: 'MIRAMAR BEACH', x: 55, z: -95 },
-  { name: 'LIGHTHOUSE', x: 108, z: -105 },
-  { name: 'VELA MARKET', x: -60, z: -10 },
-  { name: "LENA'S WORKSHOP", x: 60, z: 0 },
-  { name: 'DOCKSIDE YARD', x: 80, z: 25 },
-  { name: 'PALM ROW PLAZA', x: -70, z: 80 },
-  { name: 'OLD PIER', x: 105, z: 55 },
-  { name: 'PELICAN ISLE', x: 140, z: -30 },
-  { name: 'HARBOR BRIDGE', x: 135, z: -60 },
+  { name: 'CROWN TOWER', x: -64, z: -64 },
+  { name: 'VELA MARKET', x: -64, z: 56 },
+  { name: 'PALM ROW PLAZA', x: 0, z: 88 },
+  { name: "LENA'S WORKSHOP", x: 64, z: 48 },
+  { name: 'DOCKSIDE YARD', x: 80, z: 72 },
+  { name: 'OLD PIER', x: 96, z: 96 },
+  { name: 'MIRAMAR BEACH', x: 56, z: -72 },
+  { name: 'LIGHTHOUSE', x: 96, z: -96 },
+  { name: 'PELICAN ISLE', x: 130, z: -40 },
+  { name: 'HARBOR BRIDGE', x: 60, z: -60 },
 ];
 
-// Shop names — invented for SOLMAR BAY (never the competitor's names).
-export const SHOPS = [
-  { name: 'TACOS EL FARO', color: '#ff9e2c' },
-  { name: 'CLUB VELVET', color: '#ff4d8d' },
-  { name: 'PIZZA LUNA', color: '#ffd23a' },
-  { name: 'RAMEN YOKO', color: '#ff5a3a' },
-  { name: 'HOTEL MIRAMAR', color: '#3ad0ff' },
-  { name: 'BODEGA SOL', color: '#7dff6a' },
-  { name: 'CAFE BRISA', color: '#ff8a5c' },
-  { name: 'VINYL HAVEN', color: '#c07dff' },
-  { name: 'SURF & SUPPLY', color: '#3affd0' },
-  { name: 'BAR EL ANCLA', color: '#ff3a6a' },
-  { name: 'DULCE VIDA', color: '#ffe066' },
-  { name: 'AUTO SPA', color: '#5ca8ff' },
-];
-
-export const RADIO = [
-  { name: 'VAPOR 101.3', song: 'Glass Horizon — Neon Palms', hue: 0.55 },
-  { name: 'SOLMAR FM 88.1', song: 'Midnight Ferry — The Breakers', hue: 0.08 },
-  { name: 'COSTA DEL SOUL', song: 'Golden Hour — Marisol Vega', hue: 0.85 },
+export const CHAPTERS = [
+  { id: 1, title: 'First Run', objective: 'Drive to the garage on Crown Road', next: 'Follow the GPS route to Crown Road', target: { x: 0, z: -88 }, speaker: 'lena', line: 'Two units on your tail, Rico — lose them on Palm Row!' },
+  { id: 2, title: 'Harbour Lights', objective: 'Meet the contact at the marina', next: 'Head east to the docks', target: { x: 88, z: 8 }, speaker: 'rosa', line: 'Tonight the city learns our name, Rico. Drive it home.' },
+  { id: 3, title: 'Wrench Work', objective: "Get the VULPINE S tuned at Lena's workshop", next: "Drive to Lena's Workshop", target: { x: 64, z: 48 }, speaker: 'lena', line: 'Bring her in hot and I will make her faster. Trust me.' },
+  { id: 4, title: 'The Faro Run', objective: 'Deliver the package to Tacos El Faro', next: 'Keep it under 3 stars', target: { x: -24, z: -40 }, speaker: 'dario', line: 'No stops, no sirens, no heroes. Just drive, Rico.' },
+  { id: 5, title: 'Crown Heights', objective: 'Pick up the crew at Crown Tower', next: 'Watch the rooftops', target: { x: -64, z: -64 }, speaker: 'rosa', line: 'The whole city is watching tonight. Give them a show.' },
+  { id: 6, title: 'Bridge Jump', objective: 'Lose the heat across the Harbor Bridge', next: 'AIR-1 is overhead — stay low', target: { x: 60, z: -60 }, speaker: 'dario', line: 'Bridge is clear for thirty seconds. Do not waste them.' },
+  { id: 7, title: 'Homecoming', objective: 'Bring the VULPINE S home to Palm Row', next: 'Final run — make it count', target: { x: 0, z: 88 }, speaker: 'lena', line: 'Home stretch, Rico. This city is ours now.' },
 ];
 
 export const CREW = {
-  rico: { name: 'Rico Marín', color: '#ffd23a', skin: '#c68a5e', hair: '#2a1a10' },
-  lena: { name: 'Lena "Wrench" Ortiz', color: '#ff7ab0', skin: '#a06a42', hair: '#1a1a1a' },
-  rosa: { name: 'Mama Rosa', color: '#b08aff', skin: '#b57a52', hair: '#e8e8e8' },
-  dario: { name: 'Dario "Fuze" Kane', color: '#7ad0ff', skin: '#8a5a3a', hair: '#3a2410' },
+  lena: { name: 'Lena "Wrench" Ortiz', initial: 'L', color: '#c2185b' },
+  rosa: { name: 'Mama Rosa', initial: 'R', color: '#5e35b1' },
+  dario: { name: 'Dario "Fuze" Kane', initial: 'D', color: '#1565c0' },
+  rico: { name: 'Rico Marín', initial: 'R', color: '#ef6c00' },
 };
 
-// Chase-shot staging (shared by shots.js and the playtest).
-export const CHASE = {
-  heroStart: { x: 1.6, z: -12 },
-  policeAhead: [
-    { x: -2.2, z: 8 },
-    { x: 3.4, z: 26 },
-  ],
-  camBack: 6.6,
-  camSide: 2.6,
-  camHeight: 2.3,
-  camLookAhead: 5,
-  speedKmh: 167,
-};
+export const SHOPS = [
+  { name: 'RAMEN YOKO', color: '#ff5a5a' },
+  { name: 'PIZZA LUNA', color: '#ffd54d' },
+  { name: 'TACOS EL FARO', color: '#ff9e57' },
+  { name: 'CLUB VELVET', color: '#ff5a8a' },
+  { name: 'BODEGA', color: '#4ad6b0' },
+  { name: 'HOTEL LUNA', color: '#37c8f5' },
+  { name: 'LIQUOR', color: '#c792ff' },
+  { name: 'KEBAB HOUSE', color: '#ffb74d' },
+  { name: 'DONUTS', color: '#ff8ab0' },
+  { name: 'PHARMACY', color: '#7fe0a8' },
+  { name: 'BARBER', color: '#8fd0ff' },
+  { name: 'LAUNDRY', color: '#ffe082' },
+];
 
-// Deterministic RNG (mulberry32).
-export function rng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export const RADIO = [
+  { name: 'VAPOR 101.3', track: 'Glass Horizon — Neon Palms', bpm: 96, root: 220 },
+  { name: 'SOLMAR FM 88.5', track: 'Costa del Sol — The Marínas', bpm: 112, root: 196 },
+  { name: 'NIGHT DRIVE 99.5', track: 'Midnight Run — Velvet Static', bpm: 124, root: 174 },
+];
 
-export function pick(rand, arr) {
-  return arr[Math.floor(rand() * arr.length)];
-}
+export const POLICE_UNITS = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'AIR-1'];
+
+export const START_MONEY = 42780;
+export const SAVE_KEY = 'solmar-bay-save-v12';

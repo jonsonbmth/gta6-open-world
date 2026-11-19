@@ -1,43 +1,57 @@
-// SOLMAR BAY — save/resume via localStorage. Resume restores the exact
-// chapter + stage (it never restarts a job) and shows the current objective.
-const KEY = 'solmar-bay-save-v11';
+// Save / resume via localStorage. Resume restores money, chapter, respect
+// and position — it never restarts job stages.
+import { SAVE_KEY, START_MONEY } from './config.js';
 
-export function saveGame(state) {
-  try {
-    const data = {
-      version: 11,
-      savedAt: Date.now(),
-      money: state.money,
-      respect: state.respect,
-      missions: state.missions,
-      station: state.station,
-      muted: state.muted,
-      player: state.player,
-      car: state.car,
-    };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
-  }
+export function defaultSave() {
+  return {
+    money: START_MONEY,
+    chapter: 1,
+    stage: 0,
+    respect: 320,
+    respectLevel: 2,
+    player: { x: 0, z: 10, heading: Math.PI, inCar: true },
+    car: { x: 0, z: 10, heading: Math.PI },
+    wanted: 0,
+    savedAt: Date.now(),
+  };
 }
 
-export function loadGame() {
+export function loadSave() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.version !== 11) return null;
-    return data;
-  } catch (e) {
+    if (typeof data !== 'object' || data === null) return null;
+    return { ...defaultSave(), ...data };
+  } catch {
     return null;
   }
 }
 
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+export function writeSave(state) {
+  try {
+    const data = {
+      money: state.money,
+      chapter: state.chapter,
+      stage: state.stage,
+      respect: state.respect,
+      respectLevel: state.respectLevel,
+      player: state.player,
+      car: state.car,
+      wanted: state.wanted,
+      savedAt: Date.now(),
+    };
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function hasSave() {
-  return loadGame() !== null;
+export function clearSave() {
+  try {
+    window.localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // Storage unavailable — nothing to clear.
+  }
 }
