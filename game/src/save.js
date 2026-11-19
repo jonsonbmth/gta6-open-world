@@ -1,26 +1,23 @@
-// localStorage save for SOLMAR BAY. A save holds the player's money,
-// respect, current job + stage, position, wanted level and radio station, so
-// resuming drops the player back into the SAME job stage — never restarts it.
-// All access is guarded: private browsing or a full quota must never throw.
-const KEY = 'solmar-bay-save-v10';
+// SOLMAR BAY — save/resume via localStorage. Resume restores the exact
+// chapter + stage (it never restarts a job) and shows the current objective.
+const KEY = 'solmar-bay-save-v11';
 
 export function saveGame(state) {
   try {
-    const payload = {
-      v: 10,
+    const data = {
+      version: 11,
+      savedAt: Date.now(),
       money: state.money,
       respect: state.respect,
-      jobIndex: state.jobIndex,
-      stageIndex: state.stageIndex,
-      wanted: state.wanted,
+      missions: state.missions,
       station: state.station,
-      pos: state.pos ? [state.pos.x, state.pos.z] : null,
-      onFoot: !!state.onFoot,
-      savedAt: Date.now(),
+      muted: state.muted,
+      player: state.player,
+      car: state.car,
     };
-    localStorage.setItem(KEY, JSON.stringify(payload));
+    localStorage.setItem(KEY, JSON.stringify(data));
     return true;
-  } catch {
+  } catch (e) {
     return false;
   }
 }
@@ -30,21 +27,17 @@ export function loadGame() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.v !== 10) return null;
+    if (!data || data.version !== 11) return null;
     return data;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
 
-export function hasSave() {
-  return loadGame() !== null;
+export function clearSave() {
+  try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
 }
 
-export function clearSave() {
-  try {
-    localStorage.removeItem(KEY);
-  } catch {
-    /* ignore */
-  }
+export function hasSave() {
+  return loadGame() !== null;
 }

@@ -1,44 +1,46 @@
+# SOLMAR BAY — A Night in the Rain? No. A Dusk in Neon.
+
 [![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# SOLMAR BAY — A Night in the Rain
+An original open-world crime game in the spirit of GTA 6, built by an AI agent
+for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
 
-An original open-world crime game in the spirit of GTA 6, built for make.fun's
-"Make GTA 6" bounty ($1,666 in USDC). Rico Marín returns to a neon coastal
-city in the middle of a storm: seven story jobs, a wanted system with named
-police units and an AIR-1 helicopter, stealable cars, traffic and pedestrians,
-a radio with three stations, a garage, a full city map, and localStorage saves.
+**SOLMAR BAY** — Rico Marín is back in Solmar Bay, a neon coastal city at
+golden dusk. Seven story jobs with Mama Rosa, Lena "Wrench" Ortiz and Dario
+"Fuze" Kane. Drive the red VULPINE S through streets lined with neon shops,
+outrun the Solmar Bay police (wanted 0–5 stars, AIR-1 helicopter), steal cars,
+walk the marina, and watch the sun go down over Pelican Isle.
 
 ## Play
 
-Open `game/index.html` in a desktop browser (serve the `game/` folder over
-HTTP — ES modules need it), or run the entrypoint to build the dossier:
+Serve `game/` with any static server and open `game/index.html` in desktop
+Chrome. No network needed — three.js is vendored offline under `game/vendor/`.
 
-```sh
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
+- **WASD** drive / walk · **E** enter & exit car · **SPACE** handbrake ·
+  **SHIFT** run · **M** city map · **R** radio · **F** action · **N** mute
+- Progress saves to localStorage automatically; resume continues the job.
 
-## Controls
+## What is in the game
 
-- **WASD** drive / walk · **E** enter & exit car · **SPACE** handbrake
-- **SHIFT** run · **M** city map · **R** radio · **F** action · **G** garage · **N** mute
+- A full 3D city: Solmar Avenue, Crown Heights, Miramar, Vela Quarter,
+  Dockside, Palm Row, Harbour Lights, the marina, Pelican Isle, Harbor Bridge.
+- Traffic AI, walking pedestrians with realistic proportions, police pursuit
+  with named units and a searchlight helicopter, combat, radio stations,
+  garage, and a complete HUD with minimap and dialogue.
+- Dusk art direction: warm golden-hour sky, procedural textures on every
+  surface (asphalt, brick, concrete, facades), sculpted cars with clearcoat
+  paint, bloom + vignette + film grain post-processing.
 
-## What's inside
+## Layout
 
-- `game/src/main.js` — game bootstrap, loop, driving / on-foot movement
-- `game/src/world.js` — procedural neon city: facades, shops, palms, marina, rain
-- `game/src/cars.js` — cars from extruded side profiles (hero, police, traffic)
-- `game/src/people.js` — jointed pedestrians, Rico, and the crew
-- `game/src/police.js` — wanted system, pursuit AI, AIR-1 helicopter
-- `game/src/jobs.js` — 7 story jobs with dialogue
-- `game/src/hud.js` — four-corner HUD, minimap, dialogue, AAA city map
-- `game/src/bloom.js` — custom bloom composer + ACES tone mapping
-- `game/src/audio.js` — procedural WebAudio: engine, siren, rain, 3 radio stations
-- `game/src/save.js` — localStorage saves · `game/src/shots.js` — screenshot staging
-- `game/src/playtest.js` — 20 in-page checks (`?playtest=1`)
-
-Everything runs fully offline: three.js is vendored under `game/vendor/`,
-and the only network the game ever makes is none.
+- `main.ts` — hands the game in (copies `game/` + `screenshots/`, writes the dossier)
+- `game/index.html` — page, HUD, title screen, map overlay
+- `game/src/` — one file per system: `config`, `textures`, `world`, `cars`,
+  `people`, `police`, `missions`, `audio`, `save`, `hud`, `shots`, `bloom`,
+  `input`, `playtest`, `main`
+- `game/vendor/three.module.min.js` — three.js 0.160.0 (vendored)
+- `screenshots/` — 4 screenshots of the game itself (cover first)
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

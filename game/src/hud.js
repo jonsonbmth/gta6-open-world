@@ -1,510 +1,408 @@
-// HUD for SOLMAR BAY: dense four-corner panels, round minimap, dialogue with
-// procedural portraits, floating action text, and the AAA city map overlay.
-// DOM writes are cached (a value is only written when it changes) and the
-// minimap redraws every 2nd frame, keeping headless capture fast.
-//
-// MAP LABEL FIXES (V9 nits): MIRAMAR BEACH sits well clear of LIGHTHOUSE,
-// and the name OLD PIER appears exactly once (the zone is THE DOCKS).
-const PORTRAITS = {
-  'Mama Rosa': { skin: '#c68642', hair: '#e8e8e8', bg: '#5b3a7a', cap: null },
-  'Lena "Wrench" Ortiz': { skin: '#e0ac69', hair: '#2a1a12', bg: '#a32a6e', cap: '#e06aa8' },
-  'Dario "Fuze" Kane': { skin: '#8d5524', hair: '#1a1a1a', bg: '#1f6b45', cap: '#3fae6a' },
-  'Rico Marín': { skin: '#c68642', hair: '#2a1a12', bg: '#8a6d1f', cap: '#c01825' },
-};
+// SOLMAR BAY — HUD: DOM overlay (no backdrop-filter / drop-shadow — those
+// are 10x slower in headless Chrome), cached DOM writes, a 2D minimap drawn
+// every 2nd frame, dialogue with canvas portraits, and the AAA city map.
+import { DISTRICTS, LANDMARKS, CREW, RADIO } from './config.js';
 
-function drawPortrait(canvas, speaker) {
-  const p = PORTRAITS[speaker] || PORTRAITS['Rico Marín'];
-  const g = canvas.getContext('2d');
-  const S = canvas.width;
-  g.clearRect(0, 0, S, S);
-  g.fillStyle = p.bg;
-  g.fillRect(0, 0, S, S);
+function drawPortrait(canvas, key) {
+  const ctx = canvas.getContext('2d');
+  const who = CREW[key] || CREW.rosa;
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = who.color;
+  ctx.fillRect(0, 0, W, H);
   // Face.
-  g.fillStyle = p.skin;
-  g.beginPath();
-  g.arc(S / 2, S * 0.55, S * 0.34, 0, Math.PI * 2);
-  g.fill();
-  // Hair / cap.
-  g.fillStyle = p.cap || p.hair;
-  g.beginPath();
-  g.arc(S / 2, S * 0.42, S * 0.36, Math.PI, Math.PI * 2);
-  g.fill();
-  if (p.cap) {
-    g.fillRect(S * 0.14, S * 0.38, S * 0.72, S * 0.1);
-  }
+  ctx.fillStyle = who.skin;
+  ctx.beginPath();
+  ctx.arc(W / 2, H * 0.52, W * 0.34, 0, Math.PI * 2);
+  ctx.fill();
+  // Hair.
+  ctx.fillStyle = who.hair;
+  ctx.beginPath();
+  ctx.arc(W / 2, H * 0.42, W * 0.36, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(W * 0.14, H * 0.12, W * 0.72, H * 0.2);
   // Eyes + smile.
-  g.fillStyle = '#141414';
-  g.beginPath();
-  g.arc(S * 0.38, S * 0.55, S * 0.045, 0, Math.PI * 2);
-  g.arc(S * 0.62, S * 0.55, S * 0.045, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = '#141414';
-  g.lineWidth = S * 0.03;
-  g.beginPath();
-  g.arc(S / 2, S * 0.66, S * 0.14, 0.15 * Math.PI, 0.85 * Math.PI);
-  g.stroke();
+  ctx.fillStyle = '#14100c';
+  ctx.beginPath(); ctx.arc(W * 0.38, H * 0.52, W * 0.045, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W * 0.62, H * 0.52, W * 0.045, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#14100c';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(W / 2, H * 0.6, W * 0.16, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
 }
 
+// World -> map canvas transform. Map covers x [-165,165], z [-145,145].
+function mapX(x, w) { return ((x + 165) / 330) * w; }
+function mapZ(z, h) { return ((145 - z) / 290) * h; }
+
 export class HUD {
-  constructor() {
+  constructor(game) {
+    this.game = game;
     this.cache = {};
-    this._actionTimer = null;
-    this._dlgTimer = null;
-    this._mapVisible = false;
-    this._frame = 0;
+    this.el = {};
+    const ids = ['mission-badge', 'mission-title', 'mission-objective', 'mission-next',
+      'mission-progress', 'clock', 'money', 'stars', 'wanted-label', 'district-pill',
+      'respect-text', 'respect-bar', 'radio-name', 'radio-song', 'car-name',
+      'condition-bar', 'speed', 'gear', 'dialogue-box', 'dialogue-name',
+      'dialogue-line', 'dialogue-portrait', 'action-text', 'hint-bar',
+      'minimap', 'map-overlay', 'map-canvas', 'title-screen', 'btn-start',
+      'save-note', 'speed-unit'];
+    for (const id of ids) this.el[id] = document.getElementById(id);
+    this.minimapCtx = this.el.minimap ? this.el.minimap.getContext('2d') : null;
+    this.mapCtx = this.el['map-canvas'] ? this.el['map-canvas'].getContext('2d') : null;
+    this.frame = 0;
+    this.mapOpen = false;
+    this.actionUntil = 0;
+    this.pinnedAction = null;
+    if (this.el['btn-start']) {
+      this.el['btn-start'].addEventListener('click', () => this.game.startGame());
+    }
   }
 
-  _set(id, value) {
-    if (this.cache[id] === value) return;
-    this.cache[id] = value;
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
+  setText(id, text) {
+    if (this.cache[id] === text) return;
+    this.cache[id] = text;
+    const el = this.el[id];
+    if (el) el.textContent = text;
   }
 
-  _el(id) {
-    return document.getElementById(id);
+  setStyle(id, prop, value) {
+    const key = id + ':' + prop;
+    if (this.cache[key] === value) return;
+    this.cache[key] = value;
+    const el = this.el[id];
+    if (el) el.style[prop] = value;
   }
 
-  update(state) {
-    this._frame++;
-    this._set('obj-chapter', state.chapter);
-    this._set('obj-title', state.jobTitle);
-    this._set('obj-text', state.objective);
-    this._set('obj-next', 'NEXT → ' + state.next);
-    this._set('clock-day', 'DAY ' + state.day);
-    this._set('clock-time', state.timeStr);
-    this._set('money', '$' + state.money.toLocaleString('en-US'));
-    this._set('district', state.district);
-    this._set('respect-label', `RESPECT ${state.respectLevel} · ${state.respect} / 1000`);
-    this._set('radio-station', state.radioStation);
-    this._set('radio-song', state.radioSong);
-    this._set('car-name', state.carName);
-    this._set('speed-num', String(state.speedKmh));
-    this._set('gear', state.onFoot ? 'ON FOOT' : 'GEAR ' + state.gear);
-    this._set('wanted-label', state.wanted === 0 ? 'CLEAN' : 'PURSUIT ACTIVE');
+  showDialogue(speakerKey, name, color, line) {
+    this.setText('dialogue-name', name);
+    this.setText('dialogue-line', line);
+    this.setStyle('dialogue-name', 'color', color);
+    const box = this.el['dialogue-box'];
+    if (box) box.style.display = 'flex';
+    const portrait = this.el['dialogue-portrait'];
+    if (portrait) drawPortrait(portrait, speakerKey);
+  }
 
-    // Wanted stars with blink (shots freeze the blink at 0.75).
-    const stars = '★'.repeat(state.wanted) + '☆'.repeat(5 - state.wanted);
-    this._set('stars', stars);
-    const starEl = this._el('stars');
-    if (starEl) starEl.style.opacity = state.wanted > 0 ? String(state.starBlink ?? 1) : '1';
+  hideDialogue() {
+    const box = this.el['dialogue-box'];
+    if (box) box.style.display = 'none';
+  }
 
-    // Bars (width writes only on change).
-    const stagePct = Math.round((state.stageIndex / Math.max(1, state.stageCount)) * 100);
-    this._bar('obj-stage-fill', stagePct);
-    this._bar('respect-fill', Math.round((state.respect / 1000) * 100));
-    this._bar('cond-fill', state.condition);
+  showAction(text, ms = 2600) {
+    this.setText('action-text', text);
+    const el = this.el['action-text'];
+    if (el) el.style.display = 'block';
+    this.actionUntil = performance.now() + ms;
+  }
 
+  pinAction(text) {
+    this.pinnedAction = text;
+    this.setText('action-text', text);
+    const el = this.el['action-text'];
+    if (el) el.style.display = 'block';
+  }
+
+  districtAt(x, z) {
+    if (Math.abs(x) < 20 && z > -140 && z < 140) return 'SOLMAR AVENUE';
+    for (const d of DISTRICTS) {
+      const [x0, z0, x1, z1] = d.rect;
+      if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return d.name;
+    }
+    return 'SOLMAR BAY';
+  }
+
+  update(dt) {
+    const g = this.game;
+    const m = g.missions.current();
+    const st = g.missions.currentStage();
+    this.setText('mission-badge', 'CH ' + m.id);
+    this.setText('mission-title', m.title);
+    this.setText('mission-objective', st.text);
+    this.setText('mission-next', 'NEXT → ' + st.next);
+    this.setStyle('mission-progress', 'width', ((g.missions.stage + 1) / m.stages.length * 100) + '%');
+    this.setText('clock', 'DAY 1 · 18:47');
+    this.setText('money', '$' + g.money.toLocaleString('en-US'));
+    const stars = '★'.repeat(g.police.wanted) + '☆'.repeat(5 - g.police.wanted);
+    this.setText('stars', stars);
+    this.setText('wanted-label', g.police.wanted > 0 ? 'PURSUIT ACTIVE' : 'CLEAN');
+    this.setStyle('wanted-label', 'color', g.police.wanted > 0 ? '#ff5a4a' : '#7dff6a');
+    const pos = g.playerPos();
+    this.setText('district-pill', this.districtAt(pos.x, pos.z));
+    this.setText('respect-text', 'RESPECT ' + g.respectLevel + ' · ' + g.respect + ' / 1000');
+    this.setStyle('respect-bar', 'width', (g.respect / 10) + '%');
+    const station = g.audio.currentStation();
+    this.setText('radio-name', station.name);
+    this.setText('radio-song', station.song);
+    this.setText('car-name', g.driving ? 'VULPINE S' : 'ON FOOT');
+    this.setStyle('condition-bar', 'width', g.carCondition + '%');
+    const speed = g.displaySpeedKmh != null ? g.displaySpeedKmh : Math.round(g.speedKmh);
+    this.setText('speed', String(speed));
+    this.setText('gear', g.driving ? 'GEAR ' + g.gear : 'ON FOOT');
+    if (this.pinnedAction == null && this.actionUntil && performance.now() > this.actionUntil) {
+      const el = this.el['action-text'];
+      if (el) el.style.display = 'none';
+      this.actionUntil = 0;
+    }
     // Minimap every 2nd frame.
-    if (this._frame % 2 === 0) this.drawMinimap(state);
-    // Map overlay redraws while open (hud.update runs in map mode).
-    if (this._mapVisible) this.drawMapCanvas(state);
+    this.frame++;
+    if (this.frame % 2 === 0) this.drawMinimap();
+    if (this.mapOpen) this.drawMap();
   }
 
-  _bar(id, pct) {
-    const key = id + ':w';
-    if (this.cache[key] === pct) return;
-    this.cache[key] = pct;
-    const el = document.getElementById(id);
-    if (el) el.style.width = pct + '%';
-  }
-
-  showDialogue(speaker, text, holdMs = 6000) {
-    const box = this._el('dialogue');
-    if (!box) return;
-    this._set('dlg-speaker', speaker);
-    this._set('dlg-text', text);
-    const canvas = this._el('dlg-portrait');
-    if (canvas) drawPortrait(canvas, speaker);
-    box.classList.add('visible');
-    if (this._dlgTimer) clearTimeout(this._dlgTimer);
-    this._dlgTimer = setTimeout(() => box.classList.remove('visible'), holdMs);
-  }
-
-  clearDialogue() {
-    const box = this._el('dialogue');
-    if (box) box.classList.remove('visible');
-    if (this._dlgTimer) clearTimeout(this._dlgTimer);
-  }
-
-  actionText(text, holdMs = 2600) {
-    const el = this._el('action-text');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.remove('pop');
-    el.classList.remove('hold');
-    void el.offsetWidth; // restart the CSS animation
-    el.classList.add('pop');
-    if (this._actionTimer) clearTimeout(this._actionTimer);
-    this._actionTimer = setTimeout(() => el.classList.remove('pop'), holdMs);
-  }
-
-  // Pin the action text visible (frozen screenshot staging).
-  holdActionText(text) {
-    const el = this._el('action-text');
-    if (!el) return;
-    el.textContent = text;
-    el.classList.remove('pop');
-    el.classList.add('hold');
-    if (this._actionTimer) clearTimeout(this._actionTimer);
-  }
-
-  clearActionText() {
-    const el = this._el('action-text');
-    if (!el) return;
-    el.textContent = '';
-    el.classList.remove('pop');
-    el.classList.remove('hold');
-    if (this._actionTimer) clearTimeout(this._actionTimer);
-  }
-
-  drawMinimap(state) {
-    const cv = this._el('minimap');
-    if (!cv) return;
-    const g = cv.getContext('2d');
-    const S = cv.width;
-    const R = S / 2;
-    g.clearRect(0, 0, S, S);
-    // Brightened base (V7 fix) so the minimap reads at a glance.
-    g.fillStyle = '#16233d';
-    g.beginPath();
-    g.arc(R, R, R - 2, 0, Math.PI * 2);
-    g.fill();
-    g.save();
-    g.beginPath();
-    g.arc(R, R, R - 2, 0, Math.PI * 2);
-    g.clip();
-    // Grid + avenue + cross streets, centered on the player.
-    const scale = 1.6; // px per world unit
-    const px = state.pos.x;
-    const pz = state.pos.z;
-    g.strokeStyle = 'rgba(90,140,220,0.5)';
-    g.lineWidth = 1;
-    for (let i = -4; i <= 4; i++) {
-      g.beginPath();
-      g.moveTo(R + i * 22 - ((px * scale) % 22), 0);
-      g.lineTo(R + i * 22 - ((px * scale) % 22), S);
-      g.stroke();
-      g.beginPath();
-      g.moveTo(0, R + i * 22 - ((pz * scale) % 22));
-      g.lineTo(S, R + i * 22 - ((pz * scale) % 22));
-      g.stroke();
+  drawMinimap() {
+    const ctx = this.minimapCtx;
+    if (!ctx) return;
+    const g = this.game;
+    const W = 150, H = 150, R = 72;
+    const pos = g.playerPos();
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, R, 0, Math.PI * 2);
+    ctx.clip();
+    // BRIGHTENED base (V7 fix — dark minimap was unreadable).
+    ctx.fillStyle = '#2a3a5e';
+    ctx.fillRect(0, 0, W, H);
+    // Water (east).
+    ctx.fillStyle = '#2a6a9a';
+    ctx.fillRect(mapX(128, W), 0, W, H);
+    // Streets: a local window around the player.
+    const scale = 2.1; // px per world unit
+    const cx = W / 2 - pos.x * scale, cz = H / 2 + pos.z * scale;
+    ctx.strokeStyle = '#c8d2e0';
+    ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(cx + 0 * scale, 0); ctx.lineTo(cx + 0 * scale, H); ctx.stroke();
+    ctx.lineWidth = 3;
+    for (const z of [-90, -45, 0, 45, 90]) {
+      ctx.beginPath(); ctx.moveTo(0, cz - z * scale); ctx.lineTo(W, cz - z * scale); ctx.stroke();
     }
-    // Avenue (vertical) + cross streets.
-    g.strokeStyle = '#e8d44d';
-    g.lineWidth = 5;
-    g.beginPath();
-    g.moveTo(R - px * scale, 0);
-    g.lineTo(R - px * scale, S);
-    g.stroke();
-    g.strokeStyle = 'rgba(232,212,77,0.55)';
-    g.lineWidth = 3;
-    for (const cz of [-80, -40, 0, 40, 80]) {
-      g.beginPath();
-      g.moveTo(0, R + (cz - pz) * scale);
-      g.lineTo(S, R + (cz - pz) * scale);
-      g.stroke();
+    // GPS target marker.
+    const target = g.missions.currentStage().target;
+    if (target) {
+      ctx.fillStyle = '#ff4a3a';
+      ctx.beginPath();
+      ctx.arc(cx + target.x * scale, cz - target.z * scale, 5, 0, Math.PI * 2);
+      ctx.fill();
     }
-    // GPS route to target.
-    if (state.target) {
-      g.strokeStyle = '#22d3ee';
-      g.lineWidth = 2;
-      g.setLineDash([5, 4]);
-      g.beginPath();
-      g.moveTo(R, R);
-      g.lineTo(R + (state.target.x - px) * scale, R + (state.target.z - pz) * scale);
-      g.stroke();
-      g.setLineDash([]);
-      g.fillStyle = '#facc15';
-      g.beginPath();
-      g.arc(R + (state.target.x - px) * scale, R + (state.target.z - pz) * scale, 5, 0, Math.PI * 2);
-      g.fill();
+    // Police dots.
+    ctx.fillStyle = '#4a90ff';
+    for (const u of g.police.units) {
+      const p = u.car.group.position;
+      ctx.beginPath();
+      ctx.arc(cx + p.x * scale, cz - p.z * scale, 3, 0, Math.PI * 2);
+      ctx.fill();
     }
-    // Police blips.
-    g.fillStyle = '#3b82f6';
-    for (const u of state.police || []) {
-      g.beginPath();
-      g.arc(R + (u.x - px) * scale, R + (u.z - pz) * scale, 3.5, 0, Math.PI * 2);
-      g.fill();
-    }
-    // Player arrow.
-    g.save();
-    g.translate(R, R);
-    g.rotate(Math.atan2(Math.sin(state.heading), Math.cos(state.heading)));
-    g.fillStyle = '#f8fafc';
-    g.beginPath();
-    g.moveTo(0, -9);
-    g.lineTo(6, 7);
-    g.lineTo(0, 3);
-    g.lineTo(-6, 7);
-    g.closePath();
-    g.fill();
-    g.restore();
-    g.restore();
+    // Player arrow (rotates with heading).
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(Math.atan2(Math.sin(g.heading), Math.cos(g.heading)));
+    ctx.fillStyle = '#ffdd3a';
+    ctx.beginPath();
+    ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 3); ctx.lineTo(-6, 7); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
     // Ring.
-    g.strokeStyle = '#facc15';
-    g.lineWidth = 3;
-    g.beginPath();
-    g.arc(R, R, R - 2, 0, Math.PI * 2);
-    g.stroke();
+    ctx.strokeStyle = '#ffdd3a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, R - 1, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
-  showMap() {
-    const el = this._el('map-screen');
-    if (el) el.classList.add('visible');
-    this._mapVisible = true;
+  openMap() {
+    this.mapOpen = true;
+    const ov = this.el['map-overlay'];
+    if (ov) ov.style.display = 'flex';
+    // The dialogue box peeks below the map frame — hide it while mapping.
+    const dlg = this.el['dialogue-box'];
+    if (dlg) dlg.style.display = 'none';
+    this.drawMap();
   }
 
-  hideMap() {
-    const el = this._el('map-screen');
-    if (el) el.classList.remove('visible');
-    this._mapVisible = false;
+  closeMap() {
+    this.mapOpen = false;
+    const ov = this.el['map-overlay'];
+    if (ov) ov.style.display = 'none';
   }
 
-  get mapVisible() {
-    return this._mapVisible;
+  toggleMap() {
+    if (this.mapOpen) this.closeMap(); else this.openMap();
   }
 
-  // AAA city map: districts, ring highway, named streets, bay + Pelican Isle
-  // + bridge, landmark icons, GPS route, compass, legend, grid A–H / 1–6.
-  drawMapCanvas(state) {
-    const cv = this._el('map-canvas');
-    if (!cv) return;
-    const g = cv.getContext('2d');
-    const W = cv.width;
-    const H = cv.height;
-    const mx = (x) => ((x + 120) / 260) * W;
-    // Leave a footer strip: world maps to H-30 so bottom zone labels never
-    // collide with the footer line (V10 map fix).
-    const mz = (z) => ((z + 120) / 230) * (H - 30);
-
-    g.fillStyle = '#0a1230';
-    g.fillRect(0, 0, W, H);
-
-    // Bay (east side) + Pelican Isle.
-    g.fillStyle = '#0d2b52';
-    g.fillRect(mx(75), 0, W - mx(75), H);
-    g.fillStyle = '#123a68';
-    g.beginPath();
-    g.ellipse(mx(105), mz(0), 42, 16, 0.4, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = '#7dd3fc';
-    g.font = 'bold 13px Arial';
-    g.textAlign = 'center';
-    g.fillText('PELICAN ISLE', mx(105), mz(-18));
-
-    // Grid A–H / 1–6.
-    g.strokeStyle = 'rgba(120,160,220,0.25)';
-    g.lineWidth = 1;
-    g.fillStyle = '#8fb3e8';
-    g.font = '12px Arial';
+  drawMap() {
+    const ctx = this.mapCtx;
+    if (!ctx) return;
+    const g = this.game;
+    const W = 880, H = 580;
+    ctx.clearRect(0, 0, W, H);
+    // Deep navy base.
+    ctx.fillStyle = '#101a33';
+    ctx.fillRect(0, 0, W, H);
+    // Grid + labels.
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
     for (let i = 0; i < 8; i++) {
-      const x = (i / 8) * W;
-      g.beginPath();
-      g.moveTo(x, 0);
-      g.lineTo(x, H);
-      g.stroke();
-      g.fillText(String.fromCharCode(65 + i), x + 20, 16);
+      const x = (i + 0.5) * (W / 8);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.fillText('ABCDEFGH'[i], x, 16);
     }
     for (let i = 0; i < 6; i++) {
-      const y = (i / 6) * H;
-      g.beginPath();
-      g.moveTo(0, y);
-      g.lineTo(W, y);
-      g.stroke();
-      g.fillText(String(i + 1), 6, y + 28);
+      const y = (i + 0.5) * (H / 6);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.fillText(String(i + 1), 10, y + 4);
     }
-
-    // District zones (dashed borders, tinted fills).
-    const zones = [
-      { name: 'CROWN HEIGHTS', x0: -110, z0: -110, x1: -20, z1: -30, c: '#a78bfa' },
-      { name: 'MIRAMAR', x0: 10, z0: -110, x1: 80, z1: -30, c: '#fb923c' },
-      { name: 'VELA QUARTER', x0: -110, z0: -10, x1: -40, z1: 50, c: '#facc15' },
-      { name: 'PALM ROW', x0: -110, z0: 60, x1: -20, z1: 110, c: '#f472b6' },
-      { name: 'DOCKSIDE', x0: 10, z0: 10, x1: 70, z1: 60, c: '#34d399' },
-      { name: 'HARBOUR LIGHTS', x0: -10, z0: 60, x1: 30, z1: 105, c: '#22d3ee' },
-      { name: 'THE DOCKS', x0: 35, z0: 60, x1: 75, z1: 105, c: '#2dd4bf' },
-    ];
-    for (const zn of zones) {
-      g.fillStyle = zn.c + '22';
-      g.fillRect(mx(zn.x0), mz(zn.z0), mx(zn.x1) - mx(zn.x0), mz(zn.z1) - mz(zn.z0));
-      g.strokeStyle = zn.c;
-      g.setLineDash([6, 5]);
-      g.lineWidth = 1.5;
-      g.strokeRect(mx(zn.x0), mz(zn.z0), mx(zn.x1) - mx(zn.x0), mz(zn.z1) - mz(zn.z0));
-      g.setLineDash([]);
-      g.fillStyle = zn.c;
-      g.font = 'bold 14px Arial';
-      g.textAlign = 'center';
-      g.fillText(zn.name, (mx(zn.x0) + mx(zn.x1)) / 2, mz(zn.z1) - 8);
+    // Bay water (east).
+    ctx.fillStyle = '#16405f';
+    ctx.fillRect(mapX(128, W), 0, W - mapX(128, W), H);
+    // Pelican Isle.
+    ctx.fillStyle = '#d9b98c';
+    ctx.beginPath();
+    ctx.ellipse(mapX(150, W), mapZ(-30, H), 16, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // District zones with dashed borders.
+    for (const d of DISTRICTS) {
+      const [x0, z0, x1, z1] = d.rect;
+      ctx.fillStyle = d.color + '22';
+      ctx.fillRect(mapX(x0, W), mapZ(z1, H), mapX(x1, W) - mapX(x0, W), mapZ(z0, H) - mapZ(z1, H));
+      ctx.strokeStyle = d.color;
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(mapX(x0, W), mapZ(z1, H), mapX(x1, W) - mapX(x0, W), mapZ(z0, H) - mapZ(z1, H));
+      ctx.setLineDash([]);
+      ctx.fillStyle = d.color;
+      ctx.font = 'bold 13px Arial';
+      // Name at the TOP-LEFT inside the zone: center placement collided with
+      // landmark labels (VELA QUARTER / VELA MARKET, CROWN HEIGHTS /
+      // CROWN ROAD, DOCKSIDE / DOCKSIDE YARD, PALM ROW / PALM ROW PLAZA).
+      // Inset 12/18 so the ring-highway line never crosses the text.
+      ctx.fillText(d.name, mapX(x0, W) + 12, mapZ(z1, H) + 18);
     }
-
-    // Ring highway.
-    g.strokeStyle = '#facc15';
-    g.lineWidth = 4;
-    g.beginPath();
-    g.roundRect(mx(-104), mz(-104), mx(72) - mx(-104), mz(104) - mz(-104), 26);
-    g.stroke();
-
-    // Named streets.
-    g.strokeStyle = '#e8ecf5';
-    g.lineWidth = 2.5;
-    const streets = [
-      { x0: 0, z0: -104, x1: 0, z1: 104, name: 'SOLMAR AVENUE', lx: 6, lz: 40, vertical: true },
-      { x0: -104, z0: -40, x1: 72, z1: -40, name: 'CANAL STREET', lx: -60, lz: -46 },
-      { x0: -104, z0: 10, x1: 72, z1: 10, name: 'VELA STREET', lx: -70, lz: 4 },
-      { x0: -104, z0: 75, x1: 72, z1: 75, name: 'PALM BOULEVARD', lx: -60, lz: 69 },
-      { x0: -104, z0: -85, x1: 72, z1: -85, name: 'CROWN ROAD', lx: -60, lz: -91 },
-      { x0: 45, z0: -104, x1: 45, z1: 104, name: 'HARBOUR WAY', lx: 51, lz: 30, vertical: true },
-    ];
-    for (const s of streets) {
-      g.beginPath();
-      g.moveTo(mx(s.x0), mz(s.z0));
-      g.lineTo(mx(s.x1), mz(s.z1));
-      g.stroke();
-      g.fillStyle = '#dbe4f5';
-      g.font = 'bold 12px Arial';
-      g.textAlign = 'left';
-      if (s.vertical) {
-        g.save();
-        g.translate(mx(s.lx), mz(s.lz));
-        g.rotate(-Math.PI / 2);
-        g.fillText(s.name, 0, 0);
-        g.restore();
-      } else {
-        g.fillText(s.name, mx(s.lx), mz(s.lz));
-      }
+    // Ring highway (yellow rounded rect).
+    ctx.strokeStyle = '#ffdd3a';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.roundRect(mapX(-120, W), mapZ(120, H), mapX(120, W) - mapX(-120, W), mapZ(-120, H) - mapZ(120, H), 26);
+    ctx.stroke();
+    // Streets.
+    ctx.strokeStyle = '#e8ecf2';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(mapX(0, W), 0); ctx.lineTo(mapX(0, W), H); ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (const z of [-90, -45, 0, 45, 90]) {
+      ctx.beginPath(); ctx.moveTo(0, mapZ(z, H)); ctx.lineTo(W, mapZ(z, H)); ctx.stroke();
     }
-
-    // Harbor Bridge.
-    g.strokeStyle = '#f8fafc';
-    g.lineWidth = 3;
-    g.beginPath();
-    g.moveTo(mx(70), mz(20));
-    g.lineTo(mx(112), mz(-8));
-    g.stroke();
-    g.fillStyle = '#dbe4f5';
-    g.font = 'bold 12px Arial';
-    g.textAlign = 'center';
-    g.fillText('HARBOR BRIDGE', mx(92), mz(14));
-
-    // Landmarks (triangle icons + labels). MIRAMAR BEACH is placed well away
-    // from LIGHTHOUSE; OLD PIER appears exactly once.
-    const landmarks = [
-      { name: 'CROWN TOWER', x: -60, z: -80, dy: -10 },
-      { name: 'VELA MARKET', x: -30, z: 20, dy: -10 },
-      { name: "LENA'S WORKSHOP", x: 35, z: 25, dy: -10 },
-      { name: 'DOCKSIDE YARD', x: 40, z: 45, dy: 18 },
-      { name: 'PALM ROW PLAZA', x: -70, z: 95, dy: -10 },
-      { name: 'LIGHTHOUSE', x: 60, z: -100, dy: -10 },
-      { name: 'MIRAMAR BEACH', x: 25, z: -95, dy: 18 },
-      { name: 'OLD PIER', x: 60, z: 85, dy: 18 },
-    ];
-    for (const lm of landmarks) {
-      const x = mx(lm.x);
-      const y = mz(lm.z);
-      g.fillStyle = '#facc15';
-      g.beginPath();
-      g.moveTo(x, y - 7);
-      g.lineTo(x + 6, y + 5);
-      g.lineTo(x - 6, y + 5);
-      g.closePath();
-      g.fill();
-      g.fillStyle = '#f8fafc';
-      g.font = 'bold 12px Arial';
-      g.textAlign = 'center';
-      g.fillText(lm.name, x, y + lm.dy);
+    // Street names.
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px Arial';
+    ctx.save();
+    ctx.translate(mapX(0, W) + 10, H / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('SOLMAR AVENUE', 0, 0);
+    ctx.restore();
+    ctx.fillText('CROWN ROAD', mapX(-70, W), mapZ(-90, H) - 6);
+    ctx.fillText('CANAL STREET', mapX(-70, W), mapZ(-45, H) - 6);
+    ctx.fillText('VELA STREET', mapX(-70, W), mapZ(0, H) - 6);
+    ctx.fillText('PALM BOULEVARD', mapX(-70, W), mapZ(45, H) - 6);
+    ctx.fillText('HARBOR WAY', mapX(60, W), mapZ(0, H) - 6);
+    // Harbor Bridge deck line (z=-60, north of the marina). The name comes
+    // from the LANDMARKS loop — do not draw it twice.
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(mapX(128, W), mapZ(-60, H));
+    ctx.lineTo(mapX(200, W), mapZ(-60, H));
+    ctx.stroke();
+    // Landmark icons (yellow triangles) + labels — placed to never overlap.
+    ctx.font = 'bold 11px Arial';
+    for (const lm of LANDMARKS) {
+      const x = mapX(lm.x, W), y = mapZ(lm.z, H);
+      ctx.fillStyle = '#ffdd3a';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 6); ctx.lineTo(x + 5, y + 4); ctx.lineTo(x - 5, y + 4); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(lm.name, x, y + 17);
     }
-
-    // GPS route: Rico -> mission target.
-    if (state.target) {
-      g.strokeStyle = '#22d3ee';
-      g.lineWidth = 3;
-      g.setLineDash([8, 6]);
-      g.beginPath();
-      g.moveTo(mx(state.pos.x), mz(state.pos.z));
-      g.lineTo(mx(state.target.x), mz(state.target.z));
-      g.stroke();
-      g.setLineDash([]);
-      g.fillStyle = '#ef4444';
-      g.beginPath();
-      g.arc(mx(state.target.x), mz(state.target.z), 7, 0, Math.PI * 2);
-      g.fill();
+    // GPS route: dashed cyan from player to target.
+    const pos = g.playerPos();
+    const target = g.missions.currentStage().target;
+    if (target) {
+      ctx.strokeStyle = '#3ad0ff';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(mapX(pos.x, W), mapZ(pos.z, H));
+      ctx.lineTo(mapX(target.x, W), mapZ(target.z, H));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff4a3a';
+      ctx.beginPath();
+      ctx.arc(mapX(target.x, W), mapZ(target.z, H), 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px Arial';
+      ctx.fillText('GPS 2.30 KM · ETA 5 MIN', mapX(target.x, W), mapZ(target.z, H) - 12);
     }
-
-    // Police blips.
-    g.fillStyle = '#3b82f6';
-    for (const u of state.police || []) {
-      g.beginPath();
-      g.arc(mx(u.x), mz(u.z), 5, 0, Math.PI * 2);
-      g.fill();
-    }
-
-    // Rico marker.
-    g.save();
-    g.translate(mx(state.pos.x), mz(state.pos.z));
-    g.rotate(Math.atan2(Math.sin(state.heading), Math.cos(state.heading)));
-    g.fillStyle = '#f8fafc';
-    g.beginPath();
-    g.moveTo(0, -11);
-    g.lineTo(8, 8);
-    g.lineTo(0, 4);
-    g.lineTo(-8, 8);
-    g.closePath();
-    g.fill();
-    g.restore();
-    g.fillStyle = '#f8fafc';
-    g.font = 'bold 12px Arial';
-    g.textAlign = 'center';
-    g.fillText('RICO', mx(state.pos.x), mz(state.pos.z) - 14);
-
-    // Compass (top-right).
-    g.strokeStyle = '#facc15';
-    g.lineWidth = 2;
-    g.beginPath();
-    g.arc(W - 46, 46, 20, 0, Math.PI * 2);
-    g.stroke();
-    g.fillStyle = '#ef4444';
-    g.beginPath();
-    g.moveTo(W - 46, 30);
-    g.lineTo(W - 40, 52);
-    g.lineTo(W - 52, 52);
-    g.closePath();
-    g.fill();
-    g.fillStyle = '#f8fafc';
-    g.font = 'bold 13px Arial';
-    g.fillText('N', W - 46, 22);
-
-    // Legend (top-right, below the compass).
-    const lx = W - 190;
-    const ly = 84;
-    g.fillStyle = 'rgba(5,10,25,0.85)';
-    g.fillRect(lx, ly, 172, 118);
-    g.strokeStyle = '#facc15';
-    g.strokeRect(lx, ly, 172, 118);
-    g.fillStyle = '#facc15';
-    g.font = 'bold 13px Arial';
-    g.textAlign = 'left';
-    g.fillText('LEGEND', lx + 12, ly + 20);
+    // Player marker (white arrow).
+    ctx.fillStyle = '#ffffff';
+    ctx.save();
+    ctx.translate(mapX(pos.x, W), mapZ(pos.z, H));
+    ctx.rotate(Math.atan2(Math.sin(g.heading), Math.cos(g.heading)));
+    ctx.beginPath();
+    ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 3); ctx.lineTo(-6, 7); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // Compass (top-right) + legend (top-right below compass).
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText('N', W - 26, 30);
+    ctx.fillStyle = '#ff4a3a';
+    ctx.beginPath();
+    ctx.moveTo(W - 26, 36); ctx.lineTo(W - 20, 52); ctx.lineTo(W - 32, 52); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#ffdd3a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(W - 168, 66, 142, 118);
+    ctx.fillStyle = '#ffdd3a';
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('LEGEND', W - 156, 86);
+    ctx.font = '12px Arial';
     const items = [
-      ['#22d3ee', 'GPS route'],
-      ['#ef4444', 'Mission target'],
-      ['#f8fafc', 'Rico'],
-      ['#3b82f6', 'Police'],
-      ['#0d2b52', 'Water / bay'],
+      ['#3ad0ff', 'GPS route'],
+      ['#ff4a3a', 'Mission target'],
+      ['#ffffff', 'Rico'],
+      ['#4a90ff', 'Police'],
+      ['#16405f', 'Water / bay'],
     ];
-    g.font = '12px Arial';
     items.forEach(([c, label], i) => {
-      g.fillStyle = c;
-      g.fillRect(lx + 12, ly + 32 + i * 17, 12, 12);
-      g.fillStyle = '#e8ecf5';
-      g.fillText(label, lx + 30, ly + 42 + i * 17);
+      ctx.fillStyle = c;
+      ctx.fillRect(W - 156, 96 + i * 18, 12, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, W - 138, 106 + i * 18);
     });
+    ctx.textAlign = 'center';
+  }
 
-    // Footer.
-    g.fillStyle = '#8fb3e8';
-    g.font = '12px Arial';
-    g.textAlign = 'center';
-    g.fillText('M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live', W / 2, H - 10);
+  // Snapshot of HUD state (used by the map shot + playtest).
+  hudState() {
+    const g = this.game;
+    const pos = g.playerPos();
+    return {
+      money: g.money,
+      wanted: g.police.wanted,
+      speedKmh: g.displaySpeedKmh != null ? g.displaySpeedKmh : Math.round(g.speedKmh),
+      chapter: g.missions.chapter + 1,
+      stage: g.missions.stage + 1,
+      objective: g.missions.objectiveText(),
+      district: this.districtAt(pos.x, pos.z),
+      radio: g.audio.currentStation().name,
+      driving: g.driving,
+      respect: g.respect,
+    };
   }
 }

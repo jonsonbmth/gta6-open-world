@@ -3,88 +3,161 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOLMAR BAY — A Night in the Rain</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="./css/style.css">
+<title>SOLMAR BAY — A Dusk in Neon</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1428;
+    font-family: Arial, Helvetica, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; display: block; }
+  .panel { background: rgba(10, 8, 20, 0.72); border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 10px; padding: 10px 12px; }
+  /* Top-left: mission */
+  #mission-panel { position: fixed; top: 14px; left: 14px; width: 300px; z-index: 10; }
+  #mission-badge { display: inline-block; background: #ffdd3a; color: #14100c; font-weight: bold;
+    font-size: 12px; padding: 2px 7px; border-radius: 4px; margin-right: 6px; }
+  #mission-title { font-weight: bold; font-size: 17px; }
+  #mission-objective { font-size: 13px; color: #dfe8ff; margin-top: 3px; }
+  #mission-next { font-size: 12px; color: #ffdd3a; margin-top: 4px; }
+  #mission-progress-wrap { height: 6px; background: rgba(255,255,255,0.18); border-radius: 3px;
+    margin-top: 7px; overflow: hidden; }
+  #mission-progress { height: 100%; background: #ffdd3a; width: 25%; }
+  /* Top-right: status */
+  #status-panel { position: fixed; top: 14px; right: 14px; width: 210px; text-align: right; z-index: 10; }
+  #clock { font-size: 12px; color: #c8d2e0; letter-spacing: 1px; }
+  #money { font-size: 30px; font-weight: bold; color: #4dff7a; line-height: 1.1; }
+  #stars { font-size: 18px; color: #ffdd3a; letter-spacing: 2px; }
+  #wanted-label { font-size: 12px; font-weight: bold; color: #ff5a4a; letter-spacing: 1px; }
+  /* Bottom-left: minimap */
+  #minimap-wrap { position: fixed; left: 14px; bottom: 34px; width: 168px; z-index: 10; text-align: center; }
+  #minimap { width: 150px; height: 150px; border-radius: 50%;
+    border: 3px solid #ffdd3a; background: #2a3a5e; }
+  #district-pill { display: inline-block; background: #ffdd3a; color: #14100c; font-weight: bold;
+    font-size: 12px; padding: 3px 12px; border-radius: 10px; margin-top: 6px; }
+  #respect-text { font-size: 11px; color: #dfe8ff; margin-top: 4px; }
+  #respect-bar-wrap { height: 6px; background: rgba(255,255,255,0.18); border-radius: 3px;
+    margin-top: 3px; overflow: hidden; }
+  #respect-bar { height: 100%; background: #4dff7a; width: 32%; }
+  /* Bottom-right: vehicle */
+  #vehicle-panel { position: fixed; right: 14px; bottom: 34px; width: 220px; text-align: right; z-index: 10; }
+  #radio-name { font-size: 13px; font-weight: bold; color: #3ad0ff; }
+  #radio-song { font-size: 11px; color: #c8d2e0; }
+  #car-name { font-size: 20px; font-weight: bold; margin-top: 5px; }
+  #condition-wrap { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 3px; }
+  #condition-label { font-size: 10px; color: #c8d2e0; }
+  #condition-bar-wrap { width: 110px; height: 7px; background: rgba(255,255,255,0.18);
+    border-radius: 3px; overflow: hidden; }
+  #condition-bar { height: 100%; background: #4dff7a; width: 95%; }
+  #speed-row { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; }
+  #speed { font-size: 46px; font-weight: bold; line-height: 1; }
+  #speed-unit { font-size: 13px; color: #c8d2e0; }
+  #gear { font-size: 13px; font-weight: bold; color: #ffdd3a; }
+  /* Bottom-centre: dialogue */
+  #dialogue-box { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%);
+    width: 520px; display: none; align-items: center; gap: 12px; z-index: 10; }
+  #dialogue-portrait { width: 56px; height: 56px; border-radius: 8px; flex-shrink: 0; }
+  #dialogue-name { font-weight: bold; font-size: 14px; color: #ff7ab0; }
+  #dialogue-line { font-size: 14px; color: #fff; margin-top: 2px; }
+  /* Centre: floating action text */
+  #action-text { position: fixed; left: 50%; top: 26%; transform: translateX(-50%);
+    font-size: 34px; font-weight: bold; color: #ffdd3a; z-index: 10; display: none;
+    text-shadow: 2px 2px 0 #14100c, 0 0 18px rgba(255, 221, 58, 0.6); }
+  /* Bottom hint bar */
+  #hint-bar { position: fixed; left: 0; right: 0; bottom: 0; text-align: center;
+    font-size: 12px; color: #dfe8ff; background: rgba(10, 8, 20, 0.6); padding: 5px 0; z-index: 10; }
+  #save-note { position: fixed; right: 14px; bottom: 150px; font-size: 11px; color: #7dff6a;
+    z-index: 10; display: none; }
+  /* Title screen */
+  #title-screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(to bottom, rgba(20,10,40,0.25), rgba(20,10,40,0.55)); }
+  #title-logo { font-size: 92px; font-weight: 900; letter-spacing: 4px; line-height: 0.95; }
+  #title-logo .pink { color: #ff4d8d; }
+  #title-logo .cyan { color: #3ad0ff; }
+  #title-tagline { font-size: 19px; letter-spacing: 8px; color: #fff; margin-top: 8px; }
+  #title-desc { font-size: 14px; color: #e8e4da; max-width: 560px; margin-top: 14px; line-height: 1.5; }
+  #btn-start { margin-top: 26px; background: #ff4d8d; color: #fff; border: none;
+    font-size: 18px; font-weight: bold; letter-spacing: 3px; padding: 14px 44px;
+    border-radius: 8px; cursor: pointer; }
+  #btn-start:hover { background: #ff6aa0; }
+  #title-controls { margin-top: 22px; font-size: 12px; color: #dfe8ff; line-height: 1.8; }
+  /* Map overlay */
+  #map-overlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center;
+    justify-content: center; background: rgba(8, 6, 18, 0.78); }
+  #map-frame { text-align: center; }
+  #map-canvas { border: 3px solid #ffdd3a; border-radius: 8px; background: #101a33; }
+  #map-hint { font-size: 12px; color: #dfe8ff; margin-top: 8px; }
+  #playtest-results { position: fixed; left: 0; top: 0; z-index: 50; background: rgba(0,0,0,0.7);
+    color: #7dff6a; font: 11px monospace; white-space: pre; padding: 6px; display: none; }
+</style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="scene"></div>
+<canvas id="game-canvas"></canvas>
 
-<!-- Title screen (visible first; while visible it hides the HUD via CSS). -->
-<div id="title-screen" class="visible">
-  <div class="title-inner">
-    <div class="title-logo"><span class="pink">SOLMAR</span> <span class="cyan">BAY</span></div>
-    <div class="title-tag">A NIGHT IN THE RAIN</div>
-    <p class="title-blurb">Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.<br>Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</p>
-    <button id="btn-start" class="btn-primary">START ENGINE</button>
-    <button id="btn-continue" class="btn-secondary" style="display:none">CONTINUE</button>
-    <div class="title-controls">WASD drive / walk &nbsp;·&nbsp; E enter &amp; exit car &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; SHIFT run<br>M city map &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F action &nbsp;·&nbsp; Steal any car — the police will notice</div>
-  </div>
+<div id="mission-panel" class="panel">
+  <span id="mission-badge">CH 1</span><span id="mission-title">First Run</span>
+  <div id="mission-objective">Drive to the garage on Palm Row</div>
+  <div id="mission-next">NEXT → Follow the GPS route on the map</div>
+  <div id="mission-progress-wrap"><div id="mission-progress"></div></div>
 </div>
 
-<!-- HUD: dense panels in all four corners. -->
-<div id="hud-top-left" class="hud panel">
-  <div class="obj-head"><span id="obj-chapter" class="chip">CH 1</span> <span id="obj-title" class="obj-title">First Run</span></div>
-  <div id="obj-text" class="obj-text">Get in the VULPINE S</div>
-  <div class="bar"><div id="obj-stage-fill" class="fill yellow" style="width:25%"></div></div>
-  <div id="obj-next" class="obj-next">NEXT → Press E near the red sports car</div>
+<div id="status-panel" class="panel">
+  <div id="clock">DAY 1 · 18:47</div>
+  <div id="money">$42,780</div>
+  <div id="stars">★★★☆☆</div>
+  <div id="wanted-label">PURSUIT ACTIVE</div>
 </div>
 
-<div id="hud-top-right" class="hud panel">
-  <div class="clock"><span id="clock-day">DAY 1</span> · <span id="clock-time">22:47</span></div>
-  <div id="money" class="money">$42,780</div>
-  <div id="stars" class="stars">☆☆☆☆☆</div>
-  <div id="wanted-label" class="wanted">CLEAN</div>
-</div>
-
-<div id="hud-bottom-left" class="hud panel">
+<div id="minimap-wrap">
   <canvas id="minimap" width="150" height="150"></canvas>
-  <div id="district" class="district">SOLMAR AVENUE</div>
-  <div id="respect-label" class="respect-label">RESPECT 2 · 320 / 1000</div>
-  <div class="bar"><div id="respect-fill" class="fill green" style="width:32%"></div></div>
+  <div><span id="district-pill">SOLMAR AVENUE</span></div>
+  <div id="respect-text">RESPECT 2 · 320 / 1000</div>
+  <div id="respect-bar-wrap"><div id="respect-bar"></div></div>
 </div>
 
-<div id="hud-bottom-right" class="hud panel">
-  <div id="radio-station" class="radio-station">VAPOR 101.3</div>
-  <div id="radio-song" class="radio-song">Glass Horizon</div>
-  <div id="car-name" class="car-name">ON FOOT</div>
-  <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="cond-fill" class="fill green" style="width:100%"></div></div></div>
-  <div class="speed-row"><span id="speed-num" class="speed-num">0</span><span class="speed-unit">KM/H</span></div>
-  <div id="gear" class="gear">ON FOOT</div>
+<div id="vehicle-panel" class="panel">
+  <div id="radio-name">VAPOR 101.3</div>
+  <div id="radio-song">Glass Horizon — Neon Palms</div>
+  <div id="car-name">VULPINE S</div>
+  <div id="condition-wrap"><span id="condition-label">CONDITION</span>
+    <div id="condition-bar-wrap"><div id="condition-bar"></div></div></div>
+  <div id="speed-row"><span id="speed">167</span><span id="speed-unit">KM/H</span></div>
+  <div id="gear">GEAR 6</div>
 </div>
 
-<div id="dialogue" class="hud">
-  <canvas id="dlg-portrait" width="64" height="64"></canvas>
-  <div class="dlg-body">
-    <div id="dlg-speaker" class="dlg-speaker">Mama Rosa</div>
-    <div id="dlg-text" class="dlg-text">Tonight the city learns our name, Rico. Drive it home.</div>
+<div id="dialogue-box" class="panel">
+  <canvas id="dialogue-portrait" width="56" height="56"></canvas>
+  <div>
+    <div id="dialogue-name">Lena "Wrench" Ortiz</div>
+    <div id="dialogue-line">Two units on your tail, Rico — lose them on Palm Row!</div>
   </div>
 </div>
 
-<div id="action-text" class="hud"></div>
+<div id="action-text">NEAR MISS +$250</div>
+<div id="save-note">Progress saved ✓</div>
 
-<div id="hint" class="hud">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+<div id="hint-bar">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
 
-<!-- Full city map overlay. -->
-<div id="map-screen">
-  <canvas id="map-canvas" width="1024" height="640"></canvas>
+<div id="title-screen">
+  <div id="title-logo"><span class="pink">SOLMAR</span> <span class="cyan">BAY</span></div>
+  <div id="title-tagline">A DUSK IN NEON</div>
+  <div id="title-desc">Rico Marín is back in Solmar Bay — a neon coastal city at golden hour.
+    Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</div>
+  <button id="btn-start">START ENGINE</button>
+  <div id="title-controls">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run<br>
+    M city map · R radio · F action · Steal any car — the police will notice</div>
 </div>
 
-<!-- Garage overlay. -->
-<div id="garage-screen">
-  <div class="garage-inner panel">
-    <h2>GARAGE — PALM ROW</h2>
-    <div class="garage-row"><span class="garage-car">VULPINE S</span><span class="garage-tag">YOURS</span></div>
-    <div class="garage-row"><span class="garage-car">SEDAN (STOLEN)</span><span class="garage-tag">HOT</span></div>
-    <p class="garage-note">Park a car inside the yellow marker to store it. Stolen cars stay hot until the heat dies down.</p>
-    <button id="btn-garage-close" class="btn-primary">BACK TO THE STREET</button>
+<div id="map-overlay">
+  <div id="map-frame">
+    <canvas id="map-canvas" width="880" height="580"></canvas>
+    <div id="map-hint">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
   </div>
 </div>
 
-<div id="playtest-results" style="display:none"></div>
+<div id="playtest-results"></div>
 
 <script type="module" src="./src/main.js"></script>
 </body>

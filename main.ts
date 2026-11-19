@@ -1,8 +1,13 @@
-// SOLMAR BAY entrypoint (Node 22, standard library only): hands the game in.
-// Copies this directory's game/ and screenshots/ into the output directory
-// and writes /output/dossier.json with make.fun's own vendored library, the
-// same file the scorer runs byte for byte. Run it with:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// SOLMAR BAY — gta6-01 entry program (Node 22, standard library only).
+// Hands the game in: copies game/ and screenshots/ from beside this file to
+// /output and writes /output/dossier.json with the vendored make.fun library.
+// The game itself is static files under game/ (three.js vendored offline);
+// this program only moves files and builds the dossier — it runs the same
+// bytes twice, deterministically.
+// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node --experimental-strip-types main.ts
+// Serve the game locally with any static server pointed at game/.
+
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,27 +16,31 @@ import { buildDossier } from './vendor/makefun-game.ts';
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
+// Fail loudly if the entry is incomplete: a missing game/ or an empty
+// screenshots/ (the V9 lesson — the commit must contain all 4 shots) must
+// never silently produce a broken dossier.
+import { readdirSync } from 'node:fs';
+if (!existsSync(join(here, 'game', 'index.html')))
+  throw new Error('game/index.html missing — the entry is incomplete');
+const shots = existsSync(join(here, 'screenshots'))
+  ? readdirSync(join(here, 'screenshots')).filter((f) => /\.(png|jpe?g)$/i.test(f))
+  : [];
+if (shots.length < 4)
+  throw new Error(`expected 4 screenshots, found ${shots.length} — capture them into screenshots/ first`);
+
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
+if (existsSync(join(here, 'screenshots')))
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
 
-// Fail fast with a clear message if the game entry page is missing, instead
-// of handing in a dossier for an unplayable entry.
-if (!existsSync(join(out, 'game', 'index.html'))) {
-  throw new Error('game/index.html is missing from the entry');
-}
-
-// The scorer's caps, kept in one place: 4 screenshots max, 256 KiB each;
-// game/ under 993 files and 48 MiB; dossier text capped at 160 KiB.
-const DOSSIER_CAPS = {
-  text_max_bytes: 163840,
-  screenshots: { max: 4, max_bytes: 262144 },
-  game_max_files: 993,
-  game_max_bytes: 50331648,
-  game_path_max_bytes: 1000,
-};
-
-writeFileSync(join(out, 'dossier.json'), buildDossier(out, DOSSIER_CAPS));
+writeFileSync(
+  join(out, 'dossier.json'),
+  buildDossier(out, {
+    text_max_bytes: 163840,
+    screenshots: { max: 4, max_bytes: 262144 },
+    game_max_files: 993,
+    game_max_bytes: 50331648,
+    game_path_max_bytes: 1000,
+  }),
+);

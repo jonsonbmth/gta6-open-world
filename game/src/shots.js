@@ -1,90 +1,80 @@
-// Screenshot staging for SOLMAR BAY. Each shot is triggered by ?shot=<name>
-// and stages the game into a frozen, composed frame, then the runner captures
-// it. Headless capture renders few frames, so the camera SNAPS (k=1) in
-// shot-frozen mode instead of lerping.
-//
-//   chase  — cover: big hero rear-3/4 + TWO police + dense HUD + NEAR MISS
-//   title  — title screen, hero clearly visible right-of-center
-//   map    — AAA city map overlay with GPS route
-//   marina — Rico on foot at the quay, Mama Rosa dialogue, zero artifacts
-import { placeCar } from './cars.js';
+// SOLMAR BAY — screenshot staging (?shot=chase|title|map|marina).
+// Each shot sets up the game synchronously at boot, then freezes the sim
+// (shotFrozen) so a slow headless capture still gets the composed frame.
+// The camera SNAPS (k=1) in shotFrozen mode — no lerp, no drift.
+import { CHASE } from './config.js';
 
-export const SHOT_NAMES = ['chase', 'title', 'map', 'marina'];
-
-export function stageShot(game, name) {
-  if (!SHOT_NAMES.includes(name)) return { ok: false, detail: 'unknown shot ' + name };
-  game.shotName = name;
-  game.frozen = true; // frozen frame: nothing moves during capture
-
+export function applyShot(game, name) {
+  const g = game;
   if (name === 'chase') {
-    game.setMode('drive');
-    game.hideTitleScreen();
-    game.hud.hideMap();
-    // Hero on the avenue, rear-3/4 to the camera.
-    game.setPlayerPos(0, 20, 0, true);
-    game.displaySpeedKmh = 167; // override with the car still (V8 fix)
-    game.gear = 6;
-    // TWO police clearly ahead and close enough to read.
-    game.police.setWanted(3);
-    const units = game.police.units;
-    if (units[0]) placeCar(units[0].group, -3.2, 32, 0);
-    if (units[1]) placeCar(units[1].group, 3.8, 39, 0);
-    game.starBlink = 0.75; // WANTED blink 0.75 at capture (V7 fix)
-    // Cover framing: closer + wider side offset so the hero's SIDE shows
-    // (V10 fix d) — the rear alone reads as a flat slab.
-    game.cameraRig = { back: 5.5, side: 2.6, height: 2.2, lookAhead: 6 };
-    game.snapCamera(); // k=1 snap (V7 fix)
-    game.hud.holdActionText('NEAR MISS +$250'); // pinned: the 2.6 s animation would end before capture
-    game.hud.showDialogue('Lena "Wrench" Ortiz', 'Two units on your tail, Rico — lose them on Palm Row!', 30000);
-    game.jobs.setJob(0, 1);
-    game.setTarget({ x: -60, z: 95 });
-    game.hud.update(game.hudState());
-    return { ok: true, detail: 'chase staged' };
+    g.startGame();
+    // Stage 1: "Drive to the garage on Palm Row" — the "Two units on your
+    // tail" line is the cover dialogue, and the GPS route is live.
+    g.missions.stage = 1;
+    // Hero car on the avenue, driving north (+Z), mid-block.
+    g.enterCarAt(CHASE.heroStart.x, CHASE.heroStart.z, 0);
+    g.speedKmh = CHASE.speedKmh;
+    g.displaySpeedKmh = CHASE.speedKmh;
+    g.gear = 6;
+    g.setDrivingSpeed(CHASE.speedKmh / 3.6);
+    // Two police cars ahead, clearly readable.
+    g.police.placeUnits(CHASE.policeAhead);
+    g.police.setWanted(3);
+    // Pinned action text + Lena dialogue.
+    g.hud.pinAction('NEAR MISS +$250');
+    const d = g.missions.dialogue();
+    g.hud.showDialogue('lena', 'Lena "Wrench" Ortiz', '#ff7ab0', d.line);
+    // Chase camera: snap into place immediately.
+    g.snapChaseCamera();
+    g.shotFrozen = true;
+    g.shotName = 'chase';
+  } else if (name === 'title') {
+    g.mode = 'title';
+    // Hero car parked right-of-center, CLOSE and angled, clear of the button.
+    // NOTE (right-handed coords): facing north (+z), +x appears LEFT and -x
+    // appears RIGHT — so the car goes WEST of the lookAt point to read right.
+    // Camera at z=12 sits between the z=0 and z=45 crosswalks (the z=0 one
+    // filled the foreground when the camera was at z=4).
+    g.enterCarAt(-5, 26, -0.4);
+    g.speedKmh = 0;
+    g.displaySpeedKmh = 0;
+    // Title camera: low, looking north at the car + neon street + sunset.
+    // The lookAt sits EAST of the car so the car lands well right of center
+    // (clear of the START ENGINE button), and high (y=1.9) so the car sits
+    // below the tagline text.
+    g.camera.position.set(3, 2.6, 12);
+    g.camera.lookAt(2, 1.9, 30);
+    g.titleCamera = g.camera.position.clone();
+    g.titleLookAt = new g.THREE.Vector3(2, 1.9, 30);
+    g.shotFrozen = true;
+    g.shotName = 'title';
+  } else if (name === 'map') {
+    g.startGame();
+    g.enterCarAt(1.6, -12, 0);
+    g.missions.chapter = 0;
+    g.missions.stage = 1; // stage 1: GPS route to Palm Row
+    g.hud.openMap();
+    g.hud.update(0);
+    g.shotFrozen = true;
+    g.shotName = 'map';
+  } else if (name === 'marina') {
+    g.startGame();
+    // Chapter 2, stage 0: "Meet the contact at the marina" — the marina job.
+    g.missions.chapter = 1;
+    g.missions.stage = 0;
+    // Rico on foot at the marina quay, facing the boats (east).
+    // Quay top is at y=0.47 — stand ON it, not inside it.
+    g.exitCarAt(96, 8, Math.PI / 2);
+    g.rico.group.position.y = 0.47;
+    const d = g.missions.dialogue();
+    g.hud.showDialogue('rosa', 'Mama Rosa', '#b08aff', 'Tonight the city learns our name, Rico. Drive it home.');
+    // Foot camera: back 5.5, height 2.6 — Rico BIG in frame, boats behind.
+    g.camera.position.set(96 - 5.5, 2.6, 8);
+    g.camera.lookAt(114, 1.3, 8);
+    g.marinaCamera = g.camera.position.clone();
+    g.marinaLookAt = new g.THREE.Vector3(114, 1.3, 8);
+    g.shotFrozen = true;
+    g.shotName = 'marina';
   }
-
-  if (name === 'title') {
-    game.setMode('title');
-    game.showTitleScreen();
-    game.hud.hideMap();
-    // Hero parked right-of-center (V10 fix b): far enough right and close
-    // enough to the camera to clear the START ENGINE button entirely.
-    game.setPlayerPos(6.5, 38, 0.5, true);
-    game.police.setWanted(0);
-    game.cameraRig = { back: 0, side: 0, height: 0, lookAhead: 0 };
-    game.camera.position.set(-2, 2.6, 48);
-    game.camera.lookAt(0, 1.2, 28);
-    game.hud.update(game.hudState());
-    return { ok: true, detail: 'title staged' };
-  }
-
-  if (name === 'map') {
-    game.setMode('map');
-    game.hideTitleScreen();
-    game.jobs.setJob(0, 1); // stage 1: GPS route active
-    game.setPlayerPos(0, 20, 0, true);
-    game.setTarget({ x: -60, z: 95 });
-    game.police.setWanted(3);
-    game.hud.showMap();
-    game.hud.update(game.hudState()); // hud.update runs in map mode (V7 fix)
-    return { ok: true, detail: 'map staged' };
-  }
-
-  // marina
-  game.setMode('foot');
-  game.hideTitleScreen();
-  game.hud.hideMap();
-  game.jobs.setJob(0, 0); // stage: enter-car (V8 fix)
-  game.hud.clearDialogue(); // dialogue queue cleared (V8 fix)
-  // Rico on the clear quay, facing the docks (+X).
-  game.setPlayerPos(45, 40, Math.PI / 2, false);
-  game.police.setWanted(0); // clean: freezing must not create a phantom star
-  game.starBlink = 1;
-  // Foot cam: back 7.5, height 3.6 in shot mode (V7 fix).
-  game.camera.position.set(37.5, 3.6, 40);
-  game.camera.lookAt(49, 1.2, 40);
-  // Crew nearby on the quay.
-  game.placeCrew(42, 36, 48, 44);
-  game.hud.showDialogue('Mama Rosa', 'Tonight the city learns our name, Rico. Drive it home.', 30000);
-  game.hud.update(game.hudState());
-  return { ok: true, detail: 'marina staged' };
+  return g.shotName;
 }
