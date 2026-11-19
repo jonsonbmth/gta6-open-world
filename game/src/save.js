@@ -1,47 +1,47 @@
-// Save / resume via localStorage. Resume restores the exact job stage —
-// it never restarts a job or a stage.
+// SOLMAR BAY — save / resume via localStorage.
+// Resume restores the exact job AND stage: it never restarts a job's stages.
+(function () {
+  'use strict';
+  var SB = window.SB = window.SB || {};
+  var KEY = 'solmar-bay-save-v9';
 
-import { CFG } from './config.js';
-
-export function saveGame(state) {
-  try {
-    const data = {
-      v: 1,
-      savedAt: new Date().toISOString(),
-      money: state.money,
-      respect: state.respect,
-      missions: state.missions.serialize(),
-      player: { x: state.playerPos.x, z: state.playerPos.z, heading: state.heading },
-      inCar: state.inCar,
-      carName: state.carName,
-      station: state.station,
-      day: state.day,
-      minutes: state.minutes,
-      garage: state.garage,
+  function defaults() {
+    return {
+      version: 9, money: 42780, respect: 320, respectLevel: 2,
+      job: 0, stage: 0, jobsDone: 0,
+      garage: ['VULPINE S'], muted: false, station: 0,
+      bestSpeed: 0, nearMisses: 0, savedAt: 0
     };
-    localStorage.setItem(CFG.saveKey, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
   }
-}
 
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(CFG.saveKey);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (data.v !== 1) return null;
-    return data;
-  } catch (e) {
-    return null;
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      if (!raw) return null;
+      var d = JSON.parse(raw);
+      if (!d || d.version !== 9) return null;
+      return d;
+    } catch (e) { return null; }
   }
-}
 
-export function hasSave() {
-  try { return !!localStorage.getItem(CFG.saveKey); } catch (e) { return false; }
-}
+  function save(state) {
+    try {
+      var d = {
+        version: 9, money: state.money, respect: state.respect,
+        respectLevel: state.respectLevel, job: state.job, stage: state.stage,
+        jobsDone: state.jobsDone, garage: state.garage.slice(),
+        muted: state.muted, station: state.station,
+        bestSpeed: state.bestSpeed, nearMisses: state.nearMisses,
+        savedAt: Date.now()
+      };
+      window.localStorage.setItem(KEY, JSON.stringify(d));
+      return true;
+    } catch (e) { return false; }
+  }
 
-export function clearSave() {
-  try { localStorage.removeItem(CFG.saveKey); } catch (e) { /* ignore */ }
-}
+  function clear() {
+    try { window.localStorage.removeItem(KEY); } catch (e) {}
+  }
+
+  SB.save = { KEY: KEY, defaults: defaults, load: load, save: save, clear: clear };
+})();

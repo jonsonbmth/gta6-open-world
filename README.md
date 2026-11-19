@@ -1,86 +1,92 @@
 # SOLMAR BAY — A Night in the Rain
 
-[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An open-world crime game in the spirit of GTA 6, built for make.fun's gta6-01 bounty.
-Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.
-Seven story jobs, five stars of heat, one red VULPINE S. Drive it home.
+A gta6-01 entry: a playable open-world crime game in the browser. One rainy
+night in Solmar Bay — a neon coastal city in a storm. Rico Marín and his crew
+run seven story jobs while the Solmar Bay PD closes in.
+
+Built by an AI agent for make.fun's "Build the best GTA VI-like open world"
+bounty, $1,666 in USDC.
 
 ## Play
 
-Serve `game/` with any static server and open `index.html` in desktop Chrome:
-
 ```sh
-cd game && python3 -m http.server 8080
-# open http://localhost:8080
+# serve the game folder, then open http://localhost:8123
+python3 -m http.server 8123 --directory game
 ```
 
-No network, no build step. All art, textures, portraits and sound are generated
-in code (canvas textures + WebAudio synthesis). three.js is vendored offline.
+No build step, no network: three.js is vendored under `game/vendor/`, all
+textures are generated in code, all audio is synthesized with WebAudio.
+
+## The game
+
+- **The city** — Solmar Bay: five avenues, five streets, a downtown skyline,
+  a marina with piers and yachts, a bay with an island and a harbor bridge,
+  30 neon-signed shops along Solmar Avenue, palms, lamps and a storm that
+  never lets up. Rain, lightning, wet asphalt mirroring every light.
+- **The look** — a custom bloom post-processing composer (authored from
+  scratch, no vendored post-processing modules), ACES tone mapping, soft
+  shadows, glossy car paint, additive glow under every lamp and sign. The
+  scene is built to read clearly at a glance on a phone screen.
+- **Rico Marín** — yellow raincoat, red cap. On foot or behind the wheel of
+  the red VULPINE S. Enter any car with E; stealing one draws the heat.
+- **7 story jobs** — First Run, Neon Errand, Hot Wheels, Rain Check, Harbor
+  Lights, Midnight Oil, Solmar Bay. Stages with objectives, dialogue with
+  portraits, rewards up to $6,000. Progress saves to localStorage and
+  resumes at the exact job and stage.
+- **Wanted 0–5 stars** — named patrol units with alternating red/blue light
+  bars, roadblocks at high heat, and AIR-1, the police helicopter with a
+  searchlight, from 3 stars. Lose the heat or get busted.
+- **Traffic and people** — traffic AI on road loops, pedestrians with
+  umbrellas who panic when shots ring out, near-miss bonuses (+$250) for
+  threading traffic at speed.
+- **HUD** — dense in all four corners: mission panel, money + wanted stars,
+  round minimap with GPS route and police blips, speed + gear + radio.
+  Three radio stations (VAPOR 101.3, SOLMAR GOLD 88.7, TIDE FM 94.2),
+  all synthesized live.
+- **City map (M)** — district zones, named streets, landmarks, GPS route
+  with distance and ETA, compass, legend and grid.
 
 ## Controls
 
 | Key | Action |
-| --- | --- |
-| W A S D | Drive / walk |
-| E | Enter & exit car (steal any parked car) |
-| Space | Handbrake |
-| Shift | Run on foot |
-| M | City map (GPS route, districts, landmarks) |
-| R | Radio station (3 stations, synthesized) |
-| F | Action (on foot) |
-| Enter | Start from the title screen |
+| --- | ------ |
+| W / S / A / D or arrows | Drive / walk |
+| Space | Handbrake (drift) |
+| Shift | Run (on foot) |
+| E | Enter / exit car |
+| F | Shoot |
+| M | City map |
+| R | Next radio station |
+| N | Mute |
+| Enter | Start (title screen) |
 
-## What's in the game
+## Verify
 
-- **Open city at night in the rain** — wet asphalt with fake neon reflections,
-  dense neon shop signs on both sides of Solmar Avenue, palms, street lamps,
-  a lit skyline, fog, rain streaks, and a marina with boats and docks.
-- **Driving** — arcade handling in the hero VULPINE S (extruded fastback body,
-  spoiler, full-width taillight bar) plus 6 traffic car types to steal.
-- **On foot** — Rico in his yellow raincoat, pedestrians (some panic and run),
-  the crew waiting at the marina.
-- **Wanted 0–5 stars** — named police units (UNIT 7 / 12 / 21) chase in cars
-  with flashing red/blue light bars; AIR-1 helicopter with a searchlight at 3+ stars.
-- **7 story jobs** with stages, dialogue and portraits (Mama Rosa, Lena "Wrench"
-  Ortiz, Dario "Fuze" Kane), objective beacon, GPS route on the map and minimap.
-- **HUD** — mission panel, money + wanted stars, round minimap with police blips,
-  radio + speedometer, floating NEAR MISS rewards.
-- **Save / resume** — progress autosaves to localStorage and resumes at the exact
-  job stage, never restarting a job.
-- **City map** — district zones, named streets, bay + Pelican Isle + Harbor Bridge,
-  8 landmarks, GPS route with distance + ETA, compass, legend, grid.
-- **Playtest** — open `index.html?playtest=1` for a 20-check self-test.
-- **Performance** — `?perf=low` renders at half resolution; HUD writes are cached
-  and the minimap updates every 2nd frame.
+```sh
+# playtest in a headless browser (20 checks, must be 20/20)
+chromium --headless --dump-dom "http://localhost:8123/?playtest=1" --virtual-time-budget=20000
 
-## Layout
-
-```
-game/
-  index.html            page + HUD
-  src/
-    main.js             boot, game loop, player, camera, playtest
-    config.js           palette, names, districts, radio, jobs
-    utils.js            seeded random, math, canvas helpers
-    textures.js         canvas textures: facades, neon signs, portraits
-    world.js            city, shops, palms, lamps, skyline, marina, rain
-    cars.js             extruded-profile cars, police gear, traffic AI
-    people.js           Rico, pedestrians, crew
-    police.js           wanted system, pursuit, helicopter
-    missions.js         7 jobs, stages, latching wanted stages
-    hud.js              four-corner HUD, minimap, dialogue, map overlay
-    citymap.js          the AAA city map
-    audio.js            synthesized radio, engine, siren, rain
-    save.js             localStorage save / resume
-    input.js            keyboard, consume-on-read presses
-    shots.js            frozen screenshot modes (chase / title / map / marina)
-  vendor/three.min.js   three.js 0.160.0, vendored offline
+# screenshots (1280x720, each <= 256 KiB)
+chromium --headless --screenshot=screenshots/1-chase.jpg --window-size=1280,720 \
+  "http://localhost:8123/?shot=1-chase" --virtual-time-budget=20000
 ```
 
-Everything is original: our own city, characters, vehicles, names, story, art and
-sounds. Nothing is taken from any commercial game.
+`?perf=low` halves the render resolution for slower machines.
 
-<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+## Hand in
+
+```sh
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
+
+Node 22, standard library only. Two runs are byte-identical
+(deterministic). `main.ts` copies `game/` and `screenshots/` and writes
+`dossier.json` with the kit's `buildDossier`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

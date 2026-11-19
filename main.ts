@@ -1,10 +1,9 @@
-// SOLMAR BAY — entrypoint for the make.fun gta6-01 bounty.
-// Copies game/ and screenshots/ to /output and writes dossier.json with the
-// kit's own buildDossier library, exactly as the kit's starter plumbing does.
-// Runs on Node 22, standard library only, no network.
+// SOLMAR BAY — main.ts: hands in the entry. Copies game/ and screenshots/
+// beside this file into the output directory, then writes dossier.json with
+// the kit's buildDossier library (the summary the judge reads).
 //
-// Determinism note: the program copies files verbatim and builds the dossier
-// from the copied bytes, so two runs write identical output.
+// Run locally:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// In the grader's container MAKEFUN_OUTPUT_DIR is unset and /output is used.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,10 +16,13 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
-// bytes; the others refuse an entry the scorer would refuse.
+// The scorer's caps: 4 screenshots max, each 256 KiB max; game/ at most 993
+// files / 48 MiB, no path over 1000 bytes. buildDossier throws on any breach,
+// so a successful run is itself a validity check.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

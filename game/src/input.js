@@ -1,42 +1,37 @@
-// Keyboard input with consume-on-read presses (no stuck keys).
+// SOLMAR BAY — keyboard input with a consume-on-read pressed queue.
+// Held keys are read every frame; single presses are queued and consumed once,
+// so a tap is never double-counted across frames.
+(function () {
+  'use strict';
+  var SB = window.SB = window.SB || {};
 
-export class Input {
-  constructor() {
-    this.keys = new Set();
-    this._pressed = new Set();
-    this._onDown = (e) => {
-      if (e.repeat) return;
-      this.keys.add(e.code);
-      this._pressed.add(e.code);
-    };
-    this._onUp = (e) => this.keys.delete(e.code);
-    this._onBlur = () => { this.keys.clear(); this._pressed.clear(); };
-    window.addEventListener('keydown', this._onDown);
-    window.addEventListener('keyup', this._onUp);
-    window.addEventListener('blur', this._onBlur);
-  }
+  var held = {};
+  var queue = [];
 
-  down(code) { return this.keys.has(code); }
+  function codeOf(e) { return e.code || ('Key' + e.key.toUpperCase()); }
 
-  // True once per physical press; consumes the press.
-  pressed(code) {
-    if (this._pressed.has(code)) {
-      this._pressed.delete(code);
-      return true;
-    }
+  window.addEventListener('keydown', function (e) {
+    var c = codeOf(e);
+    if (!held[c]) queue.push(c);
+    held[c] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].indexOf(c) >= 0) e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) { held[codeOf(e)] = false; });
+  window.addEventListener('blur', function () { held = {}; queue.length = 0; });
+
+  function isDown(code) { return !!held[code]; }
+
+  // Returns true once per physical press; the press is consumed by the read.
+  function pressed(code) {
+    var i = queue.indexOf(code);
+    if (i >= 0) { queue.splice(i, 1); return true; }
     return false;
   }
 
-  // WASD / arrows as -1..1 axes.
-  axis() {
-    const x = (this.down('KeyD') || this.down('ArrowRight') ? 1 : 0) - (this.down('KeyA') || this.down('ArrowLeft') ? 1 : 0);
-    const y = (this.down('KeyW') || this.down('ArrowUp') ? 1 : 0) - (this.down('KeyS') || this.down('ArrowDown') ? 1 : 0);
-    return { x, y };
-  }
+  function endFrame() { queue.length = 0; }
 
-  dispose() {
-    window.removeEventListener('keydown', this._onDown);
-    window.removeEventListener('keyup', this._onUp);
-    window.removeEventListener('blur', this._onBlur);
-  }
-}
+  // Test hook: inject a synthetic press (used by the playtest).
+  function inject(code) { queue.push(code); held[code] = true; setTimeout(function () { held[code] = false; }, 50); }
+
+  SB.input = { isDown: isDown, pressed: pressed, endFrame: endFrame, inject: inject };
+})();

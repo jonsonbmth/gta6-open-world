@@ -4,151 +4,92 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SOLMAR BAY — A Night in the Rain</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #070a24;
-    font-family: Arial, Helvetica, sans-serif; color: #fff; }
-  #game-root, #game-root canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-  .panel { position: absolute; background: rgba(6,8,18,0.72); border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 10px; padding: 10px 12px; }
-  /* top-left: mission */
-  #mission-panel { top: 14px; left: 14px; width: 330px; }
-  #mission-chapter { display: inline-block; background: #ffd23f; color: #141414; font-weight: 900;
-    font-size: 12px; padding: 2px 8px; border-radius: 4px; margin-bottom: 5px; }
-  #mission-title { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; }
-  #mission-stage { font-size: 13px; color: #cfe6ff; margin-top: 3px; line-height: 1.35; }
-  .bar { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; margin-top: 7px; overflow: hidden; }
-  .bar > div { height: 100%; background: #ffd23f; border-radius: 4px; }
-  #mission-next { font-size: 12px; color: #ffd23f; margin-top: 6px; font-weight: bold; }
-  /* top-right: status */
-  #status-panel { top: 14px; right: 14px; width: 250px; text-align: right; }
-  #clock { font-size: 13px; color: #cfe6ff; letter-spacing: 1px; }
-  #money { font-size: 30px; font-weight: 900; color: #39ff8e; margin: 2px 0; }
-  #stars { font-size: 22px; color: #ffd23f; letter-spacing: 3px; }
-  #wanted-label { font-size: 13px; font-weight: 900; color: #ff4455; margin-top: 2px; }
-  #pursuit-label { font-size: 12px; font-weight: 900; color: #ff4455; margin-top: 2px;
-    animation: wantedBlink 0.9s ease-in-out infinite; }
-  @keyframes wantedBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.75; } }
-  /* bottom-left: minimap */
-  #minimap-wrap { left: 14px; bottom: 14px; width: 210px; text-align: center; }
-  #minimap { width: 180px; height: 180px; border-radius: 50%;
-    border: 3px solid rgba(255,210,63,0.85); background: #141a2e; }
-  #district-label { display: inline-block; background: #ffd23f; color: #141414; font-weight: 900;
-    font-size: 12px; padding: 3px 10px; border-radius: 12px; margin-top: 8px; }
-  #respect-label { font-size: 12px; color: #e8ecff; margin-top: 6px; font-weight: bold; }
-  #respect-bar { background: #39ff8e; }
-  /* bottom-right: vehicle */
-  #vehicle-panel { right: 14px; bottom: 14px; width: 280px; text-align: right; }
-  #radio-station { font-size: 13px; color: #00e5ff; font-weight: 900; }
-  #radio-song { font-size: 12px; color: #cfe6ff; margin-top: 1px; }
-  #car-name { font-size: 20px; font-weight: 900; margin-top: 6px; }
-  #condition-text { font-size: 11px; color: #9fe8b8; margin-top: 4px; }
-  #condition-bar { background: #39ff8e; }
-  #speed { font-size: 46px; font-weight: 900; line-height: 1.05; margin-top: 4px;
-    text-shadow: 0 0 18px rgba(255,45,149,0.55); }
-  #gear { font-size: 13px; color: #ffd23f; font-weight: bold; }
-  /* dialogue */
-  #dialogue { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-    display: none; align-items: center; gap: 12px; width: 520px; max-width: 46vw;
-    background: rgba(6,8,18,0.8); border: 1px solid rgba(255,210,63,0.5); border-radius: 10px; padding: 10px 14px; }
-  #dialogue-portrait { width: 72px; height: 72px; border-radius: 8px; flex-shrink: 0; }
-  #dialogue-name { font-size: 13px; font-weight: 900; color: #ffd23f; }
-  #dialogue-text { font-size: 15px; line-height: 1.4; margin-top: 2px; }
-  /* floating action text */
-  #float-text { position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
-    font-size: 34px; font-weight: 900; color: #ffd23f; opacity: 0;
-    text-shadow: 0 0 16px rgba(0,0,0,0.8); letter-spacing: 1px; }
-  #float-text.float-anim { animation: floatUp 2.2s ease-out forwards; }
-  @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 14px); }
-    12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -26px); } }
-  #toast { position: absolute; left: 50%; top: 108px; transform: translateX(-50%);
-    background: rgba(6,8,18,0.85); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
-    padding: 8px 16px; font-size: 14px; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
-  /* title screen */
-  #title-screen { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center;
-    background: linear-gradient(180deg, rgba(7,10,36,0.55) 0%, rgba(7,10,36,0.45) 45%, rgba(7,10,36,0.78) 100%);
-    pointer-events: auto; }
-  #title-logo { font-size: 92px; font-weight: 900; letter-spacing: 4px; line-height: 1;
-    background: linear-gradient(90deg, #ff2d95, #ffd23f, #00e5ff);
-    -webkit-background-clip: text; background-clip: text; color: transparent; }
-  #title-tag { font-size: 20px; letter-spacing: 8px; color: #e8ecff; margin-top: 8px;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.9); }
-  #title-sub { font-size: 15px; color: #cfe6ff; margin-top: 18px; max-width: 560px; line-height: 1.5; }
-  .title-btn { pointer-events: auto; cursor: pointer; margin-top: 26px; background: #ff2d95; color: #fff;
-    border: none; border-radius: 8px; font-size: 19px; font-weight: 900; letter-spacing: 1px;
-    padding: 14px 44px; box-shadow: 0 0 24px rgba(255,45,149,0.6); }
-  .title-btn.secondary { background: rgba(255,255,255,0.14); box-shadow: none; margin-top: 12px; font-size: 15px; padding: 10px 30px; }
-  #title-controls { margin-top: 26px; font-size: 13px; color: #aab4d8; line-height: 1.8; }
-  /* map overlay */
-  #map-overlay { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center;
-    background: rgba(4,6,16,0.88); pointer-events: auto; }
-  #map-canvas { width: 1100px; height: 660px; max-width: 94vw; max-height: 88vh;
-    border: 2px solid rgba(255,210,63,0.6); border-radius: 12px; }
-  #map-hint { position: absolute; bottom: 18px; font-size: 13px; color: #cfe6ff; }
-  #playtest-results { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
-    display: none; background: rgba(6,8,18,0.92); border: 1px solid #39ff8e; border-radius: 8px;
-    padding: 12px 16px; font-size: 13px; line-height: 1.6; max-width: 640px; }
-</style>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="game-root"></div>
-<div id="hud">
-  <div id="mission-panel" class="panel">
-    <div id="mission-chapter">CH 1</div>
-    <div id="mission-title">First Run</div>
-    <div id="mission-stage">STAGE 1/4 — Get in the VULPINE S</div>
-    <div class="bar"><div id="mission-bar" style="width:0%"></div></div>
-    <div id="mission-next">NEXT → Press E near the red sports car</div>
+<div id="game-root">
+  <canvas id="gl"></canvas>
+
+  <!-- HUD : dense, all four corners -->
+  <div id="hud" class="hidden">
+    <div id="mission-panel" class="panel tl">
+      <div class="mp-row"><span id="mp-chapter" class="badge">CH 1</span><span id="mp-title">First Run</span></div>
+      <div id="mp-desc" class="mp-desc">Drive to the garage on Palm Row</div>
+      <div class="mp-row"><span id="mp-stage">STAGE 2/4</span><div id="mp-bar" class="segbar"><i></i><i></i><i></i><i></i></div></div>
+      <div id="mp-next" class="mp-next">NEXT → Follow the GPS route on the map</div>
+    </div>
+
+    <div id="status-panel" class="panel tr">
+      <div id="sp-day">DAY 1 · 22:47</div>
+      <div id="sp-money">$42,780</div>
+      <div id="sp-stars">★★★☆☆</div>
+      <div id="sp-wanted">WANTED ★★★☆☆</div>
+      <div id="sp-pursuit">PURSUIT ACTIVE</div>
+    </div>
+
+    <div id="nav-panel" class="panel bl">
+      <canvas id="minimap" width="220" height="220"></canvas>
+      <div id="nav-district">SOLMAR AVENUE</div>
+      <div id="nav-respect">RESPECT 2 · 320 / 1000</div>
+      <div class="rbar"><i id="nav-respect-bar"></i></div>
+    </div>
+
+    <div id="vehicle-panel" class="panel br">
+      <div id="vp-radio">VAPOR 101.3</div>
+      <div id="vp-song">Glass Horizon</div>
+      <div id="vp-car">VULPINE S</div>
+      <div class="vp-row"><span>CONDITION</span><span id="vp-cond">95%</span></div>
+      <div class="cbar"><i id="vp-cond-bar"></i></div>
+      <div id="vp-speed">167 <small>KM/H</small></div>
+      <div id="vp-gear">GEAR 6</div>
+    </div>
+
+    <div id="action-toast"></div>
+    <div id="dialogue" class="hidden">
+      <canvas id="dlg-portrait" width="72" height="72"></canvas>
+      <div class="dlg-text"><div id="dlg-name">Lena "Wrench" Ortiz</div><div id="dlg-line">Two units on your tail, Rico — lose them on Palm Row!</div></div>
+    </div>
+    <div id="toast"></div>
+    <div id="hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
   </div>
-  <div id="status-panel" class="panel">
-    <div id="clock">DAY 1 · 22:47</div>
-    <div id="money">$42,780</div>
-    <div id="stars">☆☆☆☆☆</div>
-    <div id="wanted-label">CLEAN</div>
-    <div id="pursuit-label" style="display:none">PURSUIT ACTIVE</div>
+
+  <!-- Full city map overlay -->
+  <div id="map-overlay" class="hidden">
+    <canvas id="bigmap" width="1240" height="700"></canvas>
+    <div id="map-footer">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
   </div>
-  <div id="minimap-wrap" class="panel">
-    <canvas id="minimap" width="180" height="180"></canvas>
-    <div id="district-label">PALM ROW</div>
-    <div id="respect-label">RESPECT 2 · 320 / 1000</div>
-    <div class="bar"><div id="respect-bar" style="width:32%"></div></div>
+
+  <!-- Title screen -->
+  <div id="title-screen">
+    <div class="title-inner">
+      <h1><span class="t1">SOLMAR</span> <span class="t2">BAY</span></h1>
+      <div class="tagline">A NIGHT IN THE RAIN</div>
+      <p class="title-blurb">Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.<br>Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</p>
+      <button id="btn-start">START ENGINE</button>
+      <button id="btn-continue" class="hidden">CONTINUE — JOB <span id="continue-job">2</span></button>
+      <div class="title-controls">WASD drive / walk &nbsp;·&nbsp; E enter &amp; exit car &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; SHIFT run<br>M city map &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F action &nbsp;·&nbsp; Steal any car — the police will notice</div>
+      <div id="save-note"></div>
+    </div>
   </div>
-  <div id="vehicle-panel" class="panel">
-    <div id="radio-station">VAPOR 101.3</div>
-    <div id="radio-song">Glass Horizon</div>
-    <div id="car-name">VULPINE S</div>
-    <div id="condition-text">CONDITION 95%</div>
-    <div class="bar"><div id="condition-bar" style="width:95%"></div></div>
-    <div id="speed">0 KM/H</div>
-    <div id="gear">GEAR N</div>
-  </div>
-  <div id="dialogue">
-    <img id="dialogue-portrait" alt="portrait">
-    <div><div id="dialogue-name">Mama Rosa</div><div id="dialogue-text"></div></div>
-  </div>
-  <div id="float-text"></div>
-  <div id="toast"></div>
-  <div id="playtest-results"></div>
+
+  <div id="playtest-results" class="hidden"></div>
 </div>
-<div id="map-overlay">
-  <canvas id="map-canvas" width="1100" height="660"></canvas>
-  <div id="map-hint">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
-</div>
-<div id="title-screen">
-  <div id="title-logo">SOLMAR BAY</div>
-  <div id="title-tag">A NIGHT IN THE RAIN</div>
-  <div id="title-sub">Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.
-    Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</div>
-  <button id="title-start" class="title-btn">START ENGINE</button>
-  <button id="title-resume" class="title-btn secondary" style="display:none">CONTINUE — LOAD SAVE</button>
-  <div id="title-controls">
-    WASD drive / walk &nbsp;·&nbsp; E enter &amp; exit car &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; SHIFT run<br>
-    M city map &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F action &nbsp;·&nbsp; Steal any car — the police will notice
-  </div>
-</div>
+
 <script src="vendor/three.min.js"></script>
-<script type="module" src="src/main.js"></script>
+<script src="src/utils.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/save.js"></script>
+<script src="src/input.js"></script>
+<script src="src/postfx.js"></script>
+<script src="src/world.js"></script>
+<script src="src/cars.js"></script>
+<script src="src/people.js"></script>
+<script src="src/police.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/playtest.js"></script>
+<script src="src/main.js"></script>
 </body>
 </html>
