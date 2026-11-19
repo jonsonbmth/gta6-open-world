@@ -1,0 +1,1 @@
+{"description":"SOLMAR BAY — A Golden Hour in Neon. An original open-world crime game for make.fun gta6-01.","license":"MIT","name":"solmar-bay","private":true,"scripts":{"build":"node main.ts","serve":"node serve.ts"},"type":"module","version":"13.0.0"}

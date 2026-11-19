@@ -1,35 +1,39 @@
 # SOLMAR BAY — A Golden Hour in Neon
 
-[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![Play on make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![Rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![Reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An original open-world crime game in the spirit of GTA 6, built for make.fun's
-gta6-01 bounty. Rico Marín is back in Solmar Bay — a sun-soaked neon coastal
-city at golden hour. Seven jobs. Five stars of heat. One red VULPINE S.
-Drive it home.
+An original open-world crime game in the spirit of GTA 6, built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
 
-## Play
+**Rico Marín is back in Solmar Bay** — a sun-soaked coastal city at golden hour. Seven story jobs, five stars of heat, one red VULPINE S. Drive it home.
 
-Open `game/index.html` in desktop Chrome (serve `game/` with any static
-server, e.g. `node serve.ts` → http://localhost:8123), or run the
-playtest/screenshot runner in `?shot=chase` mode.
+## What is in the game
 
-- **WASD** drive / walk · **E** enter & exit car · **SPACE** handbrake ·
-  **SHIFT** run · **M** city map · **R** radio · **F** action · **N** mute
-- Steal any car — the police will notice.
+- A complete open world: downtown avenues, the canal district, the marina, Pelican Isle, the harbour bridge, beaches and the ring highway.
+- Driving and walking: steal any car, enter and exit with E, traffic AI, pedestrians who panic and run when the heat is on.
+- Wanted 0–5 stars with named police units (UNIT 7, UNIT 12, UNIT 21) and the AIR-1 helicopter with a searchlight.
+- 7 story jobs with objectives, GPS routes, dialogue and a save that resumes where you left off.
+- A dense HUD: mission tracker, money, wanted stars, speed, radio (3 stations), a round minimap with real streets, and a full AAA city map (M).
+- Golden-hour look: natural blue-to-gold sky, warm sunlight that lights the hero car from the camera side, procedural textures everywhere, real bloom, ACES tone mapping, shadows, vignette and film grain.
 
-## What's in the world
+## Play it
 
-- A full coastal city: Solmar Avenue, five districts, the marina, Pelican Isle,
-  the Harbor Bridge, shops, palms, traffic and pedestrians
-- 7 story chapters with objectives, dialogue and GPS routes
-- Wanted 0–5 stars, named police units, AIR-1 helicopter with searchlight
-- Stealable cars, traffic AI, pedestrians, combat, radio, garage, save/resume
-- HUD with minimap, speed, money, wanted stars and mission tracker
-- Procedural textures (asphalt, facades, brick, concrete), bloom + vignette +
-  film grain, ACES tone mapping, real-time shadows
+```sh
+node serve.ts
+```
 
-Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
+Then open http://localhost:8080. WASD drive / walk, E enter or exit a car, SPACE handbrake, SHIFT run, M city map, R radio, F action, N mute.
+
+## Shots
+
+The four screenshots in `screenshots/` are staged renders of the real game (`?shot=chase|title|map|marina&seed=1`), captured with a headless browser and reviewed by hand.
+
+## Layout
+
+- `game/` — the playable game as static files (three.js 0.160.0 vendored under `game/vendor/`).
+- `game/src/` — one file per system: config, world, cars, people, police, missions, HUD, audio, save, post-processing, shots, playtest.
+- `main.ts` — hands the game and screenshots in and writes `dossier.json` with the make.fun library.
+- `serve.ts` — a tiny static server for local play.
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

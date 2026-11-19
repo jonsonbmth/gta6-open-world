@@ -1,223 +1,320 @@
-// Cars — the V12 hero fix lives here. The hero VULPINE S is a SCULPTED sports
-// car: extruded side profile with bevel (curved panels, never a plain box),
-// a separate tinted-glass cabin, and a rear assembly with real depth —
-// bumper, diffuser with fins, dual exhausts, a FULL-WIDTH emissive taillight
-// bar, and a spoiler. Car-local nose is +Z after the profile rotation.
+// Sculpted cars. Every car is built from a beveled extruded side profile — never
+// a plain box — with a separate tinted-glass cabin, detailed wheels, and depth on
+// the rear face (bumper, diffuser, exhausts, light bar at different depths).
+//
+// CAR-LOCAL AXES: the nose is +Z, the tail is -Z. The side profile is drawn with
+// the nose at +X and the group is rotated -90° about Y, which maps +X onto +Z.
+// Headlights go on the +Z end, the taillight bar and spoiler on the -Z end.
 import * as THREE from 'three';
+import { paintTexture } from './textures.js';
+import { pick } from './random.js';
 
-function paint(color) {
-  return new THREE.MeshPhysicalMaterial({
-    color,
-    metalness: 0.55,
-    roughness: 0.45,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.45,
-  });
-}
-const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x16222e, metalness: 0.9, roughness: 0.14 });
-const darkTrim = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9, metalness: 0.1 });
-const chromeMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.95, roughness: 0.25 });
-const tireMat = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.92 });
-const rimMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.9, roughness: 0.3 });
-
-function box(w, h, d, mat, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  return m;
+// Side silhouette of the lower body (x = length, tail -2.3 to nose +2.3; y = height).
+function bodyProfile() {
+  const s = new THREE.Shape();
+  s.moveTo(-2.28, 0.32);
+  s.quadraticCurveTo(-2.42, 0.55, -2.36, 0.82); // tail, slightly rounded
+  s.lineTo(-2.1, 0.98);
+  s.quadraticCurveTo(-1.2, 1.04, -0.2, 0.98); // decklid / waist
+  s.quadraticCurveTo(1.0, 0.94, 1.75, 0.82); // bonnet slope
+  s.quadraticCurveTo(2.3, 0.72, 2.36, 0.48); // nose, rounded down
+  s.quadraticCurveTo(2.38, 0.34, 2.2, 0.3);
+  s.lineTo(-2.28, 0.32);
+  return s;
 }
 
-// Side-profile extrusion: shape drawn in XY (x = length, nose +x), extruded
-// across the width, then rotated so the nose points at car-local +Z.
-function extrudeProfile(points, width, bevel, mat) {
-  const shape = new THREE.Shape();
-  shape.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i += 1) shape.lineTo(points[i][0], points[i][1]);
-  shape.closePath();
+function glasshouseProfile() {
+  const s = new THREE.Shape();
+  s.moveTo(-1.35, 0.95);
+  s.quadraticCurveTo(-1.05, 1.42, -0.45, 1.48); // rear window rake
+  s.lineTo(0.35, 1.48);
+  s.quadraticCurveTo(0.85, 1.42, 1.15, 0.95); // windscreen rake
+  s.lineTo(-1.35, 0.95);
+  return s;
+}
+
+function extrudeCentered(shape, depth, bevel) {
   const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: width,
+    depth,
     bevelEnabled: true,
     bevelThickness: bevel,
-    bevelSize: bevel,
+    bevelSize: bevel * 0.8,
     bevelSegments: 3,
-    steps: 1,
+    curveSegments: 10,
   });
-  geo.translate(0, 0, -width / 2);
-  geo.rotateY(-Math.PI / 2); // shape +x (nose) -> world +z
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
-  return mesh;
+  geo.translate(0, 0, -depth / 2);
+  return geo;
 }
 
-function makeWheel() {
-  const g = new THREE.Group();
-  const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.24, 20), tireMat);
-  tire.rotation.z = Math.PI / 2;
-  tire.castShadow = true;
-  g.add(tire);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.26, 16), rimMat);
-  rim.rotation.z = Math.PI / 2;
-  g.add(rim);
-  for (let i = 0; i < 5; i += 1) {
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.05, 0.05), rimMat);
-    const a = (i / 5) * Math.PI * 2;
-    spoke.position.set(0, Math.sin(a) * 0.1, Math.cos(a) * 0.1);
-    spoke.rotation.x = -a;
-    g.add(spoke);
-  }
-  // Dark well disc behind the wheel so the arch reads as a shadowed opening.
-  const well = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 20), darkTrim);
-  well.rotation.z = Math.PI / 2;
-  well.position.x = 0;
-  g.add(well);
-  return g;
-}
-
-// The sculpted rear: bumper, diffuser + fins, dual exhausts, full-width bar.
-function buildRear(group, bodyMat, detail) {
-  // Rear bumper — proud of the body, body color.
-  group.add(box(1.88, 0.32, 0.2, bodyMat, 0, 0.44, -2.26));
-  // Lower valance, dark, tucked under the bumper.
-  group.add(box(1.7, 0.14, 0.16, darkTrim, 0, 0.26, -2.28));
-  // Diffuser panel with vertical fins.
-  group.add(box(1.5, 0.16, 0.14, darkTrim, 0, 0.17, -2.3));
-  for (let i = 0; i < 4; i += 1) {
-    group.add(box(0.035, 0.15, 0.16, darkTrim, -0.54 + i * 0.36, 0.17, -2.32));
-  }
-  // Dual exhausts poking out of the diffuser.
-  for (const sx of [-0.55, 0.55]) {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 12), chromeMat);
-    pipe.name = 'exhaust';
-    pipe.rotation.x = Math.PI / 2;
-    pipe.position.set(sx, 0.24, -2.36);
-    pipe.castShadow = true;
-    group.add(pipe);
-    const mouth = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 12), darkTrim);
-    mouth.rotation.x = Math.PI / 2;
-    mouth.position.set(sx, 0.24, -2.46);
-    group.add(mouth);
-  }
-  // FULL-WIDTH taillight bar: one continuous glowing bar across the rear.
-  const barMat = new THREE.MeshStandardMaterial({
-    color: 0x550000,
-    emissive: 0xff1a1a,
-    emissiveIntensity: 3.2,
-    roughness: 0.4,
-  });
-  const bar = box(1.62, 0.1, 0.06, barMat, 0, 0.62, -2.28);
-  bar.name = 'taillight-bar';
-  group.add(bar);
-  // Soft glow plane behind the bar so the bloom pass picks it up.
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: 0xff2222,
-    transparent: true,
-    opacity: 0.35,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.34), glowMat);
-  glow.position.set(0, 0.62, -2.32);
-  glow.rotation.y = Math.PI;
-  group.add(glow);
-  if (detail) {
-    // Spoiler on two struts.
-    group.add(box(0.06, 0.16, 0.06, darkTrim, -0.55, 0.86, -2.02));
-    group.add(box(0.06, 0.16, 0.06, darkTrim, 0.55, 0.86, -2.02));
-    const wing = box(1.52, 0.05, 0.34, bodyMat, 0, 0.96, -2.08);
-    wing.name = 'spoiler';
-    group.add(wing);
-  }
-}
-
-function buildFront(group, bodyMat) {
-  // Headlights: slim emissive bars, warm white.
-  const lightMat = new THREE.MeshStandardMaterial({
-    color: 0x444422,
-    emissive: 0xfff2c8,
-    emissiveIntensity: 2.4,
-    roughness: 0.4,
-  });
-  group.add(box(0.44, 0.09, 0.06, lightMat, -0.56, 0.5, 2.22));
-  group.add(box(0.44, 0.09, 0.06, lightMat, 0.56, 0.5, 2.22));
-  // Grille + front splitter.
-  group.add(box(1.15, 0.16, 0.05, darkTrim, 0, 0.3, 2.23));
-  group.add(box(1.7, 0.06, 0.26, darkTrim, 0, 0.14, 2.26));
-}
-
-export function buildCar({ color = 0xcc2222, police = false, detail = true } = {}) {
-  const group = new THREE.Group();
-  const bodyMat = paint(color);
-  // Main body: sports-car side silhouette, bevelled for curved panels.
-  const bodyProfile = [
-    [-2.2, 0.16], [-2.2, 0.58], [-1.55, 0.66], [-0.55, 0.7], [0.55, 0.7],
-    [1.35, 0.62], [1.95, 0.52], [2.2, 0.42], [2.2, 0.18], [1.45, 0.14],
-    [-1.45, 0.14],
-  ];
-  group.add(extrudeProfile(bodyProfile, 1.7, 0.09, bodyMat));
-  // Cabin: sloped tinted glass.
-  const cabinProfile = [[-0.98, 0.68], [-0.58, 1.0], [0.32, 1.02], [0.88, 0.68]];
-  group.add(extrudeProfile(cabinProfile, 1.46, 0.06, glassMat));
-  // Roof panel (body color) so the cabin reads as glasshouse + roof.
-  group.add(box(1.3, 0.05, 0.95, bodyMat, 0, 1.02, -0.12));
-  // Side skirts.
-  group.add(box(0.08, 0.12, 3.2, darkTrim, -0.9, 0.2, 0));
-  group.add(box(0.08, 0.12, 3.2, darkTrim, 0.9, 0.2, 0));
-  buildRear(group, bodyMat, detail);
-  buildFront(group, bodyMat);
-  // Wheels + arches.
-  const wheels = [];
-  for (const [wx, wz] of [[-0.84, 1.45], [0.84, 1.45], [-0.84, -1.45], [0.84, -1.45]]) {
-    const wheel = makeWheel();
-    wheel.position.set(wx, 0.34, wz);
-    group.add(wheel);
-    wheels.push(wheel);
-    // Arch lip: dark half-torus over the wheel.
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 8, 16, Math.PI), darkTrim);
-    arch.position.set(wx, 0.34, wz);
-    arch.rotation.y = Math.PI / 2;
-    group.add(arch);
-  }
-  if (police) {
-    // White roof panel + light bar.
-    group.add(box(1.32, 0.06, 1.0, new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.5 }), 0, 1.06, -0.12));
-    const redMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2020, emissiveIntensity: 4 });
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x000033, emissive: 0x2244ff, emissiveIntensity: 4 });
-    group.add(box(0.42, 0.12, 0.3, redMat, -0.24, 1.14, -0.12));
-    group.add(box(0.42, 0.12, 0.3, blueMat, 0.24, 1.14, -0.12));
-    group.add(box(0.96, 0.04, 0.34, darkTrim, 0, 1.1, -0.12));
-    // Red/blue light pools on the road.
-    for (const [poolColor, px] of [[0xff2222, -0.5], [0x2244ff, 0.5]]) {
-      const pool = new THREE.Mesh(
-        new THREE.CircleGeometry(1.1, 20),
-        new THREE.MeshBasicMaterial({ color: poolColor, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }),
-      );
-      pool.rotation.x = -Math.PI / 2;
-      pool.position.set(px, 0.03, -0.1);
-      group.add(pool);
+function makeWheel(random, radius = 0.36) {
+  const wheel = new THREE.Group();
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.9, metalness: 0.0 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xd8dce2, roughness: 0.25, metalness: 0.9 });
+  // The wheel axle runs along local Z (the car's width): rotate the cylinder's
+  // Y axis onto Z with rotation.x.
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.28, 24), tireMat);
+  tire.rotation.x = Math.PI / 2;
+  wheel.add(tire);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.58, radius * 0.58, 0.3, 20), rimMat);
+  rim.rotation.x = Math.PI / 2;
+  wheel.add(rim);
+  // Five spokes per face, radiating in the XY plane (rotation about the Z axle).
+  for (let side = -1; side <= 1; side += 2) {
+    for (let i = 0; i < 5; i += 1) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.09, radius * 1.05, 0.03), rimMat);
+      spoke.position.set(0, 0, side * 0.15);
+      spoke.rotation.z = (i / 5) * Math.PI * 2;
+      wheel.add(spoke);
     }
   }
-  group.userData.wheels = wheels;
-  group.userData.isPolice = police;
-  return group;
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.34, 12), tireMat);
+  hub.rotation.x = Math.PI / 2;
+  wheel.add(hub);
+  return wheel;
 }
 
-// Place a car in the world and return its driving state. The group is ALWAYS
-// added to the scene here — a car state never floats at the origin.
-export function makeCarState(scene, car, x, z, heading, { speed = 0 } = {}) {
-  car.position.set(x, 0, z);
-  car.rotation.y = heading;
-  scene.add(car);
-  return {
-    group: car,
-    wheels: car.userData.wheels,
-    speed,
-    heading,
-    steer: 0,
-    setPose(nx, nz, nheading) {
-      car.position.set(nx, 0, nz);
-      car.rotation.y = nheading;
-      this.heading = nheading;
-    },
-  };
+function glowSprite(texture, color, scaleX, scaleY, opacity = 0.85) {
+  const mat = new THREE.SpriteMaterial({
+    map: texture, color, transparent: true, opacity,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(scaleX, scaleY, 1);
+  return sprite;
+}
+
+// The hero: VULPINE S — vivid bright red, full-width taillight bar, sculpted rear.
+export function makeHeroCar(random, textures) {
+  const car = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({
+    map: paintTexture(random, '#e8232a'),
+    color: 0xffffff, roughness: 0.45, metalness: 0.35,
+  });
+  const darkTrim = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.7, metalness: 0.3 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x3a4f61, roughness: 0.22, metalness: 0.6 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xcfd4d8, roughness: 0.2, metalness: 1.0 });
+
+  const body = new THREE.Group();
+  const shell = new THREE.Mesh(extrudeCentered(bodyProfile(), 1.66, 0.14), paint);
+  shell.castShadow = true;
+  shell.receiveShadow = true;
+  body.add(shell);
+  const cabin = new THREE.Mesh(extrudeCentered(glasshouseProfile(), 1.38, 0.08), glassMat);
+  cabin.position.y = 0.02;
+  cabin.castShadow = true;
+  body.add(cabin);
+  // Roof panel in paint, so the cabin reads as a car roof, not a glass box.
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 1.32), paint);
+  roof.position.set(-0.1, 1.5, 0);
+  roof.castShadow = true;
+  body.add(roof);
+  // Rear window: a dark glass slab behind the roof line.
+  const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 1.3), glassMat);
+  rearGlass.position.set(-1.18, 1.24, 0);
+  rearGlass.rotation.z = -0.5;
+  body.add(rearGlass);
+
+  // Wheels + arches (local X is length here; the group is rotated below).
+  const wheelPositions = [
+    [-1.45, 0.36, 0.82], [-1.45, 0.36, -0.82],
+    [1.45, 0.36, 0.82], [1.45, 0.36, -0.82],
+  ];
+  const wheels = [];
+  for (const [wx, wy, wz] of wheelPositions) {
+    const arch = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.3, 20), darkTrim);
+    arch.rotation.x = Math.PI / 2;
+    arch.position.set(wx, wy, wz);
+    body.add(arch);
+    const wheel = makeWheel(random);
+    wheel.position.set(wx, wy, wz);
+    body.add(wheel);
+    wheels.push(wheel);
+  }
+
+  // Spoiler on struts at the tail (-X local, becomes -Z after rotation).
+  const strutGeo = new THREE.BoxGeometry(0.08, 0.22, 0.08);
+  for (const side of [-0.6, 0.6]) {
+    const strut = new THREE.Mesh(strutGeo, darkTrim);
+    strut.position.set(-2.12, 1.08, side);
+    body.add(strut);
+  }
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 1.78), paint);
+  wing.position.set(-2.18, 1.22, 0);
+  wing.castShadow = true;
+  body.add(wing);
+
+  // Sculpted rear: bumper, diffuser with fins, dual exhausts, light bar.
+  const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.34, 1.82), paint);
+  rearBumper.position.set(-2.38, 0.52, 0);
+  rearBumper.castShadow = true;
+  body.add(rearBumper);
+  const diffuser = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 1.5), darkTrim);
+  diffuser.position.set(-2.44, 0.3, 0);
+  body.add(diffuser);
+  for (let i = 0; i < 4; i += 1) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.16, 0.04), darkTrim);
+    fin.position.set(-2.48, 0.28, -0.55 + i * 0.37);
+    body.add(fin);
+  }
+  const exhaustGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.3, 12);
+  for (const side of [-0.62, 0.62]) {
+    const pipe = new THREE.Mesh(exhaustGeo, chromeMat);
+    pipe.rotation.z = Math.PI / 2;
+    pipe.position.set(-2.5, 0.34, side);
+    body.add(pipe);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 12), darkTrim);
+    tip.rotation.z = Math.PI / 2;
+    tip.position.set(-2.66, 0.34, side);
+    body.add(tip);
+  }
+  // FULL-WIDTH taillight bar: one continuous emissive bar across the whole rear.
+  const barMat = new THREE.MeshStandardMaterial({
+    color: 0x330000, emissive: 0xff2418, emissiveIntensity: 3.2, roughness: 0.4,
+  });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 1.68), barMat);
+  bar.position.set(-2.5, 0.86, 0);
+  bar.userData.taillightBar = true;
+  bar.userData.barWidth = 1.68;
+  body.add(bar);
+  const barGlow = glowSprite(textures.glow, 0xff3020, 2.4, 0.55, 0.7);
+  barGlow.position.set(-2.62, 0.86, 0);
+  body.add(barGlow);
+
+  // Headlights at the nose (+X local).
+  const headMat = new THREE.MeshStandardMaterial({
+    color: 0x222222, emissive: 0xfff2c0, emissiveIntensity: 2.4, roughness: 0.4,
+  });
+  for (const side of [-0.58, 0.58]) {
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.42), headMat);
+    head.position.set(2.4, 0.72, side);
+    body.add(head);
+    const hg = glowSprite(textures.glow, 0xfff0b0, 0.9, 0.4, 0.55);
+    hg.position.set(2.52, 0.72, side);
+    body.add(hg);
+  }
+  // Front bumper + grille.
+  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 1.8), paint);
+  frontBumper.position.set(2.36, 0.48, 0);
+  body.add(frontBumper);
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 1.1), darkTrim);
+  grille.position.set(2.47, 0.62, 0);
+  body.add(grille);
+  // Side skirts + mirrors.
+  for (const side of [-0.92, 0.92]) {
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.08), darkTrim);
+    skirt.position.set(0, 0.3, side);
+    body.add(skirt);
+    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.14), darkTrim);
+    stalk.position.set(0.85, 1.05, side * 1.02);
+    body.add(stalk);
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.06), paint);
+    mirror.position.set(0.85, 1.08, side * 1.12);
+    body.add(mirror);
+  }
+
+  // Rotate: profile +X (nose) onto +Z. After this, nose = +Z, tail = -Z.
+  body.rotation.y = -Math.PI / 2;
+  car.add(body);
+  car.userData.wheels = wheels;
+  car.userData.isHero = true;
+  return car;
+}
+
+// Police car: same sculpted body, dark blue paint, white roof, red/blue light bar.
+export function makePoliceCar(random, textures) {
+  const car = makeHeroCar(random, textures);
+  // Repaint: find the hero paint material instance (the shell's, which carries
+  // the paint texture) and swap every mesh that uses it to police blue. The
+  // glass cabin has no map, so it keeps its glass material.
+  const body = car.children[0];
+  let heroPaint = null;
+  body.traverse((node) => {
+    if (node.isMesh && node.geometry && node.geometry.type === 'ExtrudeGeometry' && node.material && node.material.map) {
+      heroPaint = node.material;
+    }
+  });
+  const policePaint = new THREE.MeshStandardMaterial({
+    map: paintTexture(random, '#2a3048'),
+    color: 0xffffff, roughness: 0.4, metalness: 0.4,
+  });
+  if (heroPaint) {
+    body.traverse((node) => {
+      if (node.isMesh && node.material === heroPaint) node.material = policePaint;
+    });
+  }
+  const whitePaint = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.4, metalness: 0.2 });
+  // White roof panel + white doors band.
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.07, 1.32), whitePaint);
+  roof.position.set(-0.1, 1.52, 0);
+  body.add(roof);
+  // Light bar on the roof: red left, blue right, both emissive + glow.
+  const barBase = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 1.1), new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.6 }));
+  barBase.position.set(-0.1, 1.62, 0);
+  body.add(barBase);
+  const redMat = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff1a1a, emissiveIntensity: 3.5 });
+  const blueMat = new THREE.MeshStandardMaterial({ color: 0x000022, emissive: 0x2255ff, emissiveIntensity: 3.5 });
+  const red = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.5), redMat);
+  red.position.set(-0.1, 1.7, -0.28);
+  body.add(red);
+  const blue = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.5), blueMat);
+  blue.position.set(-0.1, 1.7, 0.28);
+  body.add(blue);
+  const redGlow = glowSprite(textures.glow, 0xff2222, 1.4, 0.8, 0.8);
+  redGlow.position.set(-0.1, 1.75, -0.3);
+  body.add(redGlow);
+  const blueGlow = glowSprite(textures.glow, 0x3355ff, 1.4, 0.8, 0.8);
+  blueGlow.position.set(-0.1, 1.75, 0.3);
+  body.add(blueGlow);
+  car.userData.isHero = false;
+  car.userData.isPolice = true;
+  return car;
+}
+
+// Traffic: a simpler sculpted body in varied colours and shapes.
+const TRAFFIC_COLORS = ['#c8cdd4', '#7a8894', '#3d5a73', '#8a6f3c', '#5d7a4a', '#6e4a5e', '#b8b0a0', '#4a4a52'];
+const TRAFFIC_SHAPES = ['sedan', 'hatch', 'coupe'];
+
+export function makeTrafficCar(random, textures) {
+  const color = pick(random, TRAFFIC_COLORS);
+  const shape = pick(random, TRAFFIC_SHAPES);
+  const car = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({
+    map: paintTexture(random, color), color: 0xffffff, roughness: 0.5, metalness: 0.3,
+  });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x1c2833, roughness: 0.15, metalness: 0.85 });
+  const darkTrim = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.7, metalness: 0.3 });
+  const body = new THREE.Group();
+  const profile = bodyProfile();
+  const depth = shape === 'hatch' ? 1.6 : 1.66;
+  const shell = new THREE.Mesh(extrudeCentered(profile, depth, 0.1), paint);
+  shell.castShadow = true;
+  body.add(shell);
+  const cabin = new THREE.Mesh(extrudeCentered(glasshouseProfile(), 1.3, 0.06), glassMat);
+  body.add(cabin);
+  if (shape === 'hatch') {
+    const roofBox = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 1.4), paint);
+    roofBox.position.set(-0.4, 1.2, 0);
+    body.add(roofBox);
+  }
+  for (const [wx, wz] of [[-1.45, 0.82], [-1.45, -0.82], [1.45, 0.82], [1.45, -0.82]]) {
+    const wheel = makeWheel(random, 0.34);
+    wheel.position.set(wx, 0.34, wz);
+    body.add(wheel);
+  }
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xcc1810, emissiveIntensity: 1.6 });
+  for (const side of [-0.6, 0.6]) {
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.4), tailMat);
+    tail.position.set(-2.42, 0.78, side);
+    body.add(tail);
+  }
+  const headMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff2c0, emissiveIntensity: 1.6 });
+  for (const side of [-0.58, 0.58]) {
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.4), headMat);
+    head.position.set(2.4, 0.7, side);
+    body.add(head);
+  }
+  body.rotation.y = -Math.PI / 2;
+  car.add(body);
+  car.userData.isTraffic = true;
+  return car;
 }

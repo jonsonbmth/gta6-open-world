@@ -1,141 +1,188 @@
-// Police: named patrol units that chase the player when wanted, plus the
-// AIR-1 helicopter with its narrow searchlight cone. In frozen shots the
-// helicopter is parked at its spawn point, never at the origin.
+// The wanted system: heat 0–5 stars, named police units that chase the player,
+// and the AIR-1 helicopter with a narrow searchlight cone.
+//
+// Heat rises when the player speeds through the city, hits things, or a job stage
+// demands it; it cools when the player breaks line of sight. setWanted sets heat
+// directly (jobs use it) and the level follows.
 import * as THREE from 'three';
-import { buildCar, makeCarState } from './cars.js';
-import { POLICE_UNITS } from './config.js';
+import { UNITS } from './config.js';
+import { makePoliceCar } from './cars.js';
 
-const HELI_SPAWN = new THREE.Vector3(12, 26, 28);
+const HEAT_PER_STAR = 20;
 
-function buildHeli() {
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2a3048, roughness: 0.5, metalness: 0.4 });
-  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.5 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.3, 3.2), bodyMat);
-  body.castShadow = true;
-  g.add(body);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), bodyMat);
-  nose.scale.set(1, 0.75, 1);
-  nose.position.set(0, -0.1, 1.7);
-  g.add(nose);
-  const glass = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 10),
-    new THREE.MeshStandardMaterial({ color: 0x16222e, metalness: 0.9, roughness: 0.15 }));
-  glass.scale.set(1, 0.6, 0.8);
-  glass.position.set(0, 0.15, 1.9);
-  g.add(glass);
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.12, 3.6, 8), bodyMat);
-  boom.rotation.x = Math.PI / 2;
-  boom.position.set(0, 0.2, -3.2);
-  g.add(boom);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.1, 0.8), whiteMat);
-  fin.position.set(0, 0.7, -4.8);
-  g.add(fin);
-  // Skids.
-  for (const sx of [-0.8, 0.8]) {
-    const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), whiteMat);
-    skid.rotation.x = Math.PI / 2;
-    skid.position.set(sx, -0.95, 0.2);
-    g.add(skid);
-  }
-  // Main rotor (spins in the loop).
-  const rotor = new THREE.Group();
-  rotor.position.y = 0.85;
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), whiteMat);
-  mast.position.y = -0.15;
-  rotor.add(mast);
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.04, 0.28), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 }));
-    blade.rotation.y = a;
-    rotor.add(blade);
-  }
-  g.add(rotor);
-  g.userData.rotor = rotor;
-  // Searchlight cone: narrow, faint, FrontSide so it never reads as a blob.
-  const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xfff2c8,
-    transparent: true,
-    opacity: 0.06,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.FrontSide,
-  });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4, 24, 16, 1, true), coneMat);
-  cone.position.set(0, -12.5, 1.5);
-  cone.rotation.x = Math.PI; // apex at the heli, opening downward
-  g.add(cone);
-  // Light pool where the beam lands.
-  const pool = new THREE.Mesh(
-    new THREE.CircleGeometry(2.6, 16),
-    new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false }),
-  );
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.set(0, -25.2, 1.5);
-  g.add(pool);
-  g.userData.beamPool = pool;
-  return g;
-}
+export function createPolice(scene, random, textures) {
+  let wanted = 0;
+  let heat = 0;
+  let blink = 0;
+  const units = []; // { car, speed, target, name, state }
+  let heli = null;
+  let heliAngle = 0;
+  let cone = null;
 
-export function makePolice(scene) {
-  const units = [];
-  const spawnPoints = [
-    { x: -3.5, z: -28, heading: Math.PI },
-    { x: 3.5, z: -44, heading: Math.PI },
-    { x: -3.5, z: 60, heading: 0 },
-  ];
-  for (let i = 0; i < 3; i += 1) {
-    const car = buildCar({ color: 0x2a3048, police: true, detail: true });
-    const state = makeCarState(scene, car, spawnPoints[i].x, spawnPoints[i].z, spawnPoints[i].heading);
-    state.name = POLICE_UNITS[i];
-    state.chasing = i < 2;
-    units.push(state);
+  function spawnUnit(name, x, z, heading) {
+    const car = makePoliceCar(random, textures);
+    car.position.set(x, 0, z);
+    car.rotation.y = heading;
+    scene.add(car);
+    const unit = { car, name, speed: 0, state: 'chase', sirenPhase: random() * Math.PI * 2 };
+    units.push(unit);
+    return unit;
   }
-  const heli = buildHeli();
-  heli.position.copy(HELI_SPAWN);
-  scene.add(heli);
-  return {
-    units,
-    heli,
-    heliSpawn: HELI_SPAWN.clone(),
-    // Park the helicopter at its spawn (frozen shots) — never at the origin.
-    parkHeli() {
-      heli.position.copy(HELI_SPAWN);
-      heli.rotation.set(0, 0.4, 0);
-    },
-    update(dt, playerPos, wanted, frozen) {
-      heli.userData.rotor.rotation.y += dt * 22;
-      if (frozen) return;
-      // Helicopter follows the player at altitude when wanted, else holds.
-      const target = wanted > 0
-        ? new THREE.Vector3(playerPos.x + 10, 26, playerPos.z + 12)
-        : HELI_SPAWN;
-      heli.position.lerp(target, Math.min(1, dt * 0.7));
-      heli.lookAt(playerPos.x, 0, playerPos.z);
-      // Chase units steer toward the player; the patrol unit cruises.
-      for (const u of units) {
-        if (u.chasing && wanted > 0) {
-          const dx = playerPos.x - u.group.position.x;
-          const dz = playerPos.z - u.group.position.z;
-          const dist = Math.hypot(dx, dz);
-          const wantHeading = Math.atan2(dx, dz);
-          let diff = wantHeading - u.heading;
-          while (diff > Math.PI) diff -= Math.PI * 2;
-          while (diff < -Math.PI) diff += Math.PI * 2;
-          u.heading += THREE.MathUtils.clamp(diff, -dt * 1.6, dt * 1.6);
-          const speed = dist > 6 ? 16 : 8;
-          u.group.position.x += Math.sin(u.heading) * speed * dt;
-          u.group.position.z += Math.cos(u.heading) * speed * dt;
-          u.group.rotation.y = u.heading;
-          u.speed = speed;
-        } else {
-          // Patrol: slow cruise along the avenue, wrapping at the ends.
-          const speed = 7;
-          u.group.position.z += Math.cos(u.heading) * speed * dt;
-          if (u.group.position.z > 115) u.group.position.z = -115;
-          if (u.group.position.z < -115) u.group.position.z = 115;
-          u.speed = speed;
-        }
-        for (const w of u.wheels) w.rotation.x += (u.speed * dt) / 0.34;
+
+  function makeHeli() {
+    const heliGroup = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2a3048, roughness: 0.4, metalness: 0.5 });
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.4, metalness: 0.2 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 4.2), bodyMat);
+    body.castShadow = true;
+    heliGroup.add(body);
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(1.7, 0.9, 1.4),
+      new THREE.MeshStandardMaterial({ color: 0x18242e, roughness: 0.1, metalness: 0.9 }),
+    );
+    glass.position.set(0, 0.25, 1.6);
+    heliGroup.add(glass);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 3.4), bodyMat);
+    tail.position.set(0, 0.3, -3.6);
+    heliGroup.add(tail);
+    const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.1, 0.8), whiteMat);
+    tailFin.position.set(0, 0.8, -5.1);
+    heliGroup.add(tailFin);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.7, 8), bodyMat);
+    mast.position.y = 1.0;
+    heliGroup.add(mast);
+    const rotor = new THREE.Group();
+    for (let i = 0; i < 2; i += 1) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.06, 0.35), new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.5 }));
+      blade.rotation.y = (i * Math.PI) / 2;
+      rotor.add(blade);
+    }
+    rotor.position.y = 1.4;
+    heliGroup.add(rotor);
+    heliGroup.userData.rotor = rotor;
+    // Searchlight cone: narrow (radius ~2.4 at the ground), faint, FrontSide only.
+    const coneGeo = new THREE.ConeGeometry(2.4, 24, 20, 1, true);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2c0, transparent: true, opacity: 0.06,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide,
+    });
+    cone = new THREE.Mesh(coneGeo, coneMat);
+    cone.position.set(0, -12, 0);
+    cone.rotation.x = Math.PI; // apex up at the heli, wide end down
+    heliGroup.add(cone);
+    const spot = new THREE.Mesh(
+      new THREE.CircleGeometry(2.4, 20),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    spot.rotation.x = -Math.PI / 2;
+    spot.position.set(0, -23.8, 0);
+    heliGroup.add(spot);
+    heliGroup.userData.spot = spot;
+    return heliGroup;
+  }
+
+  function setWanted(level) {
+    wanted = Math.max(0, Math.min(5, Math.round(level)));
+    heat = wanted * HEAT_PER_STAR;
+    // Spawn or remove units to match the level (1 unit per star, max 4 cars).
+    const wantCars = wanted === 0 ? 0 : Math.min(4, wanted);
+    while (units.length < wantCars) {
+      const angle = random() * Math.PI * 2;
+      spawnUnit(UNITS[units.length % UNITS.length], Math.cos(angle) * 40, Math.sin(angle) * 40, angle);
+    }
+    while (units.length > wantCars) {
+      const unit = units.pop();
+      scene.remove(unit.car);
+    }
+    if (wanted >= 3 && !heli) {
+      heli = makeHeli();
+      scene.add(heli);
+    }
+    if (wanted < 3 && heli) {
+      scene.remove(heli);
+      heli = null;
+      cone = null;
+    }
+  }
+
+  // A unit's car is placed in the world the moment it spawns (never at origin).
+  function placeUnit(index, x, z, heading) {
+    if (index < units.length) {
+      units[index].car.position.set(x, 0, z);
+      units[index].car.rotation.y = heading;
+      units[index].speed = 0;
+    }
+  }
+
+  function update(dt, player, frozen) {
+    blink += dt;
+    const playerPos = player.position;
+    for (const unit of units) {
+      const car = unit.car;
+      // Steer toward the player, drive, and wobble the siren lights.
+      const dx = playerPos.x - car.position.x;
+      const dz = playerPos.z - car.position.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      const targetHeading = Math.atan2(dx, dz);
+      let diff = targetHeading - car.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (!frozen) {
+        car.rotation.y += THREE.MathUtils.clamp(diff, -1.6 * dt, 1.6 * dt);
+        unit.speed = THREE.MathUtils.clamp(unit.speed + (dist > 14 ? 14 : -10) * dt, 0, 26);
+        car.position.x += Math.sin(car.rotation.y) * unit.speed * dt;
+        car.position.z += Math.cos(car.rotation.y) * unit.speed * dt;
       }
+      // Alternating red/blue flash on the light bar.
+      unit.sirenPhase += dt * 9;
+      const redOn = Math.sin(unit.sirenPhase) > 0;
+      car.traverse((node) => {
+        if (node.isMesh && node.material && node.material.emissive) {
+          if (node.material.emissive.getHex() === 0xff1a1a) node.material.emissiveIntensity = redOn ? 3.5 : 0.4;
+          if (node.material.emissive.getHex() === 0x2255ff) node.material.emissiveIntensity = redOn ? 0.4 : 3.5;
+        }
+      });
+    }
+    if (heli) {
+      heliAngle += dt * 0.25;
+      const radius = 26;
+      const hx = playerPos.x + Math.cos(heliAngle) * radius;
+      const hz = playerPos.z + Math.sin(heliAngle) * radius;
+      if (!frozen) {
+        heli.position.set(hx, 30, hz);
+        heli.lookAt(playerPos.x, 0, playerPos.z);
+      }
+      heli.userData.rotor.rotation.y += dt * 22;
+    }
+    // Heat cools slowly when the player is far from every unit.
+    if (!frozen && wanted > 0) {
+      let nearest = Infinity;
+      for (const unit of units) {
+        const d = unit.car.position.distanceTo(playerPos);
+        if (d < nearest) nearest = d;
+      }
+      if (nearest > 60) {
+        heat = Math.max(0, heat - dt * 1.5);
+        const level = Math.floor(heat / HEAT_PER_STAR);
+        if (level !== wanted) setWanted(level);
+      }
+    }
+  }
+
+  return {
+    get wanted() { return wanted; },
+    get heat() { return heat; },
+    get units() { return units; },
+    get heli() { return heli; },
+    get blink() { return blink; },
+    setBlink(value) { blink = value; },
+    setWanted,
+    placeUnit,
+    addHeat(amount) {
+      heat = Math.min(5 * HEAT_PER_STAR, heat + amount);
+      const level = Math.floor(heat / HEAT_PER_STAR);
+      if (level !== wanted) setWanted(level);
     },
+    update,
   };
 }

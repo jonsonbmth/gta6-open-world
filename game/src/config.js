@@ -1,108 +1,165 @@
-// SOLMAR BAY — shared constants: palette, districts, chapters, shops, radio.
-// Palette rule (V12): NATURAL golden hour. Blue sky above, warm gold at the
-// horizon, buildings in cream / sand / white / pale yellow / glass blue.
-// Neon is an accent, never the dominant color. No purple or magenta sky.
-export const PALETTE = {
-  skyTop: 0x4a7ec2,
-  skyMid: 0x8fb4dd,
-  skyHorizon: 0xf2b25c,
-  sun: 0xffd9a0,
-  sunLow: 0xff9e57,
-  fog: 0xe8c48d,
-  fogDensity: 0.0016,
-  ambient: 0xffe3b8,
-  ambientIntensity: 0.85,
-  sunIntensity: 2.4,
-  buildingTones: [0xf2e3c6, 0xe8d3ac, 0xf7f3e8, 0xf0d9a0, 0xcfe0ea, 0xe5cfa8, 0xf5e9d0],
-  road: 0x2b2b30,
-  sidewalk: 0x9a938a,
-  water: 0x2e6f8e,
-};
+// SOLMAR BAY — shared constants: world layout, districts, jobs, radio, names.
+// The city is a grid of avenues running north (-Z) and streets running east-west.
+// Solmar Avenue (x = 0) is the main north-south spine; the marina sits on the bay
+// to the east (+X); the sun sets in the south-west so the chase camera, which looks
+// north, always sees the lit side of the hero car.
 
+export const STEP = 1 / 60;
+export const SAVE_KEY = 'solmar-bay-save-v13';
+export const BEST_KEY = 'solmar-bay-best-v13';
+
+// World extents (metres). The playable city is roughly 220 x 200.
 export const WORLD = {
-  avenueX: 0,
-  avenueHalf: 7,
-  avenueNorth: -120,
-  avenueSouth: 120,
-  streets: [-80, -40, 0, 40, 80],
-  marinaX0: 62,
-  marinaX1: 118,
-  marinaZ0: -30,
-  marinaZ1: 50,
-  groundSize: 320,
+  minX: -110,
+  maxX: 110,
+  minZ: -105,
+  maxZ: 105,
+  avenueX: [-72, -36, 0, 36, 72], // north-south avenues
+  streetZ: [-72, -36, 0, 36, 72], // east-west streets
+  roadHalf: 5.5,
 };
 
+// Six districts, each with a map colour and a centre. The map draws them in this order.
 export const DISTRICTS = [
-  { name: 'CROWN HEIGHTS', x0: -104, x1: -24, z0: -104, z1: -24, color: '#8a7fd6' },
-  { name: 'VELA QUARTER', x0: -104, x1: -24, z0: 24, z1: 104, color: '#e8c832' },
-  { name: 'PALM ROW', x0: -24, x1: 24, z0: 56, z1: 104, color: '#e87fb0' },
-  { name: 'MIRAMAR', x0: 24, x1: 104, z0: -104, z1: -24, color: '#e88a4a' },
-  { name: 'THE DOCKS', x0: 24, x1: 104, z0: 24, z1: 56, color: '#4ad6b0' },
-  { name: 'HARBOUR LIGHTS', x0: 24, x1: 104, z0: 56, z1: 104, color: '#4a9ae8' },
-];
-
-export const STREETS = [
-  { name: 'SOLMAR AVENUE', vertical: true, at: 0 },
-  { name: 'CROWN ROAD', vertical: false, at: -80 },
-  { name: 'CANAL STREET', vertical: false, at: -40 },
-  { name: 'VELA STREET', vertical: false, at: 40 },
-  { name: 'PALM BOULEVARD', vertical: false, at: 80 },
-  { name: 'RICO WAY', vertical: true, at: -48 },
-  { name: 'HARBOUR WAY', vertical: true, at: 48 },
+  { name: 'CROWN HEIGHTS', x: -72, z: -72, w: 62, h: 52, color: '#7c6bd6', label: '#b7a8ff' },
+  { name: 'MIRAMAR', x: 30, z: -72, w: 62, h: 52, color: '#d97b4a', label: '#ffb287' },
+  { name: 'VELA QUARTER', x: -72, z: 30, w: 62, h: 52, color: '#d9b84a', label: '#ffe28a' },
+  { name: 'THE DOCKS', x: 30, z: 30, w: 62, h: 52, color: '#3fb8a6', label: '#7fe8d8' },
+  { name: 'HARBOUR LIGHTS', x: 30, z: 62, w: 62, h: 34, color: '#4a90d9', label: '#8fc3ff' },
+  { name: 'PALM ROW', x: -36, z: 62, w: 62, h: 34, color: '#d94a8a', label: '#ff8fc0' },
 ];
 
 export const LANDMARKS = [
-  { name: 'CROWN TOWER', x: -64, z: -64 },
-  { name: 'VELA MARKET', x: -64, z: 56 },
-  { name: 'PALM ROW PLAZA', x: 0, z: 88 },
-  { name: "LENA'S WORKSHOP", x: 64, z: 48 },
-  { name: 'DOCKSIDE YARD', x: 80, z: 72 },
-  { name: 'OLD PIER', x: 96, z: 96 },
-  { name: 'MIRAMAR BEACH', x: 56, z: -72 },
-  { name: 'LIGHTHOUSE', x: 96, z: -96 },
-  { name: 'PELICAN ISLE', x: 130, z: -40 },
-  { name: 'HARBOR BRIDGE', x: 60, z: -60 },
+  { name: 'CROWN TOWER', x: -54, z: -54, icon: '▲' },
+  { name: 'LIGHTHOUSE', x: 78, z: -78, icon: '▲' },
+  { name: 'VELA MARKET', x: -54, z: 54, icon: '▲' },
+  { name: "LENA'S WORKSHOP", x: 54, z: 54, icon: '▲' },
+  { name: 'DOCKSIDE YARD', x: 78, z: 78, icon: '▲' },
+  { name: 'OLD PIER', x: 84, z: 92, icon: '▲' },
+  { name: 'PALM ROW PLAZA', x: -18, z: 90, icon: '▲' },
+  { name: 'PELICAN ISLE', x: 96, z: -18, icon: '◆' },
 ];
 
-export const CHAPTERS = [
-  { id: 1, title: 'First Run', objective: 'Drive to the garage on Crown Road', next: 'Follow the GPS route to Crown Road', target: { x: 0, z: -88 }, speaker: 'lena', line: 'Two units on your tail, Rico — lose them on Palm Row!' },
-  { id: 2, title: 'Harbour Lights', objective: 'Meet the contact at the marina', next: 'Head east to the docks', target: { x: 88, z: 8 }, speaker: 'rosa', line: 'Tonight the city learns our name, Rico. Drive it home.' },
-  { id: 3, title: 'Wrench Work', objective: "Get the VULPINE S tuned at Lena's workshop", next: "Drive to Lena's Workshop", target: { x: 64, z: 48 }, speaker: 'lena', line: 'Bring her in hot and I will make her faster. Trust me.' },
-  { id: 4, title: 'The Faro Run', objective: 'Deliver the package to Tacos El Faro', next: 'Keep it under 3 stars', target: { x: -24, z: -40 }, speaker: 'dario', line: 'No stops, no sirens, no heroes. Just drive, Rico.' },
-  { id: 5, title: 'Crown Heights', objective: 'Pick up the crew at Crown Tower', next: 'Watch the rooftops', target: { x: -64, z: -64 }, speaker: 'rosa', line: 'The whole city is watching tonight. Give them a show.' },
-  { id: 6, title: 'Bridge Jump', objective: 'Lose the heat across the Harbor Bridge', next: 'AIR-1 is overhead — stay low', target: { x: 60, z: -60 }, speaker: 'dario', line: 'Bridge is clear for thirty seconds. Do not waste them.' },
-  { id: 7, title: 'Homecoming', objective: 'Bring the VULPINE S home to Palm Row', next: 'Final run — make it count', target: { x: 0, z: 88 }, speaker: 'lena', line: 'Home stretch, Rico. This city is ours now.' },
+export const STREETS = [
+  { name: 'CROWN ROAD', z: -72, horizontal: true },
+  { name: 'CANAL STREET', z: -36, horizontal: true },
+  { name: 'PALM BOULEVARD', z: 72, horizontal: true },
+  { name: 'SOLMAR AVENUE', x: 0, horizontal: false },
+  { name: 'HARBOUR WAY', x: 72, horizontal: false },
+  { name: 'VELA STREET', x: -72, horizontal: false },
 ];
 
-export const CREW = {
-  lena: { name: 'Lena "Wrench" Ortiz', initial: 'L', color: '#c2185b' },
-  rosa: { name: 'Mama Rosa', initial: 'R', color: '#5e35b1' },
-  dario: { name: 'Dario "Fuze" Kane', initial: 'D', color: '#1565c0' },
-  rico: { name: 'Rico Marín', initial: 'R', color: '#ef6c00' },
-};
-
+// Shop signs along Solmar Avenue (fresh names, never the competitor's).
 export const SHOPS = [
-  { name: 'RAMEN YOKO', color: '#ff5a5a' },
-  { name: 'PIZZA LUNA', color: '#ffd54d' },
-  { name: 'TACOS EL FARO', color: '#ff9e57' },
-  { name: 'CLUB VELVET', color: '#ff5a8a' },
-  { name: 'BODEGA', color: '#4ad6b0' },
-  { name: 'HOTEL LUNA', color: '#37c8f5' },
-  { name: 'LIQUOR', color: '#c792ff' },
-  { name: 'KEBAB HOUSE', color: '#ffb74d' },
-  { name: 'DONUTS', color: '#ff8ab0' },
-  { name: 'PHARMACY', color: '#7fe0a8' },
-  { name: 'BARBER', color: '#8fd0ff' },
-  { name: 'LAUNDRY', color: '#ffe082' },
+  'RAMEN YOKO', 'PIZZA LUNA', 'TACOS EL FARO', 'CAFÉ BRISA', 'SURF & SOLE',
+  'MERCADO SOL', 'BAR LUCERO', 'DONUT DORADO', 'LIBROS MAR', 'FLOWER KIOSK',
 ];
 
+// Radio: three stations, each a loop of procedural chord pads + bass.
 export const RADIO = [
-  { name: 'VAPOR 101.3', track: 'Glass Horizon — Neon Palms', bpm: 96, root: 220 },
-  { name: 'SOLMAR FM 88.5', track: 'Costa del Sol — The Marínas', bpm: 112, root: 196 },
-  { name: 'NIGHT DRIVE 99.5', track: 'Midnight Run — Velvet Static', bpm: 124, root: 174 },
+  { name: 'VAPOR 101.3', track: 'Glass Horizon — Neon Palms', hue: 'synth' },
+  { name: 'SOL FM 88.1', track: 'Golden Hour — The Tides', hue: 'chill' },
+  { name: 'BAY BEAT 95.6', track: 'Night Drive — Coastline', hue: 'drive' },
 ];
 
-export const POLICE_UNITS = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'AIR-1'];
+// The seven story jobs. Each stage is one objective; `target` is a world position
+// the GPS routes to. Stages: drive, enter-car, meet, wanted, escape, deliver, finale.
+export const JOBS = [
+  {
+    id: 1, title: 'First Run',
+    brief: 'Drive to the garage on Crown Road',
+    stages: [
+      { type: 'enter-car', text: 'Get in the VULPINE S', target: { x: 0, z: 30 } },
+      { type: 'drive', text: 'Follow the GPS route to Crown Road', target: { x: -36, z: -72 } },
+      { type: 'meet', text: 'Meet Lena at the garage', target: { x: -36, z: -72 } },
+    ],
+    dialogue: [
+      { who: 'Lena "Wrench" Ortiz', line: 'Two units on your tail, Rico — lose them on Palm Row!' },
+      { who: 'Lena "Wrench" Ortiz', line: 'The VULPINE is tuned and ready. Do not scratch the paint.' },
+    ],
+  },
+  {
+    id: 2, title: 'Harbour Lights',
+    brief: 'Meet the contact at the marina',
+    stages: [
+      { type: 'drive', text: 'Head east to the docks', target: { x: 84, z: 40 } },
+      { type: 'enter-car', text: 'Park and get out at the marina', target: { x: 84, z: 40 } },
+      { type: 'meet', text: 'Meet Mama Rosa on the quay', target: { x: 92, z: 24 } },
+    ],
+    dialogue: [
+      { who: 'Mama Rosa', line: 'Tonight the city learns our name, Rico. Drive it home.' },
+    ],
+  },
+  {
+    id: 3, title: 'Heat Wave',
+    brief: 'Lose a 3-star wanted level',
+    stages: [
+      { type: 'wanted', text: 'The heat is on — shake the pursuit', target: { x: 0, z: -36 } },
+      { type: 'escape', text: 'Break line of sight and cool down', target: { x: -72, z: 72 } },
+    ],
+    dialogue: [
+      { who: 'Dario "Fuze" Kane', line: 'Three stars already? You drive like the city owes you money.' },
+    ],
+  },
+  {
+    id: 4, title: 'Neon Delivery',
+    brief: 'Deliver the package to Vela Market',
+    stages: [
+      { type: 'drive', text: 'Pick up the package at the docks', target: { x: 72, z: 72 } },
+      { type: 'drive', text: 'Deliver it to Vela Market — no scratches', target: { x: -54, z: 54 } },
+    ],
+    dialogue: [
+      { who: 'Lena "Wrench" Ortiz', line: 'Fragile cargo. If you roll it, you pay for it.' },
+    ],
+  },
+  {
+    id: 5, title: 'Air Support',
+    brief: 'Outrun the AIR-1 helicopter',
+    stages: [
+      { type: 'wanted', text: 'AIR-1 is overhead — keep moving', target: { x: 36, z: 0 } },
+      { type: 'escape', text: 'Lose the helicopter under the bridge', target: { x: 72, z: -72 } },
+    ],
+    dialogue: [
+      { who: 'Dario "Fuze" Kane', line: 'The heli cannot follow you under the bridge. Go!' },
+    ],
+  },
+  {
+    id: 6, title: 'The Long Way Home',
+    brief: 'Cross the city to Palm Row Plaza',
+    stages: [
+      { type: 'drive', text: 'Take the ring highway north', target: { x: -72, z: -72 } },
+      { type: 'drive', text: 'Cut through Miramar to Palm Row', target: { x: -18, z: 90 } },
+    ],
+    dialogue: [
+      { who: 'Mama Rosa', line: 'Every street in this city knows your name now.' },
+    ],
+  },
+  {
+    id: 7, title: 'Golden Hour',
+    brief: 'The final run — outrun them all to the lighthouse',
+    stages: [
+      { type: 'wanted', text: 'Five stars. Everything is on you', target: { x: 0, z: 0 } },
+      { type: 'drive', text: 'Reach the lighthouse before sundown', target: { x: 78, z: -78 } },
+    ],
+    dialogue: [
+      { who: 'Lena "Wrench" Ortiz', line: 'Last run, Rico. Make it the one they tell stories about.' },
+    ],
+  },
+];
 
-export const START_MONEY = 42780;
-export const SAVE_KEY = 'solmar-bay-save-v12';
+// Police units that call out during a pursuit.
+export const UNITS = ['UNIT 7', 'UNIT 12', 'UNIT 21', 'UNIT 4', 'AIR-1'];
+
+// Golden-hour palette — natural, never purple/magenta.
+export const PALETTE = {
+  skyTop: 0x3f74b8,
+  skyHorizon: 0xf7c873,
+  sun: 0xffd9a0,
+  sunIntensity: 2.4,
+  hemiSky: 0x9ec3e2,
+  hemiGround: 0x8a6f4d,
+  hemiIntensity: 0.95,
+  heroPaint: 0xe8232a,
+  heroLight: 0xffe6b8,
+  fog: 0xd9c49a,
+};

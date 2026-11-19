@@ -1,78 +1,75 @@
-// Screenshot staging: ?shot=chase|title|map|marina. Each shot sets the real
-// game state (mode, chapter, wanted, car and camera poses) and freezes the
-// world so the captured frame is deterministic. The camera SNAPS (k=1) in
-// shotFrozen mode — headless capture renders few frames, so no lerping.
-import { CHAPTERS } from './config.js';
-import { setDialogue, showNearMiss } from './hud.js';
-import { drawCityMap } from './map.js';
-
-export const SHOT_NAMES = ['chase', 'title', 'map', 'marina'];
-
+// Screenshot staging: each shot plays the real game forward from a fresh world
+// to a fixed, deterministic moment, then freezes the simulation so the frame the
+// headless browser captures is exactly the staged one. The camera SNAPS (k=1) in
+// frozen mode because headless capture renders few frames.
+//
+// Shots: chase (cover), title, map, marina — ?shot=chase|title|map|marina&seed=1.
 export function stageShot(name, game) {
-  const g = game;
-  g.shotFrozen = true;
-  g.state.clock = '18:47';
-  if (name === 'title') {
-    g.setMode('title');
-    // Hero car right-of-center, clear of the START ENGINE button.
-    g.heroCar.setPose(5.5, 5.5, -0.6);
-    g.state.inCar = true;
-    g.state.displaySpeedKmh = 0;
-    g.camera.position.set(-5, 2.4, 13);
-    g.camera.lookAt(1.5, 1.2, -4);
-    g.titleCamera = g.camera.position.clone();
-    g.titleLookAt = new g.THREE.Vector3(1.5, 1.2, -4);
-    return;
+  const shot = ['chase', 'title', 'map', 'marina'].includes(name) ? name : 'chase';
+  game.resetWorld();
+  game.setFrozen(true);
+
+  if (shot === 'chase') {
+    // Cover: hero on Solmar Avenue heading north, lit from the camera side.
+    game.setHero(0, 30, Math.PI);
+    game.setDisplaySpeed(167);
+    game.setWanted(3);
+    game.setBlink(0.75);
+    // Two police cars ahead, clearly visible, light bars + road pools.
+    game.placePolice([
+      { x: -3.2, z: 14, heading: Math.PI },
+      { x: 3.4, z: 20, heading: Math.PI },
+    ]);
+    game.setMission(0, 1); // CH1 stage 1: GPS route to Crown Road
+    // Keep the chase frame clean: no traffic near the hero or the camera, two
+    // cars placed ahead in the distance for city life.
+    game.clearTrafficNear(0, 30, 32);
+    game.placeTrafficSpot(-3.6, -14, Math.PI);
+    game.placeTrafficSpot(3.6, -40, Math.PI);
+    game.setDialogue('Lena "Wrench" Ortiz', 'Two units on your tail, Rico — lose them on Palm Row!');
+    game.setNearMiss(true);
+    game.setMode('play');
+    game.setCameraMode('chase');
+    game.parkHeli();
+    return { shot, mode: 'play' };
   }
-  if (name === 'map') {
-    g.setMode('play');
-    g.state.chapter = 1;
-    g.state.stage = 1;
-    g.heroCar.setPose(0, 10, Math.PI);
-    g.state.inCar = true;
-    g.setWanted(0);
-    g.openMap();
-    // Draw the map now so the capture shows it fully rendered.
-    const canvas = document.getElementById('citymap');
-    if (canvas) drawCityMap(canvas, g);
-    return;
+
+  if (shot === 'title') {
+    // Title: hero parked facing south-east so the camera sees the lit front 3/4,
+    // right-of-center, clear of the START ENGINE button. No traffic near the
+    // button: the street centre ahead of the camera stays empty.
+    game.setHero(0, 30, Math.PI / 4);
+    game.setWanted(0);
+    game.clearTrafficNear(0, 30, 40);
+    game.setMode('title');
+    game.setCameraMode('title');
+    return { shot, mode: 'title' };
   }
-  if (name === 'marina') {
-    g.setMode('play');
-    g.state.chapter = 2;
-    g.state.stage = 0;
-    g.state.inCar = false;
-    g.setWanted(0);
-    // Rico on the quay facing the docks, crew around him.
-    g.rico.position.set(68, 0, 8);
-    g.rico.rotation.y = Math.PI / 2;
-    g.rico.visible = true;
-    g.heroCar.group.visible = false;
-    g.setDialogue('rosa', CHAPTERS[1].line);
-    g.footCamTarget = g.rico.position.clone();
-    // Foot camera: back 5, height 3.0, snapped — Rico fills more of the frame.
-    g.camera.position.set(63, 3.0, 8);
-    g.camera.lookAt(72, 1.4, 8);
-    g.police.parkHeli();
-    return;
+
+  if (shot === 'map') {
+    // Map: the AAA city map overlay over the frozen chase view. Stage 1 so the
+    // GPS route draws; hud.update keeps running in map mode.
+    game.setHero(0, 30, Math.PI);
+    game.setWanted(0);
+    game.setMission(0, 1);
+    game.setMode('map');
+    game.setCameraMode('chase');
+    return { shot, mode: 'map' };
   }
-  // Default: chase — the cover.
-  g.setMode('play');
-  g.state.chapter = 1;
-  g.state.stage = 1;
-  g.state.inCar = true;
-  g.setWanted(3);
-  g.heroCar.setPose(0, 18, Math.PI);
-  g.heroCar.speed = 0;
-  g.state.displaySpeedKmh = 167;
-  g.state.gear = 6;
-  // Two police units ahead of the hero, light bars on.
-  g.police.units[0].setPose(-3.5, -20, Math.PI);
-  g.police.units[1].setPose(3.5, -36, Math.PI);
-  g.police.units[2].setPose(-3.5, 60, 0);
-  g.police.parkHeli();
-  setDialogue('lena', CHAPTERS[0].line);
-  showNearMiss(true);
-  // Chase camera snaps into place on the first frame (k=1 in shotFrozen).
-  g.snapChaseCamera();
+
+  // Marina: Rico on foot at the quay, crew around him, boats on the water.
+  game.setPlayerOnFoot(92, 24, Math.PI / 2);
+  game.setWanted(0);
+  game.clearDialogue();
+  game.setMission(1, 1); // CH2 stage 1: enter-car at the marina
+  game.setDialogue('Mama Rosa', 'Tonight the city learns our name, Rico. Drive it home.');
+  game.placeCrew([
+    { who: 'lena', x: 95, z: 18, heading: Math.PI / 2 },
+    { who: 'rosa', x: 96, z: 29, heading: Math.PI / 2 },
+    { who: 'dario', x: 91, z: 27, heading: Math.PI / 2 },
+  ]);
+  game.setMode('play');
+  game.setCameraMode('foot');
+  game.parkHeli();
+  return { shot, mode: 'play' };
 }

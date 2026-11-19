@@ -3,120 +3,119 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>SOLMAR BAY — A Golden Hour in Neon</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1208; font-family: 'Segoe UI', Arial, sans-serif; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #10141b; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  .panel { position: fixed; background: rgba(8, 10, 18, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 10px; color: #fff; padding: 10px 14px; z-index: 5; }
-  #hud-objective { top: 14px; left: 14px; min-width: 240px; }
-  #hud-objective .ch { display: inline-block; background: #f5c518; color: #111; font-weight: 800; font-size: 12px; border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
-  #hud-objective .title { font-weight: 800; font-size: 17px; }
-  #hud-objective .obj { font-size: 13px; color: #e8e8e8; margin-top: 2px; }
-  #hud-objective .next { font-size: 12px; color: #f5c518; margin-top: 2px; }
-  .bar { height: 6px; background: rgba(255,255,255,0.18); border-radius: 3px; margin-top: 6px; overflow: hidden; }
-  .bar > div { height: 100%; background: #f5c518; border-radius: 3px; }
-  #hud-stats { top: 14px; right: 14px; text-align: right; min-width: 150px; }
-  #hud-stats .day { font-size: 12px; color: #cfd3e0; }
-  #hud-stats .money { font-size: 26px; font-weight: 800; color: #3ddc84; line-height: 1.1; }
-  #hud-stats .stars { font-size: 16px; letter-spacing: 2px; color: #f5c518; }
-  #hud-stats .heat { font-size: 12px; font-weight: 700; letter-spacing: 1px; }
-  #hud-minimap { left: 14px; bottom: 34px; padding: 8px; }
-  #minimap { display: block; border-radius: 50%; border: 2px solid #f5c518; background: #0d1526; }
-  #hud-minimap .street { text-align: center; margin-top: 5px; }
-  #hud-minimap .street span { background: #f5c518; color: #111; font-weight: 800; font-size: 11px; border-radius: 10px; padding: 2px 10px; }
-  #hud-minimap .respect { font-size: 11px; color: #cfd3e0; text-align: center; margin-top: 3px; }
-  #hud-dialogue { left: 50%; bottom: 34px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; min-width: 420px; max-width: 560px; }
-  #hud-dialogue .portrait { width: 46px; height: 46px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; color: #fff; }
-  #hud-dialogue .name { font-weight: 800; font-size: 14px; color: #f5c518; }
-  #hud-dialogue .line { font-size: 14px; color: #fff; }
-  #hud-car { right: 14px; bottom: 34px; text-align: right; min-width: 150px; }
-  #hud-car .radio { font-size: 12px; font-weight: 700; color: #37c8f5; }
-  #hud-car .station { font-size: 11px; color: #cfd3e0; }
-  #hud-car .carname { font-size: 18px; font-weight: 800; margin-top: 2px; }
-  #hud-car .cond { font-size: 11px; color: #cfd3e0; }
-  #hud-car .speed { font-size: 34px; font-weight: 800; line-height: 1; }
-  #hud-car .speed small { font-size: 13px; font-weight: 600; }
-  #hud-car .gear { font-size: 12px; font-weight: 700; color: #f5c518; }
-  #hud-nearmiss { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); color: #ffe14d; font-size: 34px; font-weight: 900; letter-spacing: 1px; z-index: 6; text-shadow: 0 2px 12px rgba(0,0,0,0.6); display: none; }
-  #hud-controls { position: fixed; left: 0; right: 0; bottom: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.65); padding: 6px; z-index: 5; background: rgba(0,0,0,0.35); }
-  #hud-wanted { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); color: #ff5a5a; font-weight: 900; font-size: 15px; letter-spacing: 3px; z-index: 6; display: none; }
-  #title-screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; text-align: center; pointer-events: none; }
-  #title-screen .logo { font-size: 92px; font-weight: 900; letter-spacing: 2px; line-height: 0.95; }
-  #title-screen .logo .a { color: #ff5a8a; }
-  #title-screen .logo .b { color: #37c8f5; }
-  #title-screen .tag { font-size: 20px; letter-spacing: 12px; margin-top: 6px; }
-  #title-screen .desc { font-size: 15px; color: #e8e8e8; margin-top: 14px; max-width: 560px; }
-  #btn-start { pointer-events: auto; margin-top: 22px; background: #ff5a8a; color: #fff; border: none; border-radius: 8px; padding: 14px 34px; font-size: 18px; font-weight: 800; letter-spacing: 3px; cursor: pointer; }
-  #title-screen .keys { font-size: 13px; color: rgba(255,255,255,0.75); margin-top: 18px; line-height: 1.7; }
-  #map-screen { position: fixed; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center; background: rgba(4, 6, 14, 0.55); }
-  #map-screen .frame { border: 3px solid #f5c518; border-radius: 8px; overflow: hidden; background: #0a1230; }
-  #citymap { display: block; }
-  #map-screen .hint { text-align: center; color: #cfd3e0; font-size: 13px; margin-top: 8px; }
-  #playtest-results { display: none; }
-  body.title-mode .panel, body.title-mode #hud-controls, body.title-mode #hud-nearmiss, body.title-mode #hud-wanted { display: none !important; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .panel { background: rgba(8, 12, 20, 0.78); border-radius: 10px; color: #f2ede0; box-shadow: 0 2px 12px rgba(0,0,0,0.45); }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  #hud-mission { position: absolute; top: 14px; left: 14px; padding: 10px 14px; max-width: 320px; }
+  #mission-ch { display: inline-block; background: #d9a83c; color: #1a1408; font-weight: 800; font-size: 12px; padding: 2px 7px; border-radius: 4px; margin-right: 6px; }
+  #mission-title { font-weight: 800; font-size: 17px; }
+  #mission-brief { font-size: 13px; color: #d8d2c2; margin-top: 2px; }
+  #mission-next { font-size: 12px; color: #ffd94a; margin-top: 5px; }
+  #mission-bar-wrap { height: 5px; background: rgba(255,255,255,0.18); border-radius: 3px; margin-top: 7px; overflow: hidden; }
+  #mission-bar { height: 100%; background: #d9a83c; width: 0%; }
+  #hud-wanted { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); color: #ff5a4a; font-weight: 800; letter-spacing: 4px; font-size: 15px; text-shadow: 0 0 12px rgba(255,60,40,0.8); }
+  #hud-money { position: absolute; top: 14px; right: 14px; padding: 10px 16px; text-align: right; }
+  #money-day { font-size: 11px; color: #b8b2a2; letter-spacing: 1px; }
+  #money-value { font-size: 26px; font-weight: 800; color: #4ade80; }
+  #money-stars { font-size: 16px; color: #ffd94a; letter-spacing: 2px; }
+  #money-status { font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+  #hud-minimap { position: absolute; bottom: 54px; left: 14px; padding: 10px; text-align: center; }
+  #minimap { display: block; border-radius: 50%; }
+  #minimap-street { display: inline-block; background: #d9a83c; color: #1a1408; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-top: 6px; }
+  #minimap-respect { font-size: 11px; color: #d8d2c2; margin-top: 4px; }
+  #minimap-respect-bar-wrap { height: 5px; background: rgba(255,255,255,0.18); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  #minimap-respect-bar { height: 100%; background: #d9a83c; width: 32%; }
+  #hud-speed { position: absolute; bottom: 54px; right: 14px; padding: 10px 16px; text-align: right; min-width: 170px; }
+  #speed-radio { font-size: 12px; font-weight: 800; color: #37d3e0; }
+  #speed-track { font-size: 11px; color: #b8b2a2; }
+  #speed-car { font-size: 19px; font-weight: 800; margin-top: 4px; }
+  #speed-condition-wrap { height: 5px; background: rgba(255,255,255,0.18); border-radius: 3px; margin: 5px 0; overflow: hidden; }
+  #speed-condition { height: 100%; background: #4ade80; width: 100%; }
+  #speed-value { font-size: 32px; font-weight: 800; line-height: 1; }
+  #speed-gear { font-size: 12px; color: #ffd94a; font-weight: 700; }
+  #hud-dialogue { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); padding: 10px 16px 10px 10px; display: none; align-items: center; gap: 12px; max-width: 520px; }
+  #dialogue-initial { width: 44px; height: 44px; border-radius: 8px; background: #d94a8a; color: #fff; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #dialogue-who { font-size: 13px; font-weight: 800; color: #ffd94a; }
+  #dialogue-line { font-size: 14px; }
+  #hud-nearmiss { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); color: #ffd94a; font-size: 34px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 2px 14px rgba(0,0,0,0.7); opacity: 0; transition: opacity 0.2s; }
+  #hud-hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(242,237,224,0.75); text-shadow: 0 1px 4px rgba(0,0,0,0.8); white-space: nowrap; }
+  #hud-map { position: fixed; inset: 0; background: rgba(6, 10, 18, 0.88); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 20; }
+  #citymap { border: 3px solid #d9a83c; border-radius: 10px; max-width: 96vw; max-height: 88vh; }
+  #map-hint { color: #d8d2c2; font-size: 13px; margin-top: 10px; }
+  #hud-title { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 10; pointer-events: none; }
+  #title-logo { font-size: 92px; font-weight: 900; letter-spacing: 2px; line-height: 1; text-shadow: 0 4px 24px rgba(0,0,0,0.6); }
+  #title-logo .pink { color: #ff5a7a; }
+  #title-logo .blue { color: #38b6e8; }
+  #title-sub { color: #f2ede0; font-size: 20px; letter-spacing: 10px; margin-top: 8px; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+  #title-tag { color: rgba(242,237,224,0.9); font-size: 15px; margin-top: 14px; text-align: center; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
+  #btn-start { pointer-events: auto; margin-top: 26px; background: #e84a7a; color: #fff; border: none; border-radius: 8px; padding: 16px 44px; font-size: 18px; font-weight: 800; letter-spacing: 3px; cursor: pointer; box-shadow: 0 4px 20px rgba(232,74,122,0.5); }
+  #btn-start:hover { background: #f25a8a; }
+  #title-controls { color: rgba(242,237,224,0.8); font-size: 13px; margin-top: 18px; text-align: center; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
+  #playtest-results { position: fixed; left: 8px; bottom: 8px; z-index: 30; background: rgba(0,0,0,0.7); color: #7ddf8a; font: 11px monospace; white-space: pre; padding: 6px; border-radius: 4px; display: none; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="SOLMAR BAY: an open-world crime game at golden hour"></canvas>
+<canvas id="game" aria-label="SOLMAR BAY: an open-world crime game. Drive, walk, and complete seven story jobs in a coastal city at golden hour."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
 
-<div id="hud-objective" class="panel">
-  <span class="ch" id="obj-ch">CH 1</span><span class="title" id="obj-title">First Run</span>
-  <div class="obj" id="obj-text">Drive to the garage on Palm Row</div>
-  <div class="bar"><div id="obj-bar" style="width: 30%"></div></div>
-  <div class="next" id="obj-next">NEXT → Follow the GPS route on the map</div>
-</div>
-
-<div id="hud-stats" class="panel">
-  <div class="day" id="stat-day">DAY 1 · 18:47</div>
-  <div class="money" id="stat-money">$42,780</div>
-  <div class="stars" id="stat-stars">★★★☆☆</div>
-  <div class="heat" id="stat-heat" style="color:#ff5a5a">PURSUIT ACTIVE</div>
-</div>
-
-<div id="hud-minimap" class="panel">
-  <canvas id="minimap" width="150" height="150"></canvas>
-  <div class="street"><span id="map-street">SOLMAR AVENUE</span></div>
-  <div class="respect" id="map-respect">RESPECT 2 · 320 / 1000</div>
-  <div class="bar"><div id="respect-bar" style="width: 32%"></div></div>
-</div>
-
-<div id="hud-dialogue" class="panel">
-  <div class="portrait" id="dlg-portrait" style="background:#c2185b">L</div>
-  <div><div class="name" id="dlg-name">Lena "Wrench" Ortiz</div><div class="line" id="dlg-line">Two units on your tail, Rico — lose them on Palm Row!</div></div>
-</div>
-
-<div id="hud-car" class="panel">
-  <div class="radio" id="car-radio">VAPOR 101.3</div>
-  <div class="station" id="car-station">Glass Horizon — Neon Palms</div>
-  <div class="carname" id="car-name">VULPINE S</div>
-  <div class="cond">CONDITION <span class="bar" style="display:inline-block;width:90px;vertical-align:middle"><span id="car-cond" style="display:block;height:100%;width:92%;background:#3ddc84"></span></span></div>
-  <div class="speed"><span id="car-speed">167</span> <small>KM/H</small></div>
-  <div class="gear" id="car-gear">GEAR 6</div>
-</div>
-
-<div id="hud-nearmiss">NEAR MISS +$250</div>
-<div id="hud-wanted">★ WANTED ★</div>
-<div id="hud-controls">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
-
-<div id="title-screen">
-  <div class="logo"><span class="a">SOLMAR</span> <span class="b">BAY</span></div>
-  <div class="tag">A GOLDEN HOUR IN NEON</div>
-  <div class="desc">Rico Marín is back in Solmar Bay — a sun-soaked coastal city at golden hour. Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</div>
-  <button id="btn-start">START ENGINE</button>
-  <div class="keys">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run<br>M city map · R radio · F action · Steal any car — the police will notice</div>
-</div>
-
-<div id="map-screen">
-  <div>
-    <div class="frame"><canvas id="citymap" width="1000" height="640"></canvas></div>
-    <div class="hint">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
+<div id="hud">
+  <div id="hud-mission" class="panel">
+    <span id="mission-ch">CH 1</span><span id="mission-title">First Run</span>
+    <div id="mission-brief">Drive to the garage on Crown Road</div>
+    <div id="mission-next">NEXT … Get in the VULPINE S</div>
+    <div id="mission-bar-wrap"><div id="mission-bar"></div></div>
   </div>
+  <div id="hud-wanted">★ WANTED ★</div>
+  <div id="hud-money" class="panel">
+    <div id="money-day">DAY 1 · 18:47</div>
+    <div id="money-value">$42,780</div>
+    <div id="money-stars">☆☆☆☆☆</div>
+    <div id="money-status">CLEAN</div>
+  </div>
+  <div id="hud-minimap" class="panel">
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <div><span id="minimap-street">SOLMAR AVENUE</span></div>
+    <div id="minimap-respect">RESPECT 2 · 320 / 1000</div>
+    <div id="minimap-respect-bar-wrap"><div id="minimap-respect-bar"></div></div>
+  </div>
+  <div id="hud-speed" class="panel">
+    <div id="speed-radio">VAPOR 101.3</div>
+    <div id="speed-track">Glass Horizon — Neon Palms</div>
+    <div id="speed-car">VULPINE S</div>
+    <div id="speed-condition-wrap"><div id="speed-condition"></div></div>
+    <div><span id="speed-value">0</span> <span style="font-size:13px">KM/H</span></div>
+    <div id="speed-gear">GEAR 1</div>
+  </div>
+  <div id="hud-dialogue" class="panel">
+    <div id="dialogue-initial">L</div>
+    <div><div id="dialogue-who">Lena "Wrench" Ortiz</div><div id="dialogue-line"></div></div>
+  </div>
+  <div id="hud-nearmiss">NEAR MISS +$250</div>
+  <div id="hud-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+</div>
+
+<div id="hud-map">
+  <canvas id="citymap" width="1060" height="620"></canvas>
+  <div id="map-hint">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
+</div>
+
+<div id="hud-title">
+  <div id="title-logo"><span class="pink">SOLMAR</span> <span class="blue">BAY</span></div>
+  <div id="title-sub">A GOLDEN HOUR IN NEON</div>
+  <div id="title-tag">Rico Marín is back in Solmar Bay — a sun-soaked coastal city at golden hour.<br>Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</div>
+  <button id="btn-start">START ENGINE</button>
+  <div id="title-controls">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run<br>M city map · R radio · F action · Steal any car — the police will notice</div>
 </div>
 
 <div id="playtest-results"></div>
-<script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
-</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
