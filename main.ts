@@ -1,10 +1,8 @@
-// SOLMAR BAY — main.ts: hands in the entry. Copies game/ and screenshots/
-// beside this file into the output directory, then writes dossier.json with
-// the kit's buildDossier library (the summary the judge reads).
-//
-// Run locally:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// In the grader's container MAKEFUN_OUTPUT_DIR is unset and /output is used.
-
+// SOLMAR BAY entrypoint (Node 22, standard library only): hands the game in.
+// Copies this directory's game/ and screenshots/ into the output directory
+// and writes /output/dossier.json with make.fun's own vendored library, the
+// same file the scorer runs byte for byte. Run it with:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,16 +18,20 @@ if (existsSync(join(here, 'screenshots'))) {
   cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// The scorer's caps: 4 screenshots max, each 256 KiB max; game/ at most 993
-// files / 48 MiB, no path over 1000 bytes. buildDossier throws on any breach,
-// so a successful run is itself a validity check.
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+// Fail fast with a clear message if the game entry page is missing, instead
+// of handing in a dossier for an unplayable entry.
+if (!existsSync(join(out, 'game', 'index.html'))) {
+  throw new Error('game/index.html is missing from the entry');
+}
+
+// The scorer's caps, kept in one place: 4 screenshots max, 256 KiB each;
+// game/ under 993 files and 48 MiB; dossier text capped at 160 KiB.
+const DOSSIER_CAPS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
+
+writeFileSync(join(out, 'dossier.json'), buildDossier(out, DOSSIER_CAPS));

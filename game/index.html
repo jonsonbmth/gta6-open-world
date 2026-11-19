@@ -5,91 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SOLMAR BAY — A Night in the Rain</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="./css/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
-<div id="game-root">
-  <canvas id="gl"></canvas>
+<div id="scene"></div>
 
-  <!-- HUD : dense, all four corners -->
-  <div id="hud" class="hidden">
-    <div id="mission-panel" class="panel tl">
-      <div class="mp-row"><span id="mp-chapter" class="badge">CH 1</span><span id="mp-title">First Run</span></div>
-      <div id="mp-desc" class="mp-desc">Drive to the garage on Palm Row</div>
-      <div class="mp-row"><span id="mp-stage">STAGE 2/4</span><div id="mp-bar" class="segbar"><i></i><i></i><i></i><i></i></div></div>
-      <div id="mp-next" class="mp-next">NEXT → Follow the GPS route on the map</div>
-    </div>
-
-    <div id="status-panel" class="panel tr">
-      <div id="sp-day">DAY 1 · 22:47</div>
-      <div id="sp-money">$42,780</div>
-      <div id="sp-stars">★★★☆☆</div>
-      <div id="sp-wanted">WANTED ★★★☆☆</div>
-      <div id="sp-pursuit">PURSUIT ACTIVE</div>
-    </div>
-
-    <div id="nav-panel" class="panel bl">
-      <canvas id="minimap" width="220" height="220"></canvas>
-      <div id="nav-district">SOLMAR AVENUE</div>
-      <div id="nav-respect">RESPECT 2 · 320 / 1000</div>
-      <div class="rbar"><i id="nav-respect-bar"></i></div>
-    </div>
-
-    <div id="vehicle-panel" class="panel br">
-      <div id="vp-radio">VAPOR 101.3</div>
-      <div id="vp-song">Glass Horizon</div>
-      <div id="vp-car">VULPINE S</div>
-      <div class="vp-row"><span>CONDITION</span><span id="vp-cond">95%</span></div>
-      <div class="cbar"><i id="vp-cond-bar"></i></div>
-      <div id="vp-speed">167 <small>KM/H</small></div>
-      <div id="vp-gear">GEAR 6</div>
-    </div>
-
-    <div id="action-toast"></div>
-    <div id="dialogue" class="hidden">
-      <canvas id="dlg-portrait" width="72" height="72"></canvas>
-      <div class="dlg-text"><div id="dlg-name">Lena "Wrench" Ortiz</div><div id="dlg-line">Two units on your tail, Rico — lose them on Palm Row!</div></div>
-    </div>
-    <div id="toast"></div>
-    <div id="hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+<!-- Title screen (visible first; while visible it hides the HUD via CSS). -->
+<div id="title-screen" class="visible">
+  <div class="title-inner">
+    <div class="title-logo"><span class="pink">SOLMAR</span> <span class="cyan">BAY</span></div>
+    <div class="title-tag">A NIGHT IN THE RAIN</div>
+    <p class="title-blurb">Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.<br>Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</p>
+    <button id="btn-start" class="btn-primary">START ENGINE</button>
+    <button id="btn-continue" class="btn-secondary" style="display:none">CONTINUE</button>
+    <div class="title-controls">WASD drive / walk &nbsp;·&nbsp; E enter &amp; exit car &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; SHIFT run<br>M city map &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F action &nbsp;·&nbsp; Steal any car — the police will notice</div>
   </div>
-
-  <!-- Full city map overlay -->
-  <div id="map-overlay" class="hidden">
-    <canvas id="bigmap" width="1240" height="700"></canvas>
-    <div id="map-footer">M / ESC to close · GPS route to the mission target · Districts, landmarks and police shown live</div>
-  </div>
-
-  <!-- Title screen -->
-  <div id="title-screen">
-    <div class="title-inner">
-      <h1><span class="t1">SOLMAR</span> <span class="t2">BAY</span></h1>
-      <div class="tagline">A NIGHT IN THE RAIN</div>
-      <p class="title-blurb">Rico Marín is back in Solmar Bay — a neon coastal city in the middle of a storm.<br>Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.</p>
-      <button id="btn-start">START ENGINE</button>
-      <button id="btn-continue" class="hidden">CONTINUE — JOB <span id="continue-job">2</span></button>
-      <div class="title-controls">WASD drive / walk &nbsp;·&nbsp; E enter &amp; exit car &nbsp;·&nbsp; SPACE handbrake &nbsp;·&nbsp; SHIFT run<br>M city map &nbsp;·&nbsp; R radio &nbsp;·&nbsp; F action &nbsp;·&nbsp; Steal any car — the police will notice</div>
-      <div id="save-note"></div>
-    </div>
-  </div>
-
-  <div id="playtest-results" class="hidden"></div>
 </div>
 
-<script src="vendor/three.min.js"></script>
-<script src="src/utils.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/save.js"></script>
-<script src="src/input.js"></script>
-<script src="src/postfx.js"></script>
-<script src="src/world.js"></script>
-<script src="src/cars.js"></script>
-<script src="src/people.js"></script>
-<script src="src/police.js"></script>
-<script src="src/missions.js"></script>
-<script src="src/hud.js"></script>
-<script src="src/shots.js"></script>
-<script src="src/playtest.js"></script>
-<script src="src/main.js"></script>
+<!-- HUD: dense panels in all four corners. -->
+<div id="hud-top-left" class="hud panel">
+  <div class="obj-head"><span id="obj-chapter" class="chip">CH 1</span> <span id="obj-title" class="obj-title">First Run</span></div>
+  <div id="obj-text" class="obj-text">Get in the VULPINE S</div>
+  <div class="bar"><div id="obj-stage-fill" class="fill yellow" style="width:25%"></div></div>
+  <div id="obj-next" class="obj-next">NEXT → Press E near the red sports car</div>
+</div>
+
+<div id="hud-top-right" class="hud panel">
+  <div class="clock"><span id="clock-day">DAY 1</span> · <span id="clock-time">22:47</span></div>
+  <div id="money" class="money">$42,780</div>
+  <div id="stars" class="stars">☆☆☆☆☆</div>
+  <div id="wanted-label" class="wanted">CLEAN</div>
+</div>
+
+<div id="hud-bottom-left" class="hud panel">
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="district" class="district">SOLMAR AVENUE</div>
+  <div id="respect-label" class="respect-label">RESPECT 2 · 320 / 1000</div>
+  <div class="bar"><div id="respect-fill" class="fill green" style="width:32%"></div></div>
+</div>
+
+<div id="hud-bottom-right" class="hud panel">
+  <div id="radio-station" class="radio-station">VAPOR 101.3</div>
+  <div id="radio-song" class="radio-song">Glass Horizon</div>
+  <div id="car-name" class="car-name">ON FOOT</div>
+  <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="cond-fill" class="fill green" style="width:100%"></div></div></div>
+  <div class="speed-row"><span id="speed-num" class="speed-num">0</span><span class="speed-unit">KM/H</span></div>
+  <div id="gear" class="gear">ON FOOT</div>
+</div>
+
+<div id="dialogue" class="hud">
+  <canvas id="dlg-portrait" width="64" height="64"></canvas>
+  <div class="dlg-body">
+    <div id="dlg-speaker" class="dlg-speaker">Mama Rosa</div>
+    <div id="dlg-text" class="dlg-text">Tonight the city learns our name, Rico. Drive it home.</div>
+  </div>
+</div>
+
+<div id="action-text" class="hud"></div>
+
+<div id="hint" class="hud">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+
+<!-- Full city map overlay. -->
+<div id="map-screen">
+  <canvas id="map-canvas" width="1024" height="640"></canvas>
+</div>
+
+<!-- Garage overlay. -->
+<div id="garage-screen">
+  <div class="garage-inner panel">
+    <h2>GARAGE — PALM ROW</h2>
+    <div class="garage-row"><span class="garage-car">VULPINE S</span><span class="garage-tag">YOURS</span></div>
+    <div class="garage-row"><span class="garage-car">SEDAN (STOLEN)</span><span class="garage-tag">HOT</span></div>
+    <p class="garage-note">Park a car inside the yellow marker to store it. Stolen cars stay hot until the heat dies down.</p>
+    <button id="btn-garage-close" class="btn-primary">BACK TO THE STREET</button>
+  </div>
+</div>
+
+<div id="playtest-results" style="display:none"></div>
+
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

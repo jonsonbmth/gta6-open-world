@@ -1,47 +1,50 @@
-// SOLMAR BAY — save / resume via localStorage.
-// Resume restores the exact job AND stage: it never restarts a job's stages.
-(function () {
-  'use strict';
-  var SB = window.SB = window.SB || {};
-  var KEY = 'solmar-bay-save-v9';
+// localStorage save for SOLMAR BAY. A save holds the player's money,
+// respect, current job + stage, position, wanted level and radio station, so
+// resuming drops the player back into the SAME job stage — never restarts it.
+// All access is guarded: private browsing or a full quota must never throw.
+const KEY = 'solmar-bay-save-v10';
 
-  function defaults() {
-    return {
-      version: 9, money: 42780, respect: 320, respectLevel: 2,
-      job: 0, stage: 0, jobsDone: 0,
-      garage: ['VULPINE S'], muted: false, station: 0,
-      bestSpeed: 0, nearMisses: 0, savedAt: 0
+export function saveGame(state) {
+  try {
+    const payload = {
+      v: 10,
+      money: state.money,
+      respect: state.respect,
+      jobIndex: state.jobIndex,
+      stageIndex: state.stageIndex,
+      wanted: state.wanted,
+      station: state.station,
+      pos: state.pos ? [state.pos.x, state.pos.z] : null,
+      onFoot: !!state.onFoot,
+      savedAt: Date.now(),
     };
+    localStorage.setItem(KEY, JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  function load() {
-    try {
-      var raw = window.localStorage.getItem(KEY);
-      if (!raw) return null;
-      var d = JSON.parse(raw);
-      if (!d || d.version !== 9) return null;
-      return d;
-    } catch (e) { return null; }
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.v !== 10) return null;
+    return data;
+  } catch {
+    return null;
   }
+}
 
-  function save(state) {
-    try {
-      var d = {
-        version: 9, money: state.money, respect: state.respect,
-        respectLevel: state.respectLevel, job: state.job, stage: state.stage,
-        jobsDone: state.jobsDone, garage: state.garage.slice(),
-        muted: state.muted, station: state.station,
-        bestSpeed: state.bestSpeed, nearMisses: state.nearMisses,
-        savedAt: Date.now()
-      };
-      window.localStorage.setItem(KEY, JSON.stringify(d));
-      return true;
-    } catch (e) { return false; }
+export function hasSave() {
+  return loadGame() !== null;
+}
+
+export function clearSave() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* ignore */
   }
-
-  function clear() {
-    try { window.localStorage.removeItem(KEY); } catch (e) {}
-  }
-
-  SB.save = { KEY: KEY, defaults: defaults, load: load, save: save, clear: clear };
-})();
+}
