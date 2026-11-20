@@ -64,18 +64,21 @@ SB.render = (function () {
 
   // Snap the chase camera behind the car at once (no lerp from the world
   // origin — the screenshot shot needs the framing right from the first frame).
+  // 3/4 rear angle: offset well to the car's west (sunlit) side and pulled
+  // close, so the hero fills ~25-30% of the frame and reads as a sports car
+  // (side profile + rear, taillight bar, spoiler, spoked wheels, diffuser).
   function snapChaseCamera(carPos, heading) {
     const back = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
     const right = { x: -Math.cos(heading), z: Math.sin(heading) };
     camPos.set(
-      carPos.x + back.x * 6.8 - right.x * 2.2,
-      (carPos.y || 0) + 2.9,
-      carPos.z + back.z * 6.8 - right.z * 2.2
+      carPos.x + back.x * 4.1 - right.x * 3.0,
+      (carPos.y || 0) + 2.0,
+      carPos.z + back.z * 4.1 - right.z * 3.0
     );
     camLook.set(
-      carPos.x + Math.sin(heading) * 8,
-      (carPos.y || 0) + 1.3,
-      carPos.z + Math.cos(heading) * 8
+      carPos.x + Math.sin(heading) * 6,
+      (carPos.y || 0) + 1.2,
+      carPos.z + Math.cos(heading) * 6
     );
     camera.position.copy(camPos);
     camera.lookAt(camLook);
@@ -83,21 +86,22 @@ SB.render = (function () {
 
   // Chase camera: low and close behind the car, on the LIT side (the sun is in
   // the south-west, behind/above the camera, so the car side we see is lit).
+  // 3/4 rear angle, pulled close: the hero fills ~25-30% of the frame.
   // FOV widens slightly with speed for a sense of motion.
   function updateChaseCamera(carPos, heading, speed, dt) {
     const back = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
-    // Slight offset to the car's west (sunlit) side, so the camera sees the
+    // Wide offset to the car's west (sunlit) side, so the camera sees the
     // car at a 3/4 rear angle instead of dead-centre behind it.
     const right = { x: -Math.cos(heading), z: Math.sin(heading) };
     const target = new THREE.Vector3(
-      carPos.x + back.x * 6.8 - right.x * 2.2,
-      (carPos.y || 0) + 2.9,
-      carPos.z + back.z * 6.8 - right.z * 2.2
+      carPos.x + back.x * 4.1 - right.x * 3.0,
+      (carPos.y || 0) + 2.0,
+      carPos.z + back.z * 4.1 - right.z * 3.0
     );
     const look = new THREE.Vector3(
-      carPos.x + Math.sin(heading) * 8,
-      (carPos.y || 0) + 1.3,
-      carPos.z + Math.cos(heading) * 8
+      carPos.x + Math.sin(heading) * 6,
+      (carPos.y || 0) + 1.2,
+      carPos.z + Math.cos(heading) * 6
     );
     const k = 1 - Math.exp(-6 * dt);
     camPos.lerp(target, k);
