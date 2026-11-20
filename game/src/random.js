@@ -1,32 +1,31 @@
-// Seeded random numbers (mulberry32). The city layout is deterministic from
-// CFG.seed so every run — and every screenshot — shows the same Solmar Bay.
+// SOLMAR BAY — a small seeded random number generator so the city is the same
+// on every load (deterministic layout, deterministic screenshots).
 
-export function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function next() {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+var SB = window.SB || (window.SB = {});
 
-export function makeRng(seed) {
-  const next = mulberry32(seed);
+SB.random = (function () {
+  // mulberry32 — tiny, fast, deterministic.
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const rand = mulberry32(20261120);
+
   return {
-    next,
-    range(min, max) {
-      return min + next() * (max - min);
-    },
-    int(min, max) {
-      return Math.floor(min + next() * (max - min + 1));
-    },
-    pick(list) {
-      return list[Math.floor(next() * list.length)];
-    },
-    chance(p) {
-      return next() < p;
-    },
+    // Float in [0, 1).
+    next: function () { return rand(); },
+    // Float in [min, max).
+    range: function (min, max) { return min + rand() * (max - min); },
+    // Integer in [min, max] inclusive.
+    int: function (min, max) { return Math.floor(rand() * (max - min + 1)) + min; },
+    // One item from an array.
+    pick: function (arr) { return arr[Math.floor(rand() * arr.length)]; },
   };
-}
+})();

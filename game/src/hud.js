@@ -1,455 +1,333 @@
-// HUD: the four-corner display, the live minimap, and the full city map
-// (M key) with districts, street names, a GPS route, compass and legend.
+// SOLMAR BAY — HUD: dense four-corner HUD, circular minimap, and the full city
+// map (M key) with districts, street names, GPS route, compass, legend, grid
+// and scale. The map is the game's showpiece: never plain.
 
-import { CFG, districtAt } from './config.js';
+var SB = window.SB || (window.SB = {});
 
-function el(id) {
-  return document.getElementById(id);
-}
-
-function fmtTime(s) {
-  const m = Math.floor(Math.max(0, s) / 60);
-  const r = Math.floor(Math.max(0, s) % 60);
-  return `${m}:${String(r).padStart(2, '0')}`;
-}
-
-function fmtCash(n) {
-  return '$' + Math.floor(n).toLocaleString('en-US');
-}
-
-// --- Minimap ---------------------------------------------------------------
-const MM = 190;
-function mmX(x) {
-  return ((x + 320) / 640) * MM;
-}
-function mmZ(z) {
-  return ((z + 320) / 640) * MM;
-}
-
-function drawMinimap(ctx, data, time) {
-  ctx.clearRect(0, 0, MM, MM);
-  ctx.fillStyle = '#0d1b2a';
-  ctx.fillRect(0, 0, MM, MM);
-  // Districts, faint.
-  for (const d of CFG.districts) {
-    ctx.fillStyle = d.color + '44';
-    ctx.fillRect(mmX(d.x0), mmZ(d.z0), mmX(d.x1) - mmX(d.x0), mmZ(d.z1) - mmZ(d.z0));
-  }
-  // Beach strip.
-  ctx.fillStyle = '#e9d29e';
-  ctx.fillRect(mmX(252), 0, mmX(320) - mmX(252), MM);
-  // Roads.
-  ctx.strokeStyle = '#cfd6dd';
-  ctx.lineWidth = 2.5;
-  for (const a of CFG.avenues) {
-    ctx.beginPath();
-    ctx.moveTo(mmX(a.x), 0);
-    ctx.lineTo(mmX(a.x), MM);
-    ctx.stroke();
-  }
-  for (const s of CFG.streets) {
-    ctx.beginPath();
-    ctx.moveTo(0, mmZ(s.z));
-    ctx.lineTo(MM, mmZ(s.z));
-    ctx.stroke();
-  }
-  // Checkpoints.
-  data.checkpoints.forEach((cp, i) => {
-    ctx.beginPath();
-    ctx.arc(mmX(cp.x), mmZ(cp.z), i === data.checkpointIndex ? 5 + Math.sin(time * 5) : 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = i < data.checkpointIndex ? '#2ecc71' : '#ff8c1a';
-    ctx.fill();
-  });
-  // Police.
-  ctx.fillStyle = '#4d7cff';
-  for (const p of data.police) {
-    ctx.beginPath();
-    ctx.arc(mmX(p.x), mmZ(p.z), 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Player arrow.
-  const px = mmX(data.player.x);
-  const pz = mmZ(data.player.z);
-  ctx.save();
-  ctx.translate(px, pz);
-  ctx.rotate(Math.atan2(Math.sin(data.heading), -Math.cos(data.heading)));
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#111111';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(0, -7);
-  ctx.lineTo(5, 6);
-  ctx.lineTo(0, 3);
-  ctx.lineTo(-5, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-  // North tick.
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 11px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('N', MM / 2, 12);
-}
-
-// --- Big map ---------------------------------------------------------------
-const MAP_W = 1100;
-const MAP_H = 760;
-const MAP_S = 1.1;
-const MAP_OX = (MAP_W - 720 * MAP_S) / 2;
-const MAP_OY = (MAP_H - 640 * MAP_S) / 2;
-function mapX(x) {
-  return MAP_OX + (x + 320) * MAP_S;
-}
-function mapZ(z) {
-  return MAP_OY + (z + 320) * MAP_S;
-}
-
-function gpsRoute(player, target) {
-  // Manhattan route through the road grid: nearest avenue, then the street
-  // nearest the target, then the target.
-  let ax = CFG.avenues[0].x;
-  for (const a of CFG.avenues) if (Math.abs(a.x - player.x) < Math.abs(ax - player.x)) ax = a.x;
-  let sz = CFG.streets[0].z;
-  for (const s of CFG.streets) if (Math.abs(s.z - target.z) < Math.abs(sz - target.z)) sz = s.z;
-  return [
-    { x: player.x, z: player.z },
-    { x: ax, z: player.z },
-    { x: ax, z: sz },
-    { x: target.x, z: sz },
-    { x: target.x, z: target.z },
-  ];
-}
-
-function drawBigMap(ctx, data, time) {
-  ctx.clearRect(0, 0, MAP_W, MAP_H);
-  const bg = ctx.createLinearGradient(0, 0, 0, MAP_H);
-  bg.addColorStop(0, '#0e2233');
-  bg.addColorStop(1, '#0a1a28');
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, MAP_W, MAP_H);
-
-  // Grid + coordinates.
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
-  ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = '10px Arial';
-  ctx.textAlign = 'left';
-  for (let gx = -320; gx <= 400; gx += 80) {
-    ctx.beginPath();
-    ctx.moveTo(mapX(gx), MAP_OY);
-    ctx.lineTo(mapX(gx), MAP_OY + 640 * MAP_S);
-    ctx.stroke();
-    ctx.fillText(String(gx), mapX(gx) + 3, MAP_OY + 640 * MAP_S + 14);
-  }
-  for (let gz = -320; gz <= 320; gz += 80) {
-    ctx.beginPath();
-    ctx.moveTo(MAP_OX, mapZ(gz));
-    ctx.lineTo(MAP_OX + 720 * MAP_S, mapZ(gz));
-    ctx.stroke();
-    ctx.fillText(String(gz), MAP_OX - 26, mapZ(gz) + 3);
-  }
-
-  // Ocean + beach.
-  const oc = ctx.createLinearGradient(mapX(320), 0, mapX(400), 0);
-  oc.addColorStop(0, '#2e7f9e');
-  oc.addColorStop(1, '#155a75');
-  ctx.fillStyle = oc;
-  ctx.fillRect(mapX(320), MAP_OY, mapX(400) - mapX(320), 640 * MAP_S);
-  ctx.fillStyle = '#e9d29e';
-  ctx.fillRect(mapX(252), MAP_OY, mapX(320) - mapX(252), 640 * MAP_S);
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.font = 'italic bold 15px Arial';
-  ctx.save();
-  ctx.translate(mapX(362), MAP_OY + 320 * MAP_S);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = 'center';
-  ctx.fillText('S O L M A R   B A Y', 0, 0);
-  ctx.restore();
-
-  // Districts.
-  for (const d of CFG.districts) {
-    ctx.fillStyle = d.color + '2e';
-    ctx.fillRect(mapX(d.x0), mapZ(d.z0), mapX(d.x1) - mapX(d.x0), mapZ(d.z1) - mapZ(d.z0));
-    ctx.strokeStyle = d.color + '66';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(mapX(d.x0), mapZ(d.z0), mapX(d.x1) - mapX(d.x0), mapZ(d.z1) - mapZ(d.z0));
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = 'bold 15px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(d.name, (mapX(d.x0) + mapX(d.x1)) / 2, (mapZ(d.z0) + mapZ(d.z1)) / 2);
-  }
-
-  // Roads.
-  ctx.strokeStyle = '#e8e4da';
-  ctx.lineCap = 'round';
-  for (const a of CFG.avenues) {
-    ctx.lineWidth = a.name === 'Ocean Drive' ? 7 : 5;
-    ctx.beginPath();
-    ctx.moveTo(mapX(a.x), MAP_OY);
-    ctx.lineTo(mapX(a.x), MAP_OY + 640 * MAP_S);
-    ctx.stroke();
-  }
-  for (const s of CFG.streets) {
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(MAP_OX, mapZ(s.z));
-    ctx.lineTo(MAP_OX + 640 * MAP_S, mapZ(s.z));
-    ctx.stroke();
-  }
-  // Street names.
-  ctx.fillStyle = 'rgba(10,30,45,0.85)';
-  ctx.font = 'bold 10px Arial';
-  for (const a of CFG.avenues) {
-    ctx.save();
-    ctx.translate(mapX(a.x) - 4, MAP_OY + 320 * MAP_S);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.fillText(a.name.toUpperCase(), 0, 0);
-    ctx.restore();
-  }
-  for (const s of CFG.streets) {
-    ctx.textAlign = 'center';
-    ctx.fillText(s.name.toUpperCase(), MAP_OX + 320 * MAP_S, mapZ(s.z) - 4);
-  }
-
-  // Marina piers.
-  ctx.fillStyle = '#8a6a48';
-  for (const pz of [150, 190, 230]) {
-    ctx.fillRect(mapX(320), mapZ(pz) - 2, mapX(388) - mapX(320), 4);
-  }
-
-  // GPS route to the next checkpoint.
-  const next = data.checkpoints[Math.min(data.checkpointIndex, data.checkpoints.length - 1)];
-  if (next) {
-    const route = gpsRoute(data.player, next);
-    ctx.save();
-    ctx.strokeStyle = '#ff2e88';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([12, 8]);
-    ctx.lineDashOffset = -time * 30;
-    ctx.shadowColor = '#ff2e88';
-    ctx.shadowBlur = 10;
-    ctx.beginPath();
-    route.forEach((p, i) => {
-      if (i === 0) ctx.moveTo(mapX(p.x), mapZ(p.z));
-      else ctx.lineTo(mapX(p.x), mapZ(p.z));
-    });
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // Checkpoints, numbered.
-  data.checkpoints.forEach((cp, i) => {
-    const done = i < data.checkpointIndex;
-    const isNext = i === data.checkpointIndex;
-    ctx.beginPath();
-    ctx.arc(mapX(cp.x), mapZ(cp.z), isNext ? 11 + Math.sin(time * 5) * 2 : 9, 0, Math.PI * 2);
-    ctx.fillStyle = done ? '#2ecc71' : '#ff8c1a';
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(String(i + 1), mapX(cp.x), mapZ(cp.z) + 4);
-  });
-
-  // Police.
-  for (const p of data.police) {
-    ctx.beginPath();
-    ctx.arc(mapX(p.x), mapZ(p.z), 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#4d7cff';
-    ctx.fill();
-    ctx.strokeStyle = '#ff4444';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
-  // Player arrow.
-  const px = mapX(data.player.x);
-  const pz = mapZ(data.player.z);
-  ctx.save();
-  ctx.translate(px, pz);
-  ctx.rotate(Math.atan2(Math.sin(data.heading), -Math.cos(data.heading)));
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#111111';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, -13);
-  ctx.lineTo(9, 11);
-  ctx.lineTo(0, 5);
-  ctx.lineTo(-9, 11);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-  ctx.beginPath();
-  ctx.arc(px, pz, 20 + Math.sin(time * 3) * 4, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Title block.
-  ctx.fillStyle = 'rgba(8,20,32,0.85)';
-  ctx.fillRect(24, 22, 330, 64);
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.strokeRect(24, 22, 330, 64);
-  ctx.fillStyle = '#ffd9a0';
-  ctx.font = 'bold 26px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText('SOLMAR BAY', 40, 50);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.font = '13px Arial';
-  ctx.fillText(`CITY MAP  •  ${districtAt(data.player.x, data.player.z)}`, 40, 72);
-
-  // Compass rose.
-  const cx = MAP_W - 70;
-  const cy = 70;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 34, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(8,20,32,0.85)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.stroke();
-  ctx.fillStyle = '#ff5a5a';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - 26);
-  ctx.lineTo(cx + 7, cy + 6);
-  ctx.lineTo(cx - 7, cy + 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 13px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('N', cx, cy - 30);
-  ctx.font = '10px Arial';
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText('E', cx + 24, cy + 4);
-  ctx.fillText('S', cx, cy + 28);
-  ctx.fillText('W', cx - 24, cy + 4);
-
-  // Legend.
-  const lx = 24;
-  const ly = MAP_H - 132;
-  ctx.fillStyle = 'rgba(8,20,32,0.85)';
-  ctx.fillRect(lx, ly, 230, 108);
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.strokeRect(lx, ly, 230, 108);
-  ctx.font = 'bold 12px Arial';
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'left';
-  ctx.fillText('LEGEND', lx + 14, ly + 20);
-  const items = [
-    ['#ffffff', 'You'],
-    ['#ff8c1a', 'Checkpoint'],
-    ['#ff2e88', 'GPS route'],
-    ['#4d7cff', 'Police'],
-    ['#2ecc71', 'Cleared'],
-  ];
-  ctx.font = '12px Arial';
-  items.forEach(([color, label], i) => {
-    const y = ly + 40 + i * 14;
-    ctx.fillStyle = color;
-    ctx.fillRect(lx + 14, y - 9, 12, 8);
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(label, lx + 34, y);
-  });
-
-  // Scale bar.
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.font = '11px Arial';
-  ctx.textAlign = 'right';
-  ctx.fillText('100 m', MAP_W - 24, MAP_H - 42);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(MAP_W - 24 - 100 * MAP_S, MAP_H - 36, 100 * MAP_S, 5);
-}
-
-// --- HUD object ------------------------------------------------------------
-export function createHUD() {
-  const minimapCtx = el('minimap').getContext('2d');
-  const mapCtx = el('map-canvas').getContext('2d');
-  let toastTimer = null;
-  let messageTimer = null;
+SB.hud = (function () {
+  const cfg = SB.config;
+  let minimap = null;
+  let mapCanvas = null;
   let mapOpen = false;
-  const startClock = 17 * 60 + 42; // 17:42 golden hour
+  let clockEl = null;
 
-  function toast(text, ms = 2600) {
-    const t = el('hud-toast');
-    t.textContent = text;
-    t.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  function el(id) { return document.getElementById(id); }
+
+  function init() {
+    minimap = el('minimap');
+    mapCanvas = el('city-map');
+    clockEl = el('clock');
+    el('start-btn').addEventListener('click', function () {
+      SB.audio.init();
+      SB.game.start();
+    });
+    el('map-close').addEventListener('click', function () { setMap(false); });
   }
 
-  function showMessage(text, ms = 1900) {
-    const m = el('hud-message');
-    m.textContent = text;
-    m.classList.add('show');
-    clearTimeout(messageTimer);
-    messageTimer = setTimeout(() => m.classList.remove('show'), ms);
+  // --- four-corner HUD ---------------------------------------------------------
+
+  function updateHUD(game) {
+    const m = SB.missions.state();
+    // Top-left: wanted stars, cash, mission, timer.
+    const stars = el('wanted-stars');
+    let starHtml = '';
+    for (let i = 0; i < 5; i++) {
+      starHtml += '<span class="star' + (i < game.wanted ? ' on' : '') + '">&#9733;</span>';
+    }
+    stars.innerHTML = starHtml;
+    el('cash').textContent = '$' + game.cash.toLocaleString('en-US');
+    el('mission-name').textContent = cfg.mission.name + ' ' +
+      (m ? Math.min(m.index + 1, 6) : 1) + '/6 — ' +
+      (m && SB.missions.currentCheckpoint() ? SB.missions.currentCheckpoint().name : '');
+    const t = m ? Math.max(0, m.timeLeft) : 0;
+    el('mission-timer').textContent = Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+    // Bottom-left: speed, gear, best drift.
+    const kmh = Math.round(Math.abs(game.speed) * 3.6);
+    el('speed-num').textContent = kmh;
+    el('gear').textContent = game.speed > 0.5 ? (kmh > 100 ? '4' : kmh > 60 ? '3' : kmh > 25 ? '2' : '1') : (game.speed < -0.5 ? 'R' : 'N');
+    el('best-drift').textContent = 'BEST DRIFT ' + game.bestDrift;
+    el('drift-now').textContent = game.drifting ? 'DRIFT x' + game.driftCombo : '';
+    // Top-right: district + clock.
+    el('district').textContent = districtName(game.playerPos.x, game.playerPos.z);
+    if (clockEl) {
+      const mins = 17 * 60 + 42 + Math.floor(game.time / 10);
+      clockEl.textContent = String(Math.floor(mins / 60) % 24).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+    }
+    drawMinimap(game);
+    if (mapOpen) drawCityMap(game);
+  }
+
+  function districtName(x, z) {
+    for (const d of cfg.districts) {
+      if (x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1) return d.name;
+    }
+    return x > cfg.beachX ? 'SOLMAR BEACH' : 'SOLMAR BAY';
+  }
+
+  function showBanner(text, sub) {
+    const b = el('banner');
+    el('banner-main').textContent = text;
+    el('banner-sub').textContent = sub || '';
+    b.classList.add('show');
+    clearTimeout(b._t);
+    b._t = setTimeout(function () { b.classList.remove('show'); }, 2600);
+  }
+
+  // --- minimap -------------------------------------------------------------------
+
+  function drawMinimap(game) {
+    if (!minimap) return;
+    const g = minimap.getContext('2d');
+    const S = 200;
+    const scale = S / 760;
+    const toPx = (v) => (v + 380) * scale;
+    g.clearRect(0, 0, S, S);
+    // Sea + sand.
+    g.fillStyle = '#2f6f8f';
+    g.fillRect(toPx(cfg.seaX), 0, S - toPx(cfg.seaX), S);
+    g.fillStyle = '#e0c896';
+    g.fillRect(toPx(cfg.beachX), 0, toPx(cfg.seaX) - toPx(cfg.beachX), S);
+    // District tints.
+    for (const d of cfg.districts) {
+      g.fillStyle = d.color + '44';
+      g.fillRect(toPx(d.x0), toPx(d.z0), (d.x1 - d.x0) * scale, (d.z1 - d.z0) * scale);
+    }
+    // Streets.
+    g.strokeStyle = 'rgba(255,255,255,0.85)';
+    g.lineWidth = 1.4;
+    for (const s of cfg.streets) {
+      g.beginPath(); g.moveTo(toPx(s), 0); g.lineTo(toPx(s), S); g.stroke();
+      g.beginPath(); g.moveTo(0, toPx(s)); g.lineTo(S, toPx(s)); g.stroke();
+    }
+    // GPS route.
+    const path = SB.missions.gpsPath(game.playerPos);
+    g.strokeStyle = '#ff5fa2';
+    g.lineWidth = 2.5;
+    g.setLineDash([6, 4]);
+    g.beginPath();
+    g.moveTo(toPx(path[0].x), toPx(path[0].z));
+    for (let i = 1; i < path.length; i++) g.lineTo(toPx(path[i].x), toPx(path[i].z));
+    g.stroke();
+    g.setLineDash([]);
+    // Checkpoints.
+    for (let i = 0; i < cfg.mission.checkpoints.length; i++) {
+      const cp = cfg.mission.checkpoints[i];
+      const done = SB.missions.state() && i < SB.missions.state().index;
+      g.beginPath();
+      g.arc(toPx(cp.x), toPx(cp.z), 5, 0, Math.PI * 2);
+      g.fillStyle = done ? '#5aa864' : '#ff8c2a';
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = '#ffffff';
+      g.stroke();
+    }
+    // Police dots.
+    for (const c of SB.police.cars()) {
+      g.beginPath();
+      g.arc(toPx(c.mesh.position.x), toPx(c.mesh.position.z), 3.5, 0, Math.PI * 2);
+      g.fillStyle = '#3a6cff';
+      g.fill();
+    }
+    // Player arrow (rotates with heading).
+    const px = toPx(game.playerPos.x);
+    const pz = toPx(game.playerPos.z);
+    g.save();
+    g.translate(px, pz);
+    g.rotate(game.heading);
+    g.beginPath();
+    g.moveTo(0, -8);
+    g.lineTo(5.5, 6);
+    g.lineTo(0, 3);
+    g.lineTo(-5.5, 6);
+    g.closePath();
+    g.fillStyle = '#ffffff';
+    g.fill();
+    g.lineWidth = 1.5;
+    g.strokeStyle = '#222222';
+    g.stroke();
+    g.restore();
+  }
+
+  // --- full city map ---------------------------------------------------------------
+
+  function setMap(open) {
+    mapOpen = open;
+    el('map-overlay').classList.toggle('show', open);
+    if (open && SB.game) drawCityMap(SB.game.state);
+  }
+
+  function isMapOpen() { return mapOpen; }
+
+  function drawCityMap(game) {
+    if (!mapCanvas) return;
+    const g = mapCanvas.getContext('2d');
+    const W = 1000, H = 700;
+    const scale = W / 760;
+    const toX = (v) => (v + 380) * scale;
+    const toY = (v) => (v + 380) * (H / 760);
+    g.clearRect(0, 0, W, H);
+    // Base: deep navy.
+    g.fillStyle = '#101c2c';
+    g.fillRect(0, 0, W, H);
+    // Sea + beach.
+    g.fillStyle = '#2a6a8a';
+    g.fillRect(toX(cfg.seaX), 0, W - toX(cfg.seaX), H);
+    g.fillStyle = '#e0c896';
+    g.fillRect(toX(cfg.beachX), 0, toX(cfg.seaX) - toX(cfg.beachX), H);
+    // District zones with names.
+    g.textAlign = 'center';
+    for (const d of cfg.districts) {
+      g.fillStyle = d.color + '2e';
+      g.fillRect(toX(d.x0), toY(d.z0), (d.x1 - d.x0) * scale, (d.z1 - d.z0) * (H / 760));
+      g.strokeStyle = d.color + '66';
+      g.lineWidth = 1;
+      g.strokeRect(toX(d.x0), toY(d.z0), (d.x1 - d.x0) * scale, (d.z1 - d.z0) * (H / 760));
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 17px sans-serif';
+      g.fillText(d.name, (toX(d.x0) + toX(d.x1)) / 2, (toY(d.z0) + toY(d.z1)) / 2);
+    }
+    // Streets (white grid lines) + names (left-aligned so no label is clipped).
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 2.5;
+    for (const s of cfg.streets) {
+      g.beginPath(); g.moveTo(toX(s), 0); g.lineTo(toX(s), H); g.stroke();
+      g.beginPath(); g.moveTo(0, toY(s)); g.lineTo(W, toY(s)); g.stroke();
+    }
+    g.textAlign = 'left';
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.font = '11px sans-serif';
+    for (const s of cfg.streets) {
+      const name = cfg.streetNames[String(s)];
+      if (!name) continue;
+      g.save();
+      g.translate(toX(s) + 4, 14);
+      g.fillText(name, 0, 0);
+      g.restore();
+      g.save();
+      g.translate(30, toY(s) - 4);
+      g.fillText(name, 0, 0);
+      g.restore();
+    }
+    g.textAlign = 'center';
+    // Grid + coordinates.
+    g.strokeStyle = 'rgba(255,255,255,0.12)';
+    g.lineWidth = 1;
+    for (let v = -320; v <= 320; v += 80) {
+      g.beginPath(); g.moveTo(toX(v), 0); g.lineTo(toX(v), H); g.stroke();
+      g.beginPath(); g.moveTo(0, toY(v)); g.lineTo(W, toY(v)); g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    g.font = '10px sans-serif';
+    for (let v = -320; v <= 320; v += 80) {
+      g.fillText(String(v), toX(v) + 2, H - 6);
+      g.fillText(String(v), 4, toY(v) - 2);
+    }
+    // GPS route to the next checkpoint.
+    const path = SB.missions.gpsPath(game.playerPos);
+    g.strokeStyle = '#ff5fa2';
+    g.lineWidth = 4;
+    g.setLineDash([12, 8]);
+    g.beginPath();
+    g.moveTo(toX(path[0].x), toY(path[0].z));
+    for (let i = 1; i < path.length; i++) g.lineTo(toX(path[i].x), toY(path[i].z));
+    g.stroke();
+    g.setLineDash([]);
+    // Checkpoints, numbered.
+    for (let i = 0; i < cfg.mission.checkpoints.length; i++) {
+      const cp = cfg.mission.checkpoints[i];
+      const done = SB.missions.state() && i < SB.missions.state().index;
+      g.beginPath();
+      g.arc(toX(cp.x), toY(cp.z), 11, 0, Math.PI * 2);
+      g.fillStyle = done ? '#5aa864' : '#ff8c2a';
+      g.fill();
+      g.lineWidth = 2.5;
+      g.strokeStyle = '#ffffff';
+      g.stroke();
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 12px sans-serif';
+      g.fillText(String(i + 1), toX(cp.x), toY(cp.z) + 4);
+    }
+    // Police.
+    for (const c of SB.police.cars()) {
+      g.beginPath();
+      g.arc(toX(c.mesh.position.x), toY(c.mesh.position.z), 6, 0, Math.PI * 2);
+      g.fillStyle = '#3a6cff';
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = '#ffffff';
+      g.stroke();
+    }
+    // Player arrow.
+    const px = toX(game.playerPos.x);
+    const py = toY(game.playerPos.z);
+    g.save();
+    g.translate(px, py);
+    g.rotate(game.heading);
+    g.beginPath();
+    g.moveTo(0, -14);
+    g.lineTo(10, 10);
+    g.lineTo(0, 5);
+    g.lineTo(-10, 10);
+    g.closePath();
+    g.fillStyle = '#ffffff';
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = '#222222';
+    g.stroke();
+    g.restore();
+    // Compass (below the top street-name row so it never covers a label).
+    g.save();
+    g.translate(W - 56, 130);
+    g.beginPath();
+    g.arc(0, 0, 34, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.45)';
+    g.fill();
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 2;
+    g.stroke();
+    g.fillStyle = '#ff5a4a';
+    g.beginPath();
+    g.moveTo(0, -24);
+    g.lineTo(8, 6);
+    g.lineTo(-8, 6);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 14px sans-serif';
+    g.fillText('N', 0, -38);
+    g.restore();
+    // Legend.
+    g.fillStyle = 'rgba(0,0,0,0.5)';
+    g.fillRect(14, H - 118, 168, 104);
+    g.textAlign = 'left';
+    g.font = 'bold 13px sans-serif';
+    g.fillStyle = '#ffffff';
+    g.fillText('LEGEND', 26, H - 96);
+    g.font = '12px sans-serif';
+    const items = [
+      ['#ffffff', 'You'], ['#ff8c2a', 'Checkpoint'], ['#ff5fa2', 'GPS route'],
+      ['#3a6cff', 'Police'], ['#5aa864', 'Cleared'],
+    ];
+    items.forEach(function (it, i) {
+      g.fillStyle = it[0];
+      g.fillRect(26, H - 84 + i * 16, 12, 8);
+      g.fillStyle = '#ffffff';
+      g.fillText(it[1], 44, H - 76 + i * 16);
+    });
+    // Scale bar (100 m).
+    g.fillStyle = '#ffffff';
+    g.fillRect(W - 150, H - 24, 100 * scale, 4);
+    g.font = '12px sans-serif';
+    g.fillText('100 m', W - 150, H - 30);
   }
 
   return {
-    toast,
-    showMessage,
-    isMapOpen() {
-      return mapOpen;
-    },
-    openMap() {
-      mapOpen = true;
-      el('map-overlay').classList.add('show');
-    },
-    closeMap() {
-      mapOpen = false;
-      el('map-overlay').classList.remove('show');
-    },
-    showBusted() {
-      el('busted-overlay').classList.add('show');
-    },
-    hideBusted() {
-      el('busted-overlay').classList.remove('show');
-    },
-    showPause(v) {
-      el('pause-overlay').classList.toggle('show', v);
-    },
-    showTitle(v) {
-      el('title-screen').classList.toggle('show', v);
-    },
-    setLoadingDone() {
-      el('loading').classList.add('done');
-    },
-
-    update(s, time) {
-      // Corners: speed bottom-left, wanted/objective top-left, map top-right.
-      el('hud-speed').textContent = String(Math.round(Math.abs(s.speed) * 3.6));
-      const kmh = Math.abs(s.speed) * 3.6;
-      el('hud-gear').textContent =
-        s.onFoot ? 'ON FOOT' : kmh < 1 ? 'N' : kmh < 30 ? '1' : kmh < 60 ? '2' : kmh < 95 ? '3' : kmh < 140 ? '4' : '5';
-      const driftEl = el('hud-drift');
-      if (s.drifting && s.driftPoints > 0) {
-        driftEl.textContent = `DRIFT +${s.driftPoints}`;
-        driftEl.classList.add('show');
-      } else {
-        driftEl.classList.remove('show');
-      }
-      el('hud-cash').textContent = fmtCash(s.cash);
-      el('hud-stars').textContent = '★'.repeat(s.wanted) + '☆'.repeat(5 - s.wanted);
-      el('hud-stars').style.color = s.wanted > 0 ? '#ffd94d' : 'rgba(255,255,255,0.55)';
-      const cp = s.checkpoints[Math.min(s.checkpointIndex, s.checkpoints.length - 1)];
-      el('hud-objective').textContent = s.missionActive
-        ? `SUNSET SPRINT  ${Math.min(s.checkpointIndex + 1, s.checkpoints.length)}/${s.checkpoints.length} — ${cp ? cp.name : ''}`
-        : 'SUNSET SPRINT — next run starting…';
-      el('hud-time').textContent = fmtTime(s.timeLeft);
-      el('hud-time').style.color = s.timeLeft < 20 && s.missionActive ? '#ff5a5a' : '#ffffff';
-      el('hud-district').textContent = districtAt(s.player.x, s.player.z);
-      const mins = startClock + Math.floor(time / 5);
-      el('hud-clock').textContent = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
-      el('hud-best-drift').textContent = `BEST DRIFT ${s.bestDrift}`;
-
-      drawMinimap(minimapCtx, s, time);
-      if (mapOpen) drawBigMap(mapCtx, s, time);
-    },
+    init: init,
+    updateHUD: updateHUD,
+    showBanner: showBanner,
+    setMap: setMap,
+    isMapOpen: isMapOpen,
+    drawCityMap: drawCityMap,
+    districtName: districtName,
   };
-}
+})();

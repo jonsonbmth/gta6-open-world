@@ -1,191 +1,152 @@
-// Missions: the Sunset Sprint checkpoint loop, the timer, cash rewards and
-// drift scoring. Checkpoint rings are glowing toruses with light beams.
+// SOLMAR BAY — missions: the Sunset Sprint. Six checkpoints in order, glowing
+// rings to drive through, a timer, cash per checkpoint, and the GPS route the
+// map and minimap draw.
 
-import { CFG } from './config.js';
+var SB = window.SB || (window.SB = {});
 
-export function createMissions(scene, hooks) {
-  const rings = [];
-  const cps = CFG.checkpoints;
-
-  for (let i = 0; i < cps.length; i++) {
-    const cp = cps[i];
-    const prev = cps[(i - 1 + cps.length) % cps.length];
-    const face = Math.atan2(cp.x - prev.x, cp.z - prev.z);
-
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: 0x201404,
-      emissive: 0xff8c1a,
-      emissiveIntensity: 0.6,
-    });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(5, 0.35, 10, 40), ringMat);
-    ring.position.set(cp.x, 3.4, cp.z);
-    ring.rotation.y = face;
-
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xff9a2e,
-      transparent: true,
-      opacity: 0.13,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.7, 0.7, 34, 12, 1, true),
-      beamMat,
-    );
-    beam.position.set(cp.x, 17, cp.z);
-
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(5.6, 24),
-      new THREE.MeshBasicMaterial({
-        color: 0xff9a2e,
-        transparent: true,
-        opacity: 0.16,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.set(cp.x, 0.08, cp.z);
-
-    beam.visible = false;
-    disc.visible = false;
-    scene.add(ring, beam, disc);
-    rings.push({ ring, beam, disc, ringMat, ...cp });
-  }
-
-  let index = 0;
-  let timeLeft = CFG.missionTime;
-  let active = true;
-  let restartTimer = 0;
-  let cash = 0;
-  let driftPoints = 0;
-  let driftBanked = 0;
-  let bestDrift = 0;
-  let wasDrifting = false;
-  let missionsWon = 0;
-
-  function refreshRings(time) {
-    rings.forEach((r, i) => {
-      if (i < index) {
-        r.ringMat.emissive.setHex(0x2ecc71);
-        r.ringMat.emissiveIntensity = 0.5;
-        r.beam.visible = false;
-        r.disc.visible = false;
-      } else if (i === index && active) {
-        r.ringMat.emissive.setHex(0xff8c1a);
-        r.ringMat.emissiveIntensity = 2.2 + Math.sin(time * 3.5) * 0.6;
-        r.beam.visible = true;
-        r.disc.visible = true;
-        const s = 1 + Math.sin(time * 3.5) * 0.03;
-        r.ring.scale.setScalar(s);
-      } else {
-        r.ringMat.emissive.setHex(0xff8c1a);
-        r.ringMat.emissiveIntensity = 0.55;
-        r.beam.visible = false;
-        r.disc.visible = false;
-      }
-    });
-  }
+SB.missions = (function () {
+  const cfg = SB.config;
+  let scene = null;
+  let rings = [];
+  let state = null;
 
   function reset() {
-    index = 0;
-    timeLeft = CFG.missionTime;
-    active = true;
-    restartTimer = 0;
-    driftPoints = 0;
-    wasDrifting = false;
+    const wonBefore = state ? state.won : 0;
+    state = {
+      active: true,
+      index: 0,
+      timeLeft: cfg.mission.timeLimit,
+      cash: 0,
+      won: wonBefore,
+      finished: false,
+    };
+    // Bring every ring, beam and number label back (a TIME UP reset re-arms them).
+    for (const r of rings) {
+      r.hit = false;
+      r.ring.visible = true;
+      r.beam.visible = true;
+      r.label.visible = true;
+    }
+    return state;
   }
 
-  function update(dt, playerPos, speed, drifting, driftAngle, time) {
-    refreshRings(time);
-
-    // Drift scoring: bank the run when the slide ends.
-    if (drifting && Math.abs(speed) > 8) {
-      driftPoints += driftAngle * Math.abs(speed) * dt * 3.2;
-    } else if (wasDrifting && driftPoints > 25) {
-      const pts = Math.floor(driftPoints);
-      const payout = Math.floor(pts / 10);
-      cash += payout;
-      driftBanked += pts;
-      bestDrift = Math.max(bestDrift, pts);
-      hooks.onDriftBanked?.(pts, payout);
-      driftPoints = 0;
-    } else if (!drifting) {
-      driftPoints = 0;
+  function build(sc) {
+    scene = sc;
+    rings = [];
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff8c2a, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+    });
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xffa040, transparent: true, opacity: 0.12,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    });
+    for (let i = 0; i < cfg.mission.checkpoints.length; i++) {
+      const cp = cfg.mission.checkpoints[i];
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(5, 0.32, 10, 32), ringMat.clone());
+      ring.position.set(cp.x, 2.6, cp.z);
+      ring.rotation.y = Math.PI / 2;
+      scene.add(ring);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 40, 24, 1, true), beamMat.clone());
+      beam.position.set(cp.x, 20, cp.z);
+      scene.add(beam);
+      // Number sprite above the ring.
+      const num = makeLabel(String(i + 1));
+      num.position.set(cp.x, 8.5, cp.z);
+      scene.add(num);
+      rings.push({ ring: ring, beam: beam, label: num, cp: cp, hit: false });
     }
-    wasDrifting = drifting;
+  }
 
-    if (!active) {
-      restartTimer -= dt;
-      if (restartTimer <= 0) reset();
-      return;
-    }
+  function makeLabel(text) {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext('2d');
+    g.beginPath();
+    g.arc(64, 64, 52, 0, Math.PI * 2);
+    g.fillStyle = '#ff8c2a';
+    g.fill();
+    g.lineWidth = 6;
+    g.strokeStyle = '#ffffff';
+    g.stroke();
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 64px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text, 64, 68);
+    const tex = new THREE.CanvasTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    sp.scale.set(7, 7, 1);
+    return sp;
+  }
 
-    timeLeft -= dt;
-    if (timeLeft <= 0) {
-      timeLeft = 0;
-      active = false;
-      restartTimer = 4;
-      hooks.onMissionFailed?.();
-      return;
-    }
-
-    const cp = rings[index];
-    const d = Math.hypot(playerPos.x - cp.x, playerPos.z - cp.z);
-    if (d < 7.5) {
-      index++;
-      timeLeft += CFG.checkpointBonus;
-      cash += 150;
-      hooks.onCheckpoint?.(index, cps.length, cp.name);
-      if (index >= rings.length) {
-        cash += 1000;
-        missionsWon++;
-        active = false;
-        restartTimer = 5;
-        hooks.onMissionComplete?.(missionsWon);
+  // True when the car is inside the current checkpoint ring.
+  function checkPassed(carPos) {
+    if (!state || !state.active || state.finished) return -1;
+    const cp = cfg.mission.checkpoints[state.index];
+    const dx = carPos.x - cp.x;
+    const dz = carPos.z - cp.z;
+    if (dx * dx + dz * dz < 6.5 * 6.5) {
+      const hit = state.index;
+      rings[hit].hit = true;
+      rings[hit].ring.visible = false;
+      rings[hit].beam.visible = false;
+      rings[hit].label.visible = false;
+      state.cash += 250;
+      state.index++;
+      if (state.index >= cfg.mission.checkpoints.length) {
+        state.finished = true;
+        state.active = false;
+        state.won++;
       }
+      return hit;
+    }
+    return -1;
+  }
+
+  function currentCheckpoint() {
+    if (!state) return null;
+    return cfg.mission.checkpoints[Math.min(state.index, cfg.mission.checkpoints.length - 1)];
+  }
+
+  // GPS path: car -> remaining checkpoints, as world points.
+  function gpsPath(carPos) {
+    const pts = [{ x: carPos.x, z: carPos.z }];
+    for (let i = state.index; i < cfg.mission.checkpoints.length; i++) {
+      pts.push({ x: cfg.mission.checkpoints[i].x, z: cfg.mission.checkpoints[i].z });
+    }
+    return pts;
+  }
+
+  // Pulse the current ring so it reads from a distance.
+  function update(time) {
+    if (!rings.length) return;
+    const cur = state && !state.finished ? rings[state.index] : null;
+    if (cur) {
+      const s = 1 + Math.sin(time * 4) * 0.08;
+      cur.ring.scale.set(s, s, s);
+      cur.ring.rotation.x = Math.sin(time * 1.5) * 0.15;
+    }
+  }
+
+  // Show or hide the rings / beams / number labels (the title and marina
+  // shots hide them so no glowing pillar photobombs the frame).
+  function setVisible(v) {
+    for (const r of rings) {
+      r.ring.visible = v && !r.hit;
+      r.beam.visible = v && !r.hit;
+      r.label.visible = v && !r.hit;
     }
   }
 
   return {
-    get index() {
-      return index;
-    },
-    get timeLeft() {
-      return timeLeft;
-    },
-    get cash() {
-      return cash;
-    },
-    get driftPoints() {
-      return Math.floor(driftPoints);
-    },
-    get bestDrift() {
-      return bestDrift;
-    },
-    get missionsWon() {
-      return missionsWon;
-    },
-    get active() {
-      return active;
-    },
-    get checkpoints() {
-      return rings;
-    },
-    get nextCheckpoint() {
-      return rings[Math.min(index, rings.length - 1)];
-    },
-    spend(amount) {
-      cash = Math.max(0, cash - amount);
-    },
-    // Bank the run's cash into the persistent wallet; returns the amount.
-    bank() {
-      const c = cash;
-      cash = 0;
-      return c;
-    },
-    reset,
-    update,
+    build: build,
+    reset: reset,
+    setVisible: setVisible,
+    state: function () { return state; },
+    checkPassed: checkPassed,
+    currentCheckpoint: currentCheckpoint,
+    gpsPath: gpsPath,
+    update: update,
   };
-}
+})();

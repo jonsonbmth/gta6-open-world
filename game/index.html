@@ -3,190 +3,139 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
 <title>SOLMAR BAY — A Golden Hour in Neon</title>
+<link rel="icon" href="data:,">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a141f; }
-  body {
-    font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
-    color: #fff;
-    -webkit-user-select: none; user-select: none;
-  }
-  #game-container, #game-container canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #vignette {
-    position: absolute; inset: 0; pointer-events: none; z-index: 3;
-    background: radial-gradient(ellipse at center, transparent 62%, rgba(20, 8, 0, 0.38) 100%);
-  }
-  #loading {
-    position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
-    background: #0a141f; font-size: 22px; letter-spacing: 6px; color: #ffd9a0;
-    transition: opacity 0.6s;
-  }
-  #loading.done { opacity: 0; pointer-events: none; }
-
-  /* ---- HUD: dense, all four corners ---- */
-  #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
-  #hud.show { opacity: 1; }
-  .panel {
-    background: rgba(8, 18, 30, 0.55); border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 6px; backdrop-filter: blur(2px);
-  }
-  #hud-tl { position: absolute; top: 14px; left: 14px; padding: 10px 14px; min-width: 250px; }
-  #hud-stars { font-size: 26px; letter-spacing: 4px; color: rgba(255,255,255,0.55); line-height: 1; }
-  #hud-cash { font-size: 26px; font-weight: bold; color: #7de89a; text-shadow: 2px 2px 0 #000; margin-top: 2px; }
-  #hud-objective { font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #ffd9a0; margin-top: 6px; text-shadow: 1px 1px 0 #000; }
-  #hud-time { font-size: 22px; font-weight: bold; text-shadow: 2px 2px 0 #000; margin-top: 2px; }
-  #hud-tr { position: absolute; top: 14px; right: 14px; text-align: right; }
-  #minimap { width: 190px; height: 190px; border: 2px solid rgba(255,255,255,0.35); border-radius: 50%; display: block; background: #0d1b2a; }
-  #hud-district { font-size: 17px; font-weight: bold; letter-spacing: 2px; text-shadow: 2px 2px 0 #000; margin-top: 6px; }
-  #hud-clock { font-size: 15px; color: #ffd9a0; text-shadow: 1px 1px 0 #000; }
-  #hud-bl { position: absolute; bottom: 16px; left: 16px; padding: 8px 16px 10px; text-align: left; }
-  #hud-speed { font-size: 58px; font-weight: bold; line-height: 0.95; text-shadow: 3px 3px 0 #000; display: inline-block; }
-  #hud-speed-unit { font-size: 16px; color: #ffd9a0; margin-left: 4px; }
-  #hud-gear { font-size: 20px; font-weight: bold; color: #ff8c1a; margin-left: 12px; }
-  #hud-best-drift { font-size: 12px; letter-spacing: 1px; color: rgba(255,255,255,0.75); margin-top: 2px; }
-  #hud-drift {
-    position: absolute; bottom: 118px; left: 16px; font-size: 30px; font-weight: bold; color: #ff9a2e;
-    text-shadow: 2px 2px 0 #000, 0 0 18px rgba(255,140,26,0.7); opacity: 0; transform: scale(0.9);
-    transition: opacity 0.15s, transform 0.15s;
-  }
-  #hud-drift.show { opacity: 1; transform: scale(1); }
-  #hud-br { position: absolute; bottom: 16px; right: 16px; padding: 10px 14px; font-size: 13px; line-height: 1.65; color: rgba(255,255,255,0.85); text-align: right; }
-  #hud-br b { color: #ffd9a0; }
-  #hud-toast {
-    position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%) translateY(8px);
-    background: rgba(8, 18, 30, 0.75); border: 1px solid rgba(255, 217, 160, 0.5); color: #ffd9a0;
-    font-size: 17px; font-weight: bold; letter-spacing: 1px; padding: 9px 22px; border-radius: 4px;
-    opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 12; pointer-events: none; white-space: nowrap;
-  }
-  #hud-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  #hud-message {
-    position: absolute; top: 30%; left: 50%; transform: translateX(-50%) scale(0.92);
-    font-size: 46px; font-weight: bold; letter-spacing: 3px; color: #fff;
-    text-shadow: 3px 3px 0 #000, 0 0 30px rgba(255, 140, 26, 0.8);
-    opacity: 0; transition: opacity 0.25s, transform 0.25s; z-index: 12; pointer-events: none; white-space: nowrap;
-  }
-  #hud-message.show { opacity: 1; transform: translateX(-50%) scale(1); }
-
-  /* ---- Map overlay ---- */
-  #map-overlay {
-    position: absolute; inset: 0; z-index: 20; background: rgba(4, 12, 20, 0.88);
-    display: none; align-items: center; justify-content: center; flex-direction: column;
-  }
-  #map-overlay.show { display: flex; }
-  #map-canvas { max-width: 96vw; max-height: 88vh; border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; }
-  #map-caption { margin-top: 10px; font-size: 14px; letter-spacing: 3px; color: rgba(255,255,255,0.7); }
-
-  /* ---- Title screen ---- */
-  #title-screen {
-    position: absolute; inset: 0; z-index: 30; display: none; flex-direction: column;
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #101c2c;
+    font-family: 'Segoe UI', Arial, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; z-index: 10; pointer-events: none;
+    background: rgba(8, 16, 28, 0.62); border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(2px); }
+  #hud-tl { top: 14px; left: 14px; min-width: 300px; }
+  #hud-tr { top: 14px; right: 14px; text-align: right; background: transparent; border: none; padding: 0; }
+  #hud-bl { bottom: 14px; left: 14px; }
+  #hud-br { bottom: 14px; right: 14px; font-size: 12px; line-height: 1.55; color: #d8d8d8; }
+  #hud-br b { color: #ffd27a; }
+  .star { color: #555; font-size: 20px; letter-spacing: 2px; }
+  .star.on { color: #ffd21a; text-shadow: 0 0 8px #ffaa00; }
+  #cash { color: #7dff9a; font-size: 22px; font-weight: 700; }
+  #mission-name { color: #ffd27a; font-size: 13px; font-weight: 600; margin-top: 2px; }
+  #mission-timer { font-size: 22px; font-weight: 700; }
+  #minimap { width: 200px; height: 200px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.75); box-shadow: 0 0 18px rgba(0,0,0,0.5); background: #101c2c; }
+  #district { font-size: 15px; font-weight: 700; letter-spacing: 1px; margin-top: 6px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+  #clock { font-size: 13px; color: #ffd27a; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+  #speed-num { font-size: 52px; font-weight: 800; line-height: 0.95; }
+  #speed-unit { font-size: 14px; color: #ffd27a; font-weight: 700; }
+  #gear { font-size: 20px; font-weight: 800; color: #ff8c2a; margin-left: 8px; }
+  #best-drift { font-size: 12px; color: #d8d8d8; margin-top: 2px; }
+  #drift-now { font-size: 15px; color: #ff5fa2; font-weight: 800; min-height: 18px; }
+  #banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 20;
+    text-align: center; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+  #banner.show { opacity: 1; }
+  #banner-main { font-size: 44px; font-weight: 800; letter-spacing: 4px; color: #ffd27a;
+    text-shadow: 0 2px 18px rgba(0,0,0,0.9); }
+  #banner-sub { font-size: 17px; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,0.9); }
+  #title-screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
-    background: linear-gradient(to bottom, rgba(10, 10, 20, 0.25), rgba(10, 10, 20, 0.55));
-  }
-  #title-screen.show { display: flex; }
-  #title-kicker { font-size: 17px; letter-spacing: 10px; color: #ff9a2e; text-shadow: 2px 2px 0 #000; }
-  #title-name {
-    font-size: 104px; font-weight: bold; letter-spacing: 6px; line-height: 0.95; margin-top: 8px;
-    background: linear-gradient(to bottom, #fff6e0, #ffb347 55%, #ff5e3a);
+    background: linear-gradient(180deg, rgba(8,16,28,0.25) 0%, rgba(8,16,28,0.05) 45%, rgba(8,16,28,0.72) 100%); }
+  #title-screen .kicker { font-size: 17px; letter-spacing: 9px; color: #ffd27a; font-weight: 600; }
+  #title-screen h1 { font-size: 92px; font-weight: 800; letter-spacing: 6px; line-height: 1;
+    background: linear-gradient(180deg, #fff2c8 20%, #ffb347 75%, #ff7a2a 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    filter: drop-shadow(4px 4px 0 rgba(0,0,0,0.85)) drop-shadow(0 0 26px rgba(255,140,26,0.45));
-  }
-  #title-sub { font-size: 24px; letter-spacing: 8px; color: #7fd9c9; text-shadow: 2px 2px 0 #000; margin-top: 6px; }
-  #title-tag { font-size: 16px; color: rgba(255,255,255,0.85); text-shadow: 1px 1px 0 #000; margin-top: 14px; max-width: 640px; line-height: 1.5; }
-  #btn-start {
-    margin-top: 30px; pointer-events: auto; cursor: pointer; border: 2px solid #ff9a2e; background: rgba(255, 140, 26, 0.16);
-    color: #fff; font-size: 24px; font-weight: bold; letter-spacing: 4px; padding: 15px 54px; border-radius: 4px;
-    text-shadow: 2px 2px 0 #000; transition: background 0.15s, transform 0.1s;
-  }
-  #btn-start:hover { background: rgba(255, 140, 26, 0.4); transform: scale(1.03); }
-  #title-controls { margin-top: 26px; font-size: 14px; line-height: 1.9; color: rgba(255,255,255,0.85); text-shadow: 1px 1px 0 #000; }
-  #title-controls b { color: #ffd9a0; }
-  #title-save { margin-top: 16px; font-size: 13px; letter-spacing: 2px; color: rgba(255,255,255,0.6); }
-  #title-foot { position: absolute; bottom: 14px; font-size: 12px; letter-spacing: 1px; color: rgba(255,255,255,0.55); }
-
-  /* ---- Busted / pause ---- */
-  .overlay {
-    position: absolute; inset: 0; z-index: 40; display: none; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center;
-    background: rgba(10, 10, 25, 0.72);
-  }
-  .overlay.show { display: flex; }
-  .overlay h1 { font-size: 84px; letter-spacing: 10px; text-shadow: 4px 4px 0 #000; }
-  .overlay p { font-size: 18px; color: rgba(255,255,255,0.85); margin-top: 10px; }
-  .overlay button {
-    margin-top: 28px; pointer-events: auto; cursor: pointer; border: 2px solid #fff;
-    background: rgba(255,255,255,0.12); color: #fff; font-size: 20px; font-weight: bold;
-    letter-spacing: 2px; padding: 13px 42px; border-radius: 4px;
-  }
-  .overlay button:hover { background: rgba(255,255,255,0.28); }
-  #busted-overlay h1 { color: #4d7cff; }
+    text-shadow: 0 4px 30px rgba(0,0,0,0.45); margin: 8px 0; }
+  #title-screen .sub { font-size: 21px; letter-spacing: 6px; color: #bfe8d8; font-weight: 600; }
+  #title-screen p.desc { max-width: 620px; margin: 16px 0 22px; font-size: 15px; line-height: 1.5; color: #e8e8e8; }
+  #start-btn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 800; letter-spacing: 3px;
+    color: #fff; background: rgba(255,140,42,0.92); border: 2px solid #ffd27a; border-radius: 8px;
+    padding: 14px 42px; }
+  #start-btn:hover { background: #ff8c2a; }
+  #title-screen .controls { margin-top: 22px; font-size: 13px; line-height: 1.7; color: #d8d8d8; }
+  #title-screen .controls b { color: #ffd27a; }
+  #title-screen .fine { margin-top: 26px; font-size: 12px; color: #aaa; max-width: 560px; }
+  #map-overlay { position: fixed; inset: 0; z-index: 25; display: none; flex-direction: column;
+    align-items: center; justify-content: center; background: rgba(6,12,22,0.88); }
+  #map-overlay.show { display: flex; }
+  #map-overlay h2 { font-size: 22px; letter-spacing: 3px; color: #ffd27a; margin-bottom: 10px; }
+  #city-map { width: 1000px; height: 700px; max-width: 94vw; max-height: 78vh;
+    border: 2px solid rgba(255,255,255,0.25); border-radius: 8px; background: #101c2c; }
+  #map-overlay .hint { margin-top: 10px; font-size: 13px; color: #d8d8d8; }
+  #map-close { pointer-events: auto; cursor: pointer; margin-top: 10px; font-size: 14px; font-weight: 700;
+    color: #fff; background: rgba(255,140,42,0.9); border: 1px solid #ffd27a; border-radius: 6px; padding: 8px 22px; }
+  #playtest-results { position: fixed; left: 0; bottom: 0; z-index: 40; display: none;
+    white-space: pre; font: 11px monospace; color: #0f0; background: rgba(0,0,0,0.7); padding: 6px; }
 </style>
 </head>
 <body>
-<div id="game-container"></div>
-<div id="vignette"></div>
-<div id="loading">LOADING&nbsp;SOLMAR&nbsp;BAY…</div>
+<canvas id="game-canvas"></canvas>
 
-<div id="hud">
-  <div id="hud-tl" class="panel">
-    <div id="hud-stars">☆☆☆☆☆</div>
-    <div id="hud-cash">$0</div>
-    <div id="hud-objective">SUNSET SPRINT 1/6</div>
-    <div id="hud-time">2:30</div>
-  </div>
-  <div id="hud-tr">
-    <canvas id="minimap" width="190" height="190"></canvas>
-    <div id="hud-district">SOLMAR BEACH</div>
-    <div id="hud-clock">17:42</div>
-  </div>
-  <div id="hud-bl" class="panel">
-    <span id="hud-speed">0</span><span id="hud-speed-unit">KM/H</span><span id="hud-gear">N</span>
-    <div id="hud-best-drift">BEST DRIFT 0</div>
-  </div>
-  <div id="hud-drift">DRIFT +0</div>
-  <div id="hud-br" class="panel">
-    <b>WASD / Arrows</b> drive &nbsp;•&nbsp; <b>Space</b> drift<br>
-    <b>E</b> enter / exit car &nbsp;•&nbsp; <b>F</b> punch<br>
-    <b>M</b> map &nbsp;•&nbsp; <b>P</b> pause &nbsp;•&nbsp; <b>R</b> reset &nbsp;•&nbsp; <b>N</b> sound
-  </div>
+<div id="hud-tl" class="hud">
+  <div id="wanted-stars"></div>
+  <div id="cash">$0</div>
+  <div id="mission-name">SUNSET SPRINT 1/6</div>
+  <div id="mission-timer">2:30</div>
 </div>
-<div id="hud-toast"></div>
-<div id="hud-message"></div>
+
+<div id="hud-tr" class="hud">
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="district">SOLMAR BEACH</div>
+  <div id="clock">17:42</div>
+</div>
+
+<div id="hud-bl" class="hud">
+  <div><span id="speed-num">0</span> <span id="speed-unit">KM/H</span><span id="gear">N</span></div>
+  <div id="drift-now"></div>
+  <div id="best-drift">BEST DRIFT 0</div>
+</div>
+
+<div id="hud-br" class="hud">
+  <b>WASD / Arrows</b> drive &nbsp;•&nbsp; <b>Space</b> drift<br>
+  <b>E</b> enter / exit car &nbsp;•&nbsp; <b>F</b> punch<br>
+  <b>M</b> map &nbsp;•&nbsp; <b>P</b> pause &nbsp;•&nbsp; <b>R</b> reset &nbsp;•&nbsp; <b>N</b> sound
+</div>
+
+<div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
+
+<div id="title-screen">
+  <div class="kicker">AN OPEN-WORLD CRIME GAME</div>
+  <h1>SOLMAR BAY</h1>
+  <div class="sub">A GOLDEN HOUR IN NEON</div>
+  <p class="desc">Seven districts, one sunset. Steal cars, outrun the law, and chase the orange rings of the
+  Sunset Sprint through a city that never stops glowing.</p>
+  <button id="start-btn">START ENGINE</button>
+  <div class="controls"><b>WASD / Arrows</b> drive &nbsp;•&nbsp; <b>Space</b> handbrake drift &nbsp;•&nbsp; <b>E</b> enter / steal a car<br>
+  <b>F</b> punch (on foot) &nbsp;•&nbsp; <b>M</b> city map &nbsp;•&nbsp; <b>P</b> pause &nbsp;•&nbsp; <b>R</b> reset car &nbsp;•&nbsp; <b>N</b> sound</div>
+  <div class="fine">BEST DRIFT 0 &nbsp;•&nbsp; MISSIONS WON 0 &nbsp;•&nbsp; CASH $0<br><br>
+  An original game — its city, characters and story are invented. No real place or franchise is depicted.</div>
+</div>
 
 <div id="map-overlay">
-  <canvas id="map-canvas" width="1100" height="760"></canvas>
-  <div id="map-caption">M — CLOSE MAP &nbsp;•&nbsp; GPS ROUTE TO THE NEXT CHECKPOINT</div>
+  <h2>SOLMAR BAY — CITY MAP</h2>
+  <canvas id="city-map" width="1000" height="700"></canvas>
+  <div class="hint">M — CLOSE MAP &nbsp;•&nbsp; GPS ROUTE TO THE NEXT CHECKPOINT</div>
+  <button id="map-close">CLOSE MAP</button>
 </div>
 
-<div id="title-screen" class="show">
-  <div id="title-kicker">AN OPEN-WORLD CRIME GAME</div>
-  <div id="title-name">SOLMAR BAY</div>
-  <div id="title-sub">A GOLDEN HOUR IN NEON</div>
-  <div id="title-tag">Seven districts, one sunset. Steal cars, outrun the law, and chase the
-    orange rings of the Sunset Sprint through a city that never stops glowing.</div>
-  <button id="btn-start">START ENGINE</button>
-  <div id="title-controls">
-    <b>WASD / Arrows</b> drive &nbsp;•&nbsp; <b>Space</b> handbrake drift &nbsp;•&nbsp; <b>E</b> enter / steal a car<br>
-    <b>F</b> punch (on foot) &nbsp;•&nbsp; <b>M</b> city map &nbsp;•&nbsp; <b>P</b> pause &nbsp;•&nbsp; <b>R</b> reset car &nbsp;•&nbsp; <b>N</b> sound
-  </div>
-  <div id="title-save"></div>
-  <div id="title-foot">An original game — its city, characters and story are invented. No real place or franchise is depicted.</div>
-</div>
-
-<div id="busted-overlay" class="overlay">
-  <h1>BUSTED</h1>
-  <p>The Solmar Bay PD caught up with you. Pay the fine and walk free.</p>
-  <button id="btn-busted">PAY $200 FINE &amp; CONTINUE</button>
-</div>
-
-<div id="pause-overlay" class="overlay">
-  <h1>PAUSED</h1>
-  <p>The city waits. Golden hour is patient.</p>
-  <button id="btn-resume">RESUME</button>
-</div>
+<div id="playtest-results"></div>
 
 <script src="vendor/three.min.js"></script>
-<script type="module" src="src/main.js"></script>
+<script src="src/config.js"></script>
+<script src="src/random.js"></script>
+<script src="src/input.js"></script>
+<script src="src/cars.js"></script>
+<script src="src/people.js"></script>
+<script src="src/world.js"></script>
+<script src="src/render.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/police.js"></script>
+<script src="src/traffic.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/save.js"></script>
+<script src="src/main.js"></script>
+<script src="src/shots.js"></script>
 </body>
 </html>

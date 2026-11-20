@@ -1,72 +1,41 @@
-// Keyboard + mouse state. `down` is held keys, `hit` is keys pressed since
-// the last frame (edge-triggered, consumed by the game loop each frame).
+// SOLMAR BAY — keyboard input. WASD / arrows drive, Space handbrake-drifts,
+// E enters or exits a car, F punches on foot, M opens the city map, P pauses,
+// R resets the car, N toggles sound. An override object lets the playtest and
+// the screenshot shots drive the car without a keyboard.
 
-export const keysDown = new Set();
-export const keysHit = new Set();
-export const mouse = { x: 0, y: 0, down: false };
+var SB = window.SB || (window.SB = {});
 
-let attached = false;
+SB.input = (function () {
+  const keys = {};
+  // Test and shot scripts set these to drive the car programmatically.
+  const override = { up: false, down: false, left: false, right: false, handbrake: false };
 
-export function initInput() {
-  if (attached) return;
-  attached = true;
-  window.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    keysDown.add(e.code);
-    keysHit.add(e.code);
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+  function isDown(code) { return !!keys[code]; }
+
+  const api = {
+    keys: keys,
+    override: override,
+    // True while any of these physical keys is held.
+    up: function () { return override.up || isDown('KeyW') || isDown('ArrowUp'); },
+    down: function () { return override.down || isDown('KeyS') || isDown('ArrowDown'); },
+    left: function () { return override.left || isDown('KeyA') || isDown('ArrowLeft'); },
+    right: function () { return override.right || isDown('KeyD') || isDown('ArrowRight'); },
+    handbrake: function () { return override.handbrake || isDown('Space'); },
+    // Edge-triggered actions, consumed by the game loop.
+    pressed: {},
+  };
+
+  window.addEventListener('keydown', function (e) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].indexOf(e.code) >= 0) {
       e.preventDefault();
     }
+    if (!keys[e.code]) api.pressed[e.code] = true;
+    keys[e.code] = true;
   });
-  window.addEventListener('keyup', (e) => keysDown.delete(e.code));
-  window.addEventListener('blur', () => {
-    keysDown.clear();
-    keysHit.clear();
+  window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+  window.addEventListener('blur', function () {
+    for (const k in keys) keys[k] = false;
   });
-  window.addEventListener('mousemove', (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-  });
-  window.addEventListener('mousedown', () => {
-    mouse.down = true;
-  });
-  window.addEventListener('mouseup', () => {
-    mouse.down = false;
-  });
-}
 
-export function isDown(code) {
-  return keysDown.has(code);
-}
-
-export function wasHit(code) {
-  return keysHit.has(code);
-}
-
-// Call once per frame after all systems read input.
-export function endFrameInput() {
-  keysHit.clear();
-}
-
-// Steering / throttle helpers: arrows or WASD.
-export function driveInput() {
-  const throttle =
-    (isDown('KeyW') || isDown('ArrowUp') ? 1 : 0) -
-    (isDown('KeyS') || isDown('ArrowDown') ? 1 : 0);
-  const steer =
-    (isDown('KeyA') || isDown('ArrowLeft') ? 1 : 0) -
-    (isDown('KeyD') || isDown('ArrowRight') ? 1 : 0);
-  const handbrake = isDown('Space');
-  return { throttle, steer, handbrake };
-}
-
-export function walkInput() {
-  const fwd =
-    (isDown('KeyW') || isDown('ArrowUp') ? 1 : 0) -
-    (isDown('KeyS') || isDown('ArrowDown') ? 1 : 0);
-  const strafe =
-    (isDown('KeyD') || isDown('ArrowRight') ? 1 : 0) -
-    (isDown('KeyA') || isDown('ArrowLeft') ? 1 : 0);
-  const run = isDown('ShiftLeft') || isDown('ShiftRight');
-  return { fwd, strafe, run };
-}
+  return api;
+})();
