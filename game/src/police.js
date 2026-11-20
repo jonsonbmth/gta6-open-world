@@ -1,74 +1,49 @@
-// SOLMAR BAY — police: three patrol cars. At wanted level 0 they cruise their
-// loops; at wanted 1+ the nearest car chases the player, siren light bar flashing.
+// Police pursuit: two units chase the player when wanted, light bars flash
+// red/blue and their glow pools paint the asphalt — the classic GTA look.
+import { buildPoliceCar } from './cars.js';
+import { clamp, angleLerp } from './random.js';
 
-var SB = window.SB || (window.SB = {});
-
-SB.police = (function () {
-  let scene = null;
-  let cars = [];
-  let flashTime = 0;
-
-  function spawn(sc) {
-    scene = sc;
-    cars = [];
-    const routes = [
-      [{ x: -240, z: -240 }, { x: 240, z: -240 }, { x: 240, z: 240 }, { x: -240, z: 240 }],
-      [{ x: -160, z: 160 }, { x: 160, z: 160 }, { x: 160, z: -160 }, { x: -160, z: -160 }],
-      [{ x: 0, z: -320 }, { x: 0, z: 320 }, { x: -320, z: 320 }, { x: -320, z: -320 }],
-    ];
-    for (let i = 0; i < SB.config.policeCars; i++) {
-      const mesh = SB.cars.buildPoliceCar();
-      const start = routes[i][0];
-      mesh.position.set(start.x, 0, start.z);
-      scene.add(mesh);
-      cars.push({
-        mesh: mesh, route: routes[i], wp: 1,
-        speed: 11, chasing: false, heading: 0,
-      });
-    }
-    return cars;
+export function createPolice(scene, rng, count = 2) {
+  const units = [];
+  for (let i = 0; i < count; i++) {
+    const car = buildPoliceCar();
+    car.position.set(-120 - i * 40, 0.3, -80 + i * 30);
+    car.rotation.y = 0;
+    scene.add(car);
+    units.push({ mesh: car, speed: 0, maxSpeed: 24 + i * 2, phase: rng.range(0, Math.PI * 2), active: false });
   }
-
-  function update(dt, playerPos, wanted, time) {
-    flashTime = time;
-    for (const c of cars) {
-      // Flash the light bar while wanted (alternate red / blue).
-      const on = wanted > 0;
-      const phase = Math.floor(time * 6) % 2 === 0;
-      c.mesh.userData.lightRed.material.emissiveIntensity = on && phase ? 4 : 0.4;
-      c.mesh.userData.lightBlue.material.emissiveIntensity = on && !phase ? 4 : 0.4;
-
-      // Nearest police chases once the player is wanted.
-      let tx, tz, targetSpeed;
-      if (wanted > 0) {
-        tx = playerPos.x;
-        tz = playerPos.z;
-        targetSpeed = 30 + wanted * 2;
-        c.chasing = true;
-      } else {
-        const wp = c.route[c.wp];
-        tx = wp.x;
-        tz = wp.z;
-        targetSpeed = 11;
-        c.chasing = false;
-        const dx = tx - c.mesh.position.x;
-        const dz = tz - c.mesh.position.z;
-        if (dx * dx + dz * dz < 9) c.wp = (c.wp + 1) % c.route.length;
+  return {
+    units,
+    setActive(active) { for (const u of units) u.active = active; },
+    update(dt, playerPos, playerAngle, wanted, t) {
+      for (const u of units) {
+        // flashing light bar, alternating red/blue
+        const on = Math.sin(t * 9 + u.phase) > 0;
+        u.mesh.userData.redMat.emissiveIntensity = on ? 5 : 0.4;
+        u.mesh.userData.blueMat.emissiveIntensity = on ? 0.4 : 5;
+        u.mesh.userData.redPool.material.opacity = on ? 0.55 : 0.08;
+        u.mesh.userData.bluePool.material.opacity = on ? 0.08 : 0.55;
+        if (!u.active || wanted < 1) {
+          // idle: park at the roadside
+          u.speed = Math.max(0, u.speed - dt * 10);
+          continue;
+        }
+        const dx = playerPos.x - u.mesh.position.x;
+        const dz = playerPos.z - u.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        // model faces -x: forward = (-cos θ, sin θ), so θ = atan2(dz, -dx)
+        const wantAngle = Math.atan2(dz, -dx);
+        u.mesh.rotation.y = angleLerp(u.mesh.rotation.y, wantAngle, Math.min(1, dt * 1.6));
+        const target = dist > 10 ? u.maxSpeed : u.maxSpeed * 0.5;
+        u.speed += (target - u.speed) * Math.min(1, dt * 1.2);
+        const v = u.speed * dt;
+        u.mesh.position.x += -Math.cos(u.mesh.rotation.y) * v;
+        u.mesh.position.z += Math.sin(u.mesh.rotation.y) * v;
+        // keep inside the city
+        u.mesh.position.x = clamp(u.mesh.position.x, -350, 350);
+        u.mesh.position.z = clamp(u.mesh.position.z, -270, 270);
+        for (const w of u.mesh.userData.wheels) w.rotation.z += v * 2.8;
       }
-      // Steer toward the target.
-      const dx = tx - c.mesh.position.x;
-      const dz = tz - c.mesh.position.z;
-      const wantHeading = Math.atan2(dx, dz);
-      let dh = wantHeading - c.heading;
-      while (dh > Math.PI) dh -= Math.PI * 2;
-      while (dh < -Math.PI) dh += Math.PI * 2;
-      c.heading += Math.max(-1.8 * dt, Math.min(1.8 * dt, dh));
-      c.speed += (targetSpeed - c.speed) * Math.min(1, dt * 1.2);
-      c.mesh.position.x += Math.sin(c.heading) * c.speed * dt;
-      c.mesh.position.z += Math.cos(c.heading) * c.speed * dt;
-      c.mesh.rotation.y = c.heading;
-    }
-  }
-
-  return { spawn: spawn, update: update, cars: function () { return cars; } };
-})();
+    },
+  };
+}

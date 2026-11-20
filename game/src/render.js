@@ -1,149 +1,131 @@
-// SOLMAR BAY — renderer, chase camera and the hero lighting rig.
-// The hero light and the pool of light on the asphalt are what keep the red car
-// bright and readable from the camera's side, whatever the sun does.
+// Renderer + cameras: low close 3/4 chase cam, on-foot camera, hero light and
+// the pool of light on the asphalt under the car. Clean air, thin fog.
+import { poolTexture, glowTexture } from './textures.js';
+import { clamp, angleLerp } from './random.js';
 
-var SB = window.SB || (window.SB = {});
+const THREE = window.THREE;
 
-SB.render = (function () {
-  let renderer = null;
-  let camera = null;
-  let heroLight = null;
-  let pool = null;
-  let camPos = null;
-  let camLook = null;
+export function createRender(canvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(1280, 720);
+  renderer.setPixelRatio(1);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  function init() {
-    const canvas = document.getElementById('game-canvas');
-    // ?lowfx=1 (used by the headless playtest): smaller shadow map, no
-    // antialiasing, pixel ratio 1 — same game code, lighter raster load.
-    const lowfx = new URLSearchParams(window.location.search).get('lowfx') === '1';
-    SB.lowfx = lowfx;
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: !lowfx });
-    renderer.setPixelRatio(lowfx ? 1 : Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(62, 1280 / 720, 0.1, 2400);
 
-    camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 4000);
-    camPos = new THREE.Vector3(0, 8, -14);
-    camLook = new THREE.Vector3(0, 1, 0);
+  // Hero light: warm point light that rides above/behind the car so the hero
+  // is never in shadow, plus a soft pool of light on the asphalt.
+  const heroLight = new THREE.PointLight(0xffd9a0, 60, 26, 1.6);
+  scene.add(heroLight);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(9, 9),
+    new THREE.MeshBasicMaterial({ map: poolTexture(), transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+  pool.rotation.x = -Math.PI / 2;
+  scene.add(pool);
 
-    // Hero light: a warm point light that rides above the car so the side facing
-    // the camera is never in shadow.
-    heroLight = new THREE.PointLight(0xffe6c0, 55, 48, 1.6);
-    heroLight.position.set(0, 7, 0);
+  let camPos = new THREE.Vector3(0, 6, -14);
+  let camLook = new THREE.Vector3(0, 1, 0);
 
-    // Light pool: a soft radial glow on the asphalt under the car.
-    const c = document.createElement('canvas');
-    c.width = 256;
-    c.height = 256;
-    const g = c.getContext('2d');
-    const grad = g.createRadialGradient(128, 128, 8, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(255, 232, 190, 0.35)');
-    grad.addColorStop(0.55, 'rgba(255, 220, 160, 0.14)');
-    grad.addColorStop(1, 'rgba(255, 210, 140, 0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 256, 256);
-    const poolTex = new THREE.CanvasTexture(c);
-    pool = new THREE.Mesh(
-      new THREE.CircleGeometry(5.5, 32),
-      new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
-    );
-    pool.rotation.x = -Math.PI / 2;
-    pool.position.y = 0.06;
-
-    window.addEventListener('resize', function () {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  }
-
-  // Snap the chase camera behind the car at once (no lerp from the world
-  // origin — the screenshot shot needs the framing right from the first frame).
-  // 3/4 rear angle: offset well to the car's west (sunlit) side and pulled
-  // close, so the hero fills ~25-30% of the frame and reads as a sports car
-  // (side profile + rear, taillight bar, spoiler, spoked wheels, diffuser).
-  function snapChaseCamera(carPos, heading) {
-    const back = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
-    const right = { x: -Math.cos(heading), z: Math.sin(heading) };
-    camPos.set(
-      carPos.x + back.x * 4.1 - right.x * 3.0,
-      (carPos.y || 0) + 2.0,
-      carPos.z + back.z * 4.1 - right.z * 3.0
-    );
-    camLook.set(
-      carPos.x + Math.sin(heading) * 6,
-      (carPos.y || 0) + 1.2,
-      carPos.z + Math.cos(heading) * 6
-    );
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-  }
-
-  // Chase camera: low and close behind the car, on the LIT side (the sun is in
-  // the south-west, behind/above the camera, so the car side we see is lit).
-  // 3/4 rear angle, pulled close: the hero fills ~25-30% of the frame.
-  // FOV widens slightly with speed for a sense of motion.
-  function updateChaseCamera(carPos, heading, speed, dt) {
-    const back = new THREE.Vector3(-Math.sin(heading), 0, -Math.cos(heading));
-    // Wide offset to the car's west (sunlit) side, so the camera sees the
-    // car at a 3/4 rear angle instead of dead-centre behind it.
-    const right = { x: -Math.cos(heading), z: Math.sin(heading) };
+  function updateChase(dt, carPos, carAngle, speed01) {
+    // 3/4 rear: 4.1 m back, 3.0 m to the sunlit (west) side, 2.0 m up.
+    const back = 4.1 + speed01 * 1.6;
+    const side = 3.0;
+    const height = 2.0 + speed01 * 0.5;
+    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
+    const rx = fz; const rz = -fx; // right vector
     const target = new THREE.Vector3(
-      carPos.x + back.x * 4.1 - right.x * 3.0,
-      (carPos.y || 0) + 2.0,
-      carPos.z + back.z * 4.1 - right.z * 3.0
+      carPos.x - fx * back + rx * side,
+      height,
+      carPos.z - fz * back + rz * side,
     );
-    const look = new THREE.Vector3(
-      carPos.x + Math.sin(heading) * 6,
-      (carPos.y || 0) + 1.2,
-      carPos.z + Math.cos(heading) * 6
-    );
-    const k = 1 - Math.exp(-6 * dt);
+    const k = 1 - Math.pow(0.0001, dt); // smooth follow
     camPos.lerp(target, k);
-    camLook.lerp(look, k);
+    const look = new THREE.Vector3(carPos.x + fx * 6, 1.1, carPos.z + fz * 6);
+    camLook.lerp(look, 1 - Math.pow(0.001, dt));
     camera.position.copy(camPos);
     camera.lookAt(camLook);
-    const targetFov = 62 + Math.min(10, Math.abs(speed) * 0.22);
-    if (Math.abs(camera.fov - targetFov) > 0.05) {
-      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
-      camera.updateProjectionMatrix();
-    }
-    // Hero light + pool follow the car.
-    heroLight.position.set(carPos.x, carPos.y + 6.5, carPos.z);
-    pool.position.set(carPos.x, 0.06, carPos.z);
+    camera.fov = 62 + speed01 * 7;
+    camera.updateProjectionMatrix();
+    heroLight.position.set(carPos.x - fx * 1.5, 4.5, carPos.z - fz * 1.5);
+    pool.position.set(carPos.x, 0.05, carPos.z);
   }
 
-  // Slow orbital camera for the title screen.
-  function updateTitleCamera(time) {
-    const a = time * 0.045;
-    camera.position.set(Math.sin(a) * 190, 95 + Math.sin(time * 0.1) * 8, Math.cos(a) * 190);
-    camera.lookAt(0, 12, 0);
-    camera.fov = 55;
+  function updateOnFoot(dt, pos, angle) {
+    const fx = -Math.cos(angle); const fz = Math.sin(angle);
+    const target = new THREE.Vector3(pos.x - fx * 5.5, 3.4, pos.z - fz * 5.5);
+    const k = 1 - Math.pow(0.0001, dt);
+    camPos.lerp(target, k);
+    const look = new THREE.Vector3(pos.x + fx * 5, 1.4, pos.z + fz * 5);
+    camLook.lerp(look, 1 - Math.pow(0.001, dt));
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+    camera.fov = 60;
     camera.updateProjectionMatrix();
+    heroLight.position.set(pos.x, 4, pos.z);
+    pool.position.set(pos.x, 0.05, pos.z);
   }
 
-  // Fixed camera for a screenshot shot: position + look-at, no smoothing.
-  function setShotCamera(pos, look) {
-    camera.position.set(pos[0], pos[1], pos[2]);
-    camera.lookAt(look[0], look[1], look[2]);
-    camera.fov = 58;
-    camera.updateProjectionMatrix();
+  function snapChase(carPos, carAngle) {
+    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
+    const rx = fz; const rz = -fx;
+    camPos.set(carPos.x - fx * 4.1 + rx * 3.0, 2.0, carPos.z - fz * 4.1 + rz * 3.0);
+    camLook.set(carPos.x + fx * 6, 1.1, carPos.z + fz * 6);
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  }
+
+  function snapOrbit(center, radius, height, lookY = 2) {
+    camPos.set(center.x + radius * 0.7, height, center.z - radius * 0.7);
+    camLook.set(center.x, lookY, center.z);
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  }
+
+  // Snap the on-foot camera behind the walker (no lerp — shots need it exact).
+  function snapOnFoot(pos, angle) {
+    const fx = -Math.cos(angle); const fz = Math.sin(angle);
+    camPos.set(pos.x - fx * 5.5, 3.4, pos.z - fz * 5.5);
+    camLook.set(pos.x + fx * 5, 1.4, pos.z + fz * 5);
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  }
+
+  // Snap a title-screen camera: close 3/4 rear-side view of the hero car,
+  // car right of centre so the START button never covers it.
+  function snapTitle(carPos, carAngle) {
+    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
+    const rx = fz; const rz = -fx;
+    camPos.set(carPos.x - fx * 9 + rx * 5, 3.5, carPos.z - fz * 9 + rz * 5);
+    camLook.set(carPos.x + fx * 1, 1.0, carPos.z + fz * 1 - 4);
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
   }
 
   return {
-    init: init,
-    renderer: function () { return renderer; },
-    camera: function () { return camera; },
-    heroLight: function () { return heroLight; },
-    pool: function () { return pool; },
-    updateChaseCamera: updateChaseCamera,
-    snapChaseCamera: snapChaseCamera,
-    updateTitleCamera: updateTitleCamera,
-    setShotCamera: setShotCamera,
+    renderer, scene, camera,
+    updateChase, updateOnFoot, snapChase, snapOrbit, snapOnFoot, snapTitle,
+    render() { renderer.render(scene, camera); },
+    resize(w, h) {
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    },
   };
-})();
+}
+
+// Animate the sea texture slowly and pulse the checkpoint beacons.
+export function animateWorld(world, t, dt) {
+  if (world.seaMesh && world.seaMesh.material.map) {
+    world.seaMesh.material.map.offset.x = (t * 0.008) % 1;
+    world.seaMesh.material.map.offset.y = (t * 0.004) % 1;
+  }
+  for (const b of world.beacons) {
+    const s = 1 + Math.sin(t * 2.4) * 0.12;
+    b.scale.set(s, 1, s);
+    b.children[2].position.y = 9 + Math.sin(t * 2.4) * 0.5;
+  }
+}

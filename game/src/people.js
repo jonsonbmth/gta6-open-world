@@ -1,97 +1,63 @@
-// SOLMAR BAY — people: pedestrians with simple proportions (capsule body,
-// head, arms, legs) who walk the sidewalks, plus the marina crew.
+// People: pedestrians and crew — simple articulated capsule figures with
+// coloured clothes, walking on sidewalks and standing at the marina.
+const THREE = window.THREE;
 
-var SB = window.SB || (window.SB = {});
+function std(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...opts });
+}
 
-SB.people = (function () {
-  // One person, ~1.75 m tall, facing +z. Returns a group with a bob hook.
-  function buildPerson(shirtColor, pantsColor) {
-    const g = new THREE.Group();
-    const skin = new THREE.MeshStandardMaterial({ color: 0xd9a986, roughness: 0.7 });
-    const shirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.85 });
-    const pants = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.9 });
+export function buildPerson(shirtColor, pantsColor = 0x2a2a30, skinColor = 0xd8a878) {
+  const g = new THREE.Group();
+  // legs
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.16), std(pantsColor));
+  legL.position.set(-0.11, 0.28, 0);
+  legL.geometry.translate(0, -0.27, 0); // pivot at hip
+  legL.position.y = 0.55;
+  g.add(legL);
+  const legR = legL.clone();
+  legR.position.x = 0.11;
+  g.add(legR);
+  // torso
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.42, 4, 10), std(shirtColor));
+  torso.position.y = 1.0;
+  torso.castShadow = true;
+  g.add(torso);
+  // arms
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5, 0.11), std(shirtColor));
+  armL.geometry.translate(0, -0.25, 0);
+  armL.position.set(-0.3, 1.28, 0);
+  g.add(armL);
+  const armR = armL.clone();
+  armR.position.x = 0.3;
+  g.add(armR);
+  // head + hair cap
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), std(skinColor));
+  head.position.y = 1.52;
+  head.castShadow = true;
+  g.add(head);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.175, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    std(0x2a1a12));
+  hair.position.y = 1.55;
+  g.add(hair);
+  g.userData = { legL, legR, armL, armR, phase: Math.random() * Math.PI * 2, speed: 0 };
+  return g;
+}
 
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 10), shirt);
-    body.position.y = 1.05;
-    body.castShadow = true;
-    g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), skin);
-    head.position.y = 1.62;
-    head.castShadow = true;
-    g.add(head);
-    // Hair cap.
-    const hair = new THREE.Mesh(
-      new THREE.SphereGeometry(0.165, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-      new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.95 })
-    );
-    hair.position.y = 1.65;
-    g.add(hair);
-    // Arms.
-    for (const dx of [-0.28, 0.28]) {
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.42, 4, 8), shirt);
-      arm.position.set(dx, 1.08, 0);
-      g.add(arm);
-    }
-    // Legs.
-    for (const dx of [-0.11, 0.11]) {
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), pants);
-      leg.position.set(dx, 0.42, 0);
-      g.add(leg);
-    }
-    g.userData.phase = Math.random() * Math.PI * 2;
-    return g;
-  }
+// Walk cycle: swing legs/arms, bob the body.
+export function animateWalk(person, dt, speed) {
+  const u = person.userData;
+  u.phase += dt * speed * 5.5;
+  const s = Math.sin(u.phase);
+  u.legL.rotation.x = s * 0.55;
+  u.legR.rotation.x = -s * 0.55;
+  u.armL.rotation.x = -s * 0.4;
+  u.armR.rotation.x = s * 0.4;
+  person.position.y = Math.abs(Math.cos(u.phase)) * 0.03;
+}
 
-  // Pedestrian state: a person, a sidewalk waypoint loop, a walking speed.
-  function spawnPedestrians(scene) {
-    const R = SB.random;
-    const list = [];
-    const streets = SB.config.streets;
-    for (let i = 0; i < SB.config.pedestrians; i++) {
-      const shirt = R.pick(SB.config.peopleColors);
-      const pants = R.pick([0x2a2a33, 0x3a3a44, 0x5a4a3a, 0x2a3a4a]);
-      const person = buildPerson(shirt, pants);
-      // Pick a sidewalk: along a random street, offset 9.5 m from its centre.
-      const along = R.pick(streets);
-      const across = R.range(-320, 320);
-      const onX = R.next() < 0.5;
-      const x = onX ? along + R.pick([-9.5, 9.5]) : across;
-      const z = onX ? across : along + R.pick([-9.5, 9.5]);
-      person.position.set(x, 0, z);
-      person.rotation.y = R.range(0, Math.PI * 2);
-      scene.add(person);
-      list.push({
-        mesh: person,
-        speed: R.range(0.9, 1.6),
-        dir: R.next() < 0.5 ? 1 : -1,
-        axis: onX ? 'z' : 'x',
-        fixed: onX ? x : z,
-      });
-    }
-    return list;
-  }
-
-  // Walk the pedestrians along their sidewalk; turn around at the ends.
-  function updatePedestrians(list, dt, time) {
-    for (const p of list) {
-      const step = p.speed * p.dir * dt;
-      if (p.axis === 'z') {
-        p.mesh.position.z += step;
-        if (p.mesh.position.z > 320 || p.mesh.position.z < -320) p.dir *= -1;
-        p.mesh.rotation.y = p.dir > 0 ? 0 : Math.PI;
-      } else {
-        p.mesh.position.x += step;
-        if (p.mesh.position.x > 320 || p.mesh.position.x < -320) p.dir *= -1;
-        p.mesh.rotation.y = p.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      }
-      // Gentle walk bob.
-      p.mesh.position.y = Math.abs(Math.sin(time * 6 + p.mesh.userData.phase)) * 0.05;
-    }
-  }
-
-  return {
-    buildPerson: buildPerson,
-    spawnPedestrians: spawnPedestrians,
-    updatePedestrians: updatePedestrians,
-  };
-})();
+// A crew member standing at the marina, facing the camera, with a name.
+export function buildCrewMember(shirtColor, name) {
+  const p = buildPerson(shirtColor);
+  p.userData.name = name;
+  return p;
+}
