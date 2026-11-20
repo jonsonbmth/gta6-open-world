@@ -1,131 +1,120 @@
-// Renderer + cameras: low close 3/4 chase cam, on-foot camera, hero light and
-// the pool of light on the asphalt under the car. Clean air, thin fog.
-import { poolTexture, glowTexture } from './textures.js';
-import { clamp, angleLerp } from './random.js';
+// Camera + lighting rig: the 3/4 rear chase camera, title drift, on-foot
+// follow, marina framing, hero light, and the sun-sprite safety toggle.
+var CV = window.CV || (window.CV = {});
 
-const THREE = window.THREE;
+CV.render = (function () {
+  var camera = null, renderer = null;
+  var camPos = new THREE.Vector3();
+  var camLook = new THREE.Vector3();
+  var heroLight = null;
+  var sunSprite = null;
 
-export function createRender(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setSize(1280, 720);
-  renderer.setPixelRatio(1);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(62, 1280 / 720, 0.1, 2400);
-
-  // Hero light: warm point light that rides above/behind the car so the hero
-  // is never in shadow, plus a soft pool of light on the asphalt.
-  const heroLight = new THREE.PointLight(0xffd9a0, 60, 26, 1.6);
-  scene.add(heroLight);
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(9, 9),
-    new THREE.MeshBasicMaterial({ map: poolTexture(), transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
-  pool.rotation.x = -Math.PI / 2;
-  scene.add(pool);
-
-  let camPos = new THREE.Vector3(0, 6, -14);
-  let camLook = new THREE.Vector3(0, 1, 0);
-
-  function updateChase(dt, carPos, carAngle, speed01) {
-    // 3/4 rear: 4.1 m back, 3.0 m to the sunlit (west) side, 2.0 m up.
-    const back = 4.1 + speed01 * 1.6;
-    const side = 3.0;
-    const height = 2.0 + speed01 * 0.5;
-    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
-    const rx = fz; const rz = -fx; // right vector
-    const target = new THREE.Vector3(
-      carPos.x - fx * back + rx * side,
-      height,
-      carPos.z - fz * back + rz * side,
-    );
-    const k = 1 - Math.pow(0.0001, dt); // smooth follow
-    camPos.lerp(target, k);
-    const look = new THREE.Vector3(carPos.x + fx * 6, 1.1, carPos.z + fz * 6);
-    camLook.lerp(look, 1 - Math.pow(0.001, dt));
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-    camera.fov = 62 + speed01 * 7;
-    camera.updateProjectionMatrix();
-    heroLight.position.set(carPos.x - fx * 1.5, 4.5, carPos.z - fz * 1.5);
-    pool.position.set(carPos.x, 0.05, carPos.z);
-  }
-
-  function updateOnFoot(dt, pos, angle) {
-    const fx = -Math.cos(angle); const fz = Math.sin(angle);
-    const target = new THREE.Vector3(pos.x - fx * 5.5, 3.4, pos.z - fz * 5.5);
-    const k = 1 - Math.pow(0.0001, dt);
-    camPos.lerp(target, k);
-    const look = new THREE.Vector3(pos.x + fx * 5, 1.4, pos.z + fz * 5);
-    camLook.lerp(look, 1 - Math.pow(0.001, dt));
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-    camera.fov = 60;
-    camera.updateProjectionMatrix();
-    heroLight.position.set(pos.x, 4, pos.z);
-    pool.position.set(pos.x, 0.05, pos.z);
-  }
-
-  function snapChase(carPos, carAngle) {
-    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
-    const rx = fz; const rz = -fx;
-    camPos.set(carPos.x - fx * 4.1 + rx * 3.0, 2.0, carPos.z - fz * 4.1 + rz * 3.0);
-    camLook.set(carPos.x + fx * 6, 1.1, carPos.z + fz * 6);
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-  }
-
-  function snapOrbit(center, radius, height, lookY = 2) {
-    camPos.set(center.x + radius * 0.7, height, center.z - radius * 0.7);
-    camLook.set(center.x, lookY, center.z);
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-  }
-
-  // Snap the on-foot camera behind the walker (no lerp — shots need it exact).
-  function snapOnFoot(pos, angle) {
-    const fx = -Math.cos(angle); const fz = Math.sin(angle);
-    camPos.set(pos.x - fx * 5.5, 3.4, pos.z - fz * 5.5);
-    camLook.set(pos.x + fx * 5, 1.4, pos.z + fz * 5);
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-  }
-
-  // Snap a title-screen camera: close 3/4 rear-side view of the hero car,
-  // car right of centre so the START button never covers it.
-  function snapTitle(carPos, carAngle) {
-    const fx = -Math.cos(carAngle); const fz = Math.sin(carAngle);
-    const rx = fz; const rz = -fx;
-    camPos.set(carPos.x - fx * 9 + rx * 5, 3.5, carPos.z - fz * 9 + rz * 5);
-    camLook.set(carPos.x + fx * 1, 1.0, carPos.z + fz * 1 - 4);
-    camera.position.copy(camPos);
-    camera.lookAt(camLook);
-  }
-
-  return {
-    renderer, scene, camera,
-    updateChase, updateOnFoot, snapChase, snapOrbit, snapOnFoot, snapTitle,
-    render() { renderer.render(scene, camera); },
-    resize(w, h) {
+  function init(scene, canvasParent) {
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(1280, 720);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    canvasParent.appendChild(renderer.domElement);
+    camera = new THREE.PerspectiveCamera(62, 1280 / 720, 0.1, 2000);
+    camera.position.set(80, 6, -80);
+    // Hero light: warm point light that follows the car so it always pops.
+    heroLight = new THREE.PointLight(0xffd9a0, 60, 30, 1.6);
+    scene.add(heroLight);
+    sunSprite = scene.getObjectByName('sunSprite');
+    window.addEventListener('resize', function () {
+      var w = window.innerWidth, h = window.innerHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    },
-  };
-}
+    });
+    return { renderer: renderer, camera: camera };
+  }
 
-// Animate the sea texture slowly and pulse the checkpoint beacons.
-export function animateWorld(world, t, dt) {
-  if (world.seaMesh && world.seaMesh.material.map) {
-    world.seaMesh.material.map.offset.x = (t * 0.008) % 1;
-    world.seaMesh.material.map.offset.y = (t * 0.004) % 1;
+  // Chase camera: 3/4 rear — back 4.1 m, lateral 3.0 m, height 2.0 m (the
+  // V16-polished framing, hero fills ~25-30% of frame).
+  function chaseCam(hero, dt, snap) {
+    var h = hero.heading;
+    var fx = Math.sin(h), fz = Math.cos(h);
+    var sx = Math.cos(h), sz = -Math.sin(h);
+    var tx = hero.x - fx * 4.1 + sx * 3.0;
+    var tz = hero.z - fz * 4.1 + sz * 3.0;
+    var ty = 2.0;
+    var lx = hero.x + fx * 8, ly = 2.5, lz = hero.z + fz * 8;
+    if (snap) {
+      camPos.set(tx, ty, tz);
+      camLook.set(lx, ly, lz);
+    } else {
+      var k = 1 - Math.pow(0.0001, dt);
+      camPos.x += (tx - camPos.x) * k;
+      camPos.y += (ty - camPos.y) * k;
+      camPos.z += (tz - camPos.z) * k;
+      camLook.x += (lx - camLook.x) * k;
+      camLook.y += (ly - camLook.y) * k;
+      camLook.z += (lz - camLook.z) * k;
+    }
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
   }
-  for (const b of world.beacons) {
-    const s = 1 + Math.sin(t * 2.4) * 0.12;
-    b.scale.set(s, 1, s);
-    b.children[2].position.y = 9 + Math.sin(t * 2.4) * 0.5;
+
+  function titleCam(t, hero) {
+    // Close on the parked hero car, rear 3/4, right of centre so the title
+    // text and START button stay clear of it. Shot from the west side of
+    // the avenue — the east-side palms crowd the frame from the other side.
+    var x = hero.x - 9 + Math.sin(t * 0.05) * 1.5;
+    var z = hero.z - 13 + Math.sin(t * 0.03) * 2;
+    camera.position.set(x, 2.8, z);
+    camera.lookAt(hero.x - 2, 1.3, hero.z + 8);
   }
-}
+
+  function footCam(hero, dt, snap) {
+    var h = hero.heading;
+    var fx = Math.sin(h), fz = Math.cos(h);
+    var tx = hero.x - fx * 5.5, tz = hero.z - fz * 5.5;
+    if (snap) camPos.set(tx, 2.6, tz);
+    else {
+      var k = 1 - Math.pow(0.0001, dt);
+      camPos.x += (tx - camPos.x) * k;
+      camPos.y += (2.6 - camPos.y) * k;
+      camPos.z += (tz - camPos.z) * k;
+    }
+    camera.position.copy(camPos);
+    camera.lookAt(hero.x + fx * 6, 1.4, hero.z + fz * 6);
+  }
+
+  function marinaCam(hero, crew, snap) {
+    // Frame Javi + the 3 crew with the boats and ocean behind them.
+    var tx = 79, ty = 2.4, tz = 164;
+    if (snap) camPos.set(tx, ty, tz);
+    else {
+      var k = 0.08;
+      camPos.x += (tx - camPos.x) * k;
+      camPos.y += (ty - camPos.y) * k;
+      camPos.z += (tz - camPos.z) * k;
+    }
+    camera.position.copy(camPos);
+    camera.lookAt(79, 1.4, 181);
+  }
+
+  function update(scene, hero, mode, dt, t, snap) {
+    if (mode === 'drive') chaseCam(hero, dt, snap);
+    else if (mode === 'title') titleCam(t, hero);
+    else if (mode === 'onfoot') footCam(hero, dt, snap);
+    else if (mode === 'marina') marinaCam(hero, null, snap);
+    heroLight.position.set(hero.x, 4.5, hero.z);
+    // Sun sprite: hide when it sits behind the camera (it would smear).
+    if (sunSprite) {
+      var toSun = new THREE.Vector3().copy(sunSprite.position).sub(camera.position).normalize();
+      var fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd);
+      sunSprite.visible = toSun.dot(fwd) > -0.15;
+    }
+  }
+
+  function render(scene) { renderer.render(scene, camera); }
+
+  return { init: init, update: update, render: render, camera: function () { return camera; }, renderer: function () { return renderer; } };
+})();

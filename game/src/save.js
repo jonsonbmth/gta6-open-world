@@ -1,26 +1,47 @@
-// Save/load: best drift, missions won, cash — localStorage, survives reload.
-const KEY = 'solmar-bay-save-v16';
+// Save/load: 3 slots in localStorage (cash, jobs done, best drift, rep,
+// position). Guarded: headless or blocked storage degrades silently.
+var CV = window.CV || (window.CV = {});
 
-export function loadSave() {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { bestDrift: 0, missionsWon: 0, cash: 0 };
-    const d = JSON.parse(raw);
-    return {
-      bestDrift: d.bestDrift | 0,
-      missionsWon: d.missionsWon | 0,
-      cash: d.cash | 0,
+CV.save = (function () {
+  var KEY = 'coral-vista-save-v1';
+
+  function readAll() {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+
+  function writeAll(data) {
+    try { window.localStorage.setItem(KEY, JSON.stringify(data)); return true; }
+    catch (e) { return false; }
+  }
+
+  function saveSlot(slot, data) {
+    var all = readAll();
+    all['slot' + slot] = {
+      cash: data.cash, jobsDone: data.jobsDone, bestDrift: data.bestDrift,
+      rep: data.rep, jobIndex: data.jobIndex, x: data.x, z: data.z,
+      savedAt: new Date().toISOString(),
     };
-  } catch (e) {
-    return { bestDrift: 0, missionsWon: 0, cash: 0 };
+    return writeAll(all);
   }
-}
 
-export function writeSave(data) {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
+  function loadSlot(slot) {
+    var all = readAll();
+    return all['slot' + slot] || null;
   }
-}
+
+  function clearSlot(slot) {
+    var all = readAll();
+    delete all['slot' + slot];
+    return writeAll(all);
+  }
+
+  function listSlots() {
+    var all = readAll();
+    return [1, 2, 3].map(function (s) { return all['slot' + s] || null; });
+  }
+
+  return { saveSlot: saveSlot, loadSlot: loadSlot, listSlots: listSlots, clearSlot: clearSlot };
+})();

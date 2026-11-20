@@ -1,182 +1,258 @@
-// Procedural canvas textures, generated at runtime — no image files needed.
-// Facades carry the visual richness: window grids, lit windows, awnings, signage.
-// three.min.js is loaded by index.html as a classic script and exposes the
-// global THREE; modules below use that global (no ES import of the vendor file).
-const THREE = window.THREE;
+// Procedural canvas textures: every surface in Coral Vista is generated here
+// at boot — no image files, no network. Facades, roads, signs, portraits.
+var CV = window.CV || (window.CV = {});
 
-function canvas(w, h) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  return [c, c.getContext('2d')];
-}
+CV.textures = (function () {
+  var cache = {};
 
-function toTexture(c, repeatX = 1, repeatY = 1) {
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = THREE.RepeatWrapping;
-  t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(repeatX, repeatY);
-  t.anisotropy = 4;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-// A building facade: base colour, a grid of windows (some warm-lit, some dark
-// glass), a darker ground floor with a shopfront band. Seeded so facades vary.
-export function facadeTexture(base, glass, rng, floors = 8, cols = 5) {
-  const [c, g] = canvas(256, 256);
-  g.fillStyle = base;
-  g.fillRect(0, 0, 256, 256);
-  // subtle vertical shading strips so the wall is not one flat colour
-  for (let x = 0; x < 256; x += 32) {
-    g.fillStyle = rng.chance(0.5) ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)';
-    g.fillRect(x, 0, 32, 256);
+  function canvas(w, h) {
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return [c, c.getContext('2d')];
   }
-  const cw = 256 / cols;
-  const fh = 220 / floors;
-  for (let f = 0; f < floors; f++) {
-    for (let col = 0; col < cols; col++) {
-      const x = col * cw + cw * 0.18;
-      const y = 8 + f * fh + fh * 0.18;
-      const w = cw * 0.64;
-      const h = fh * 0.62;
-      const lit = rng.chance(0.42);
-      g.fillStyle = lit ? (rng.chance(0.6) ? '#ffd98a' : '#ffe9b8') : glass;
-      g.fillRect(x, y, w, h);
-      // window frame
-      g.strokeStyle = 'rgba(0,0,0,0.35)';
-      g.lineWidth = 2;
-      g.strokeRect(x, y, w, h);
-      // mullion cross
-      g.beginPath();
-      g.moveTo(x + w / 2, y); g.lineTo(x + w / 2, y + h);
-      g.moveTo(x, y + h / 2); g.lineTo(x + w, y + h / 2);
-      g.stroke();
+  function tex(c, rx, ry) {
+    var t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    if (rx) t.repeat.set(rx, ry || rx);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }
+  function shade(hex, amt) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.max(0, Math.min(255, (n >> 16) + amt));
+    var g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+    var b = Math.max(0, Math.min(255, (n & 255) + amt));
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  // Building facade: window grid, some lit warm, awnings on the ground floor.
+  function facade(seed, base, floors, litRatio) {
+    var key = 'fac' + seed + base + floors;
+    if (cache[key]) return cache[key];
+    var rng = new CV.random.RNG(seed);
+    var c = canvas(256, 256), cv = c[0], g = c[1];
+    g.fillStyle = base; g.fillRect(0, 0, 256, 256);
+    // subtle vertical grime + panel lines
+    for (var x = 0; x < 256; x += 32) {
+      g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(x, 0, 2, 256);
     }
+    var cols = 6, rows = Math.max(3, floors);
+    var ww = 256 / cols, wh = 256 / rows;
+    for (var r = 0; r < rows; r++) {
+      for (var col = 0; col < cols; col++) {
+        var lit = rng.next() < litRatio;
+        var wx = col * ww + 5, wy = r * wh + 6;
+        g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(wx - 2, wy - 2, ww - 6, wh - 10);
+        if (lit) {
+          g.fillStyle = rng.pick(['#ffd97a', '#ffe9a8', '#ffb35c', '#fff3c4']);
+        } else {
+          g.fillStyle = rng.pick(['#1d2b3a', '#24384a', '#2e4a5e']);
+        }
+        g.fillRect(wx, wy, ww - 10, wh - 14);
+        if (lit) {
+          g.fillStyle = 'rgba(255,255,255,0.25)';
+          g.fillRect(wx, wy, ww - 10, 4);
+        }
+      }
+    }
+    // ground-floor awning band
+    g.fillStyle = shade(base, -30); g.fillRect(0, 236, 256, 20);
+    var t = tex(cv);
+    cache[key] = t;
+    return t;
   }
-  // ground-floor shopfront band
-  g.fillStyle = 'rgba(20,16,12,0.85)';
-  g.fillRect(0, 228, 256, 28);
-  g.fillStyle = '#f8e8c8';
-  for (let x = 8; x < 250; x += 36) {
-    g.fillRect(x, 234, 24, 16);
-  }
-  return toTexture(c);
-}
 
-// Road surface: dark asphalt with centre dashes, edge lines and a crosswalk.
-// Drawn once per road segment, stretched along its length.
-export function roadTexture(len, rng) {
-  const [c, g] = canvas(128, 512);
-  g.fillStyle = '#33333a';
-  g.fillRect(0, 0, 128, 512);
-  // asphalt noise
-  for (let i = 0; i < 900; i++) {
-    const v = rng.int(0, 22);
-    g.fillStyle = `rgba(${v + 40},${v + 40},${v + 48},0.5)`;
-    g.fillRect(rng.range(0, 128), rng.range(0, 512), 2, 2);
+  function road() {
+    if (cache.road) return cache.road;
+    var c = canvas(256, 256), cv = c[0], g = c[1];
+    g.fillStyle = '#2b2b30'; g.fillRect(0, 0, 256, 256);
+    // asphalt speckle
+    for (var i = 0; i < 900; i++) {
+      g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.05) + ')';
+      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    }
+    for (var j = 0; j < 900; j++) {
+      g.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.16) + ')';
+      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    }
+    // centre double yellow + lane dashes + edge lines
+    g.fillStyle = '#d8b93a'; g.fillRect(124, 0, 4, 256); g.fillRect(132, 0, 4, 256);
+    g.fillStyle = '#e8e8e8';
+    for (var y = 0; y < 256; y += 64) g.fillRect(62, y + 8, 4, 32);
+    for (var y2 = 0; y2 < 256; y2 += 64) g.fillRect(194, y2 + 8, 4, 32);
+    g.fillRect(6, 0, 4, 256); g.fillRect(246, 0, 4, 256);
+    var t = tex(cv, 1, 8);
+    cache.road = t;
+    return t;
   }
-  // wet sheen streaks (subtle horizontal bands)
-  for (let i = 0; i < 14; i++) {
-    g.fillStyle = 'rgba(255,220,160,0.05)';
-    g.fillRect(0, rng.range(0, 512), 128, rng.range(2, 6));
-  }
-  // centre dashed line
-  g.fillStyle = '#e8c84a';
-  for (let y = 0; y < 512; y += 64) g.fillRect(62, y, 4, 34);
-  // edge lines
-  g.fillStyle = 'rgba(240,240,240,0.85)';
-  g.fillRect(6, 0, 3, 512);
-  g.fillRect(119, 0, 3, 512);
-  // crosswalk near both ends
-  g.fillStyle = 'rgba(240,240,240,0.9)';
-  for (let x = 10; x < 118; x += 14) {
-    g.fillRect(x, 18, 8, 26);
-    g.fillRect(x, 468, 8, 26);
-  }
-  const t = toTexture(c, 1, Math.max(1, Math.round(len / 64)));
-  return t;
-}
 
-// Sidewalk: light paving slabs with joints.
-export function sidewalkTexture(rng) {
-  const [c, g] = canvas(128, 128);
-  g.fillStyle = '#9a938a';
-  g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = 'rgba(0,0,0,0.25)';
-  g.lineWidth = 2;
-  for (let i = 0; i <= 4; i++) {
-    g.beginPath(); g.moveTo(i * 32, 0); g.lineTo(i * 32, 128); g.stroke();
-    g.beginPath(); g.moveTo(0, i * 32); g.lineTo(128, i * 32); g.stroke();
+  function sidewalk() {
+    if (cache.walk) return cache.walk;
+    var c = canvas(128, 128), cv = c[0], g = c[1];
+    g.fillStyle = '#9a938a'; g.fillRect(0, 0, 128, 128);
+    g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 2;
+    for (var i = 0; i <= 128; i += 32) {
+      g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke();
+      g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke();
+    }
+    for (var j = 0; j < 300; j++) {
+      g.fillStyle = 'rgba(0,0,0,' + (Math.random() * 0.08) + ')';
+      g.fillRect(Math.random() * 128, Math.random() * 128, 2, 2);
+    }
+    var t = tex(cv, 6, 6);
+    cache.walk = t;
+    return t;
   }
-  for (let i = 0; i < 200; i++) {
-    g.fillStyle = 'rgba(0,0,0,0.06)';
-    g.fillRect(rng.range(0, 128), rng.range(0, 128), 2, 2);
+
+  function sand() {
+    if (cache.sand) return cache.sand;
+    var c = canvas(128, 128), cv = c[0], g = c[1];
+    g.fillStyle = '#e8c88f'; g.fillRect(0, 0, 128, 128);
+    for (var i = 0; i < 1400; i++) {
+      g.fillStyle = Math.random() < 0.5 ? 'rgba(180,140,80,0.25)' : 'rgba(255,240,200,0.3)';
+      g.fillRect(Math.random() * 128, Math.random() * 128, 2, 2);
+    }
+    var t = tex(cv, 10, 10);
+    cache.sand = t;
+    return t;
   }
-  return toTexture(c, 4, 4);
-}
 
-// Shop sign: bold readable name on a coloured board.
-export function signTexture(text, bg, fg) {
-  const [c, g] = canvas(512, 128);
-  g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = 'rgba(255,255,255,0.7)';
-  g.lineWidth = 6;
-  g.strokeRect(6, 6, 500, 116);
-  g.fillStyle = fg;
-  g.font = 'bold 56px Arial, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  const label = text.length > 14 ? text.slice(0, 14) : text;
-  g.fillText(label, 256, 66);
-  return toTexture(c);
-}
-
-// Radial glow sprite (for sun, lamps, headlights, taillight halo, light pools).
-export function glowTexture(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)') {
-  const [c, g] = canvas(128, 128);
-  const grad = g.createRadialGradient(64, 64, 2, 64, 64, 64);
-  grad.addColorStop(0, inner);
-  grad.addColorStop(0.35, inner.replace(',1)', ',0.55)'));
-  grad.addColorStop(1, outer);
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-// Soft round pool of light on the ground (additive).
-export function poolTexture() {
-  return glowTexture('rgba(255,220,150,0.85)', 'rgba(255,220,150,0)');
-}
-
-// Sand: warm grains.
-export function sandTexture(rng) {
-  const [c, g] = canvas(128, 128);
-  g.fillStyle = '#d8b878';
-  g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 800; i++) {
-    g.fillStyle = rng.chance(0.5) ? 'rgba(120,90,40,0.18)' : 'rgba(255,240,200,0.18)';
-    g.fillRect(rng.range(0, 128), rng.range(0, 128), 2, 2);
+  function water() {
+    if (cache.water) return cache.water;
+    var c = canvas(128, 128), cv = c[0], g = c[1];
+    var grad = g.createLinearGradient(0, 0, 128, 128);
+    grad.addColorStop(0, '#1f7fb8'); grad.addColorStop(0.5, '#2a9ad4'); grad.addColorStop(1, '#1a6da3');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    for (var i = 0; i < 120; i++) {
+      g.fillStyle = 'rgba(255,255,255,' + (0.1 + Math.random() * 0.25) + ')';
+      g.fillRect(Math.random() * 128, Math.random() * 128, 6 + Math.random() * 10, 1);
+    }
+    var t = tex(cv, 8, 8);
+    cache.water = t;
+    return t;
   }
-  return toTexture(c, 8, 8);
-}
 
-// Sea: deep blue with faint moving-looking streaks (static texture, animated by UV offset in render).
-export function seaTexture(rng) {
-  const [c, g] = canvas(256, 256);
-  g.fillStyle = '#1a5a7a';
-  g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 60; i++) {
-    g.strokeStyle = rng.chance(0.5) ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.10)';
-    g.lineWidth = rng.range(1, 3);
-    const y = rng.range(0, 256);
-    g.beginPath();
-    g.moveTo(rng.range(0, 128), y);
-    g.lineTo(rng.range(128, 256), y + rng.range(-6, 6));
-    g.stroke();
+  function crosswalk() {
+    if (cache.cross) return cache.cross;
+    var c = canvas(128, 128), cv = c[0], g = c[1];
+    g.fillStyle = '#2b2b30'; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#e8e8e8';
+    for (var x = 4; x < 128; x += 20) g.fillRect(x, 8, 12, 112);
+    var t = tex(cv);
+    cache.cross = t;
+    return t;
   }
-  const t = toTexture(c, 6, 6);
-  return t;
-}
+
+  function sign(text, bg, fg) {
+    var key = 'sign' + text;
+    if (cache[key]) return cache[key];
+    var c = canvas(512, 128), cv = c[0], g = c[1];
+    g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
+    g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(6, 6, 500, 116);
+    g.fillStyle = fg;
+    g.font = 'bold 54px Arial, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    var size = 54;
+    while (g.measureText(text).width > 470 && size > 20) {
+      size -= 4; g.font = 'bold ' + size + 'px Arial, sans-serif';
+    }
+    g.fillText(text, 256, 68);
+    var t = tex(cv);
+    cache[key] = t;
+    return t;
+  }
+
+  function billboard(text, sub) {
+    var key = 'bill' + text;
+    if (cache[key]) return cache[key];
+    var c = canvas(512, 256), cv = c[0], g = c[1];
+    var grad = g.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#ff7a3d'); grad.addColorStop(1, '#c93d8b');
+    g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+    g.fillStyle = '#ffffff';
+    g.font = 'bold 64px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.fillText(text, 256, 110);
+    g.font = 'bold 30px Arial, sans-serif';
+    g.fillStyle = '#ffe9a8';
+    g.fillText(sub, 256, 180);
+    var t = tex(cv);
+    cache[key] = t;
+    return t;
+  }
+
+  // Soft radial glow sprite (police light pools, sun glow, spotlight pool).
+  function glow(color) {
+    var key = 'glow' + color;
+    if (cache[key]) return cache[key];
+    var c = canvas(128, 128), cv = c[0], g = c[1];
+    var m = /(\d+),\s*(\d+),\s*(\d+)/.exec(color);
+    var rgb = m ? (m[1] + ',' + m[2] + ',' + m[3]) : '255,255,255';
+    var grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+    grad.addColorStop(0, 'rgba(' + rgb + ',0.9)');
+    grad.addColorStop(0.35, 'rgba(' + rgb + ',0.45)');
+    grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+    g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+    var t = tex(cv);
+    cache[key] = t;
+    return t;
+  }
+
+  // Drawn character portrait: a small canvas face (skin, hair, eyes, mouth,
+  // shirt) — the top-10 dialog boxes all show a face, never a letter.
+  function portrait(p) {
+    var key = 'port' + p.name;
+    if (cache[key]) return cache[key];
+    var c = canvas(96, 96), cv = c[0], g = c[1];
+    // background
+    var bg = g.createLinearGradient(0, 0, 0, 96);
+    bg.addColorStop(0, '#3d6f9e'); bg.addColorStop(1, '#1d3a52');
+    g.fillStyle = bg; g.fillRect(0, 0, 96, 96);
+    // shirt
+    g.fillStyle = p.shirt;
+    g.beginPath(); g.moveTo(18, 96); g.lineTo(30, 70); g.lineTo(66, 70); g.lineTo(78, 96); g.closePath(); g.fill();
+    // neck + head
+    g.fillStyle = shade(p.skin, -25); g.fillRect(42, 58, 12, 16);
+    g.fillStyle = p.skin;
+    g.beginPath(); g.ellipse(48, 44, 22, 26, 0, 0, Math.PI * 2); g.fill();
+    // hair
+    g.fillStyle = p.hair;
+    if (p.hairStyle === 'bob') {
+      g.beginPath(); g.ellipse(48, 30, 24, 16, 0, Math.PI, 0); g.fill();
+      g.fillRect(24, 28, 8, 26); g.fillRect(64, 28, 8, 26);
+    } else if (p.hairStyle === 'ponytail') {
+      g.beginPath(); g.ellipse(48, 28, 23, 14, 0, Math.PI, 0); g.fill();
+      g.beginPath(); g.ellipse(72, 48, 7, 16, 0.3, 0, Math.PI * 2); g.fill();
+    } else if (p.hairStyle === 'bald') {
+      g.beginPath(); g.ellipse(48, 24, 20, 8, 0, Math.PI, 0); g.fill();
+    } else { // buzz
+      g.beginPath(); g.ellipse(48, 30, 22, 13, 0, Math.PI, 0); g.fill();
+    }
+    // eyes
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.ellipse(40, 44, 5, 4, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(56, 44, 5, 4, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#141414';
+    g.beginPath(); g.arc(40, 44, 2.5, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(56, 44, 2.5, 0, Math.PI * 2); g.fill();
+    // brows + nose + mouth
+    g.strokeStyle = p.hair; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(35, 37); g.lineTo(45, 36); g.stroke();
+    g.beginPath(); g.moveTo(51, 36); g.lineTo(61, 37); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.beginPath(); g.moveTo(48, 48); g.lineTo(46, 54); g.stroke();
+    g.strokeStyle = '#7a2e2e'; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(40, 60); g.quadraticCurveTo(48, 65, 56, 60); g.stroke();
+    var t = tex(cv);
+    cache[key] = t;
+    return { texture: t, canvas: cv };
+  }
+
+  return {
+    facade: facade, road: road, sidewalk: sidewalk, sand: sand, water: water,
+    crosswalk: crosswalk, sign: sign, billboard: billboard, glow: glow,
+    portrait: portrait, shade: shade,
+  };
+})();

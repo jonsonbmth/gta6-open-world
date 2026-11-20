@@ -1,39 +1,44 @@
-[![SOLMAR BAY on make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![Rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![Reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+# CORAL VISTA — a golden-hour open-world crime game
 
-# SOLMAR BAY — A Golden Hour in Neon
+[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An open-world crime game in the spirit of GTA 6, built for make.fun's **"Make GTA 6"** bounty ($1,666 in USDC).
+**CORAL VISTA** is an original open-world crime game set in a sun-soaked coastal
+city at golden hour. Drive a stolen sports car down Coral Avenue with a police
+helicopter overhead, lose the heat, and bring the car home to the garage.
 
-Rico Marín is back in Solmar Bay — a sun-soaked coastal city at golden hour. Seven jobs. Five stars of heat. One red VULPINE S. Drive it home.
+## What is in the game
 
-## Play it
+- **A living city**: beach boulevard with palms, umbrellas and a ferris wheel,
+  shops with readable signs, crosswalks, traffic lights, traffic and
+  pedestrians (some of them panicking when the chase rolls past).
+- **A real police chase**: a helicopter with a visible spotlight, 6 CVPD units
+  on a live dispatch board (callsigns, tactics, distances), police cruisers
+  with flashing light bars and red/blue glow on the asphalt, roadblocks.
+- **Story missions with stages**: 8 jobs, stage progress, timers, GPS routes
+  and checkpoints, save slots, and a crew with abilities.
+- **Systems**: wanted stars, health and armour, respect ranks, weapon slots,
+  car condition, drift scoring, near-miss bonuses, radio, and a full city map
+  (M) with districts, landmarks and career stats.
+- **On foot and by car**: walk the marina with the crew, steal any car,
+  drive it home.
 
-Serve `game/` with any static HTTP server and open `game/index.html` in desktop Chrome. No network request is made: every script, image and sound the game loads is a file under `game/` (three.js is vendored as a minified build under `game/vendor/`).
+## How to play
 
-```sh
-cd game && python3 -m http.server 8123
-# open http://localhost:8123/
-```
+Serve `game/` with any static file server and open `game/index.html` in
+desktop Chrome. No network requests, no build step.
 
-## The game
+- **WASD** drive / walk · **E** enter & exit car · **SPACE** handbrake ·
+  **SHIFT** run · **M** city map · **R** radio · **F** action · **N** mute
 
-- **Open world**: a dense coastal city — seven named districts, named streets, a beach and a marina with boats and crew, all explored on foot and by car.
-- **Driving**: arcade handling with handbrake drift, a sculpted glossy hero car (VULPINE S) with a glowing full-width taillight bar, traffic cars to steal, and police units whose flashing light bars reflect red and blue on the asphalt.
-- **Wanted system**: five stars, pursuit AI, near-miss bonuses, and a heat level that cools when you drive clean.
-- **Missions**: the Sunset Sprint — six checkpoints across the city — plus a story in chapters with a crew (Lena "Wrench" Ortiz, Dario Voss, Mama Rosa) and dialogue.
-- **HUD**: mission panel, wanted stars, cash, circular minimap with a live GPS route, radio, speed and gear — and a full city map (M) with districts, landmarks, GPS routing and a legend.
-- **Save**: best drift, missions won and cash persist in localStorage.
+## How it was built
 
-## Controls
+Three.js (vendored as a minified build under `game/vendor/`), plain ES
+modules with one clear job per file, procedural canvas textures, and a
+WebAudio synth for engine, sirens and radio stingers. Every name, character,
+street, shop, mission and line of dialogue is original.
 
-WASD / arrows drive · E enter & exit car · SPACE handbrake drift · SHIFT run · M city map · P pause · R radio · N mute
-
-## Tech
-
-- three.js r186 (vendored minified build under `game/vendor/`)
-- Procedural everything: buildings, facades, streets, signs and textures are generated in code from a seed — no model or image files.
-- `main.ts` (Node 22, stdlib only) copies `game/` + `screenshots/` to `/output` and writes `dossier.json` with the vendored make.fun library.
+Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,000 in USDC.
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

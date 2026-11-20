@@ -1,70 +1,84 @@
-// Sound: all synthesized with WebAudio — engine hum, siren, beeps, drift skid.
-// No audio files, so nothing loads over the network.
-export function createAudio() {
-  let ctx = null;
-  let engineOsc = null;
-  let engineGain = null;
-  let sirenOsc = null;
-  let sirenGain = null;
-  let muted = false;
-  let sirenOn = false;
+// Procedural WebAudio: engine hum, two-tone siren, radio stingers. No audio
+// files. Everything is guarded: in headless runs the context simply never
+// starts and the game stays silent.
+var CV = window.CV || (window.CV = {});
+
+CV.audio = (function () {
+  var ctx = null, engineOsc = null, engineGain = null, sirenOsc = null, sirenGain = null;
+  var muted = false, started = false;
 
   function ensure() {
-    if (ctx) return;
+    if (started || typeof window === 'undefined') return;
     try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      started = true;
+      // Engine: low sawtooth + sub sine, pitch follows speed.
       engineOsc = ctx.createOscillator();
       engineOsc.type = 'sawtooth';
       engineOsc.frequency.value = 55;
+      var engineFilter = ctx.createBiquadFilter();
+      engineFilter.type = 'lowpass';
+      engineFilter.frequency.value = 420;
       engineGain = ctx.createGain();
-      engineGain.gain.value = 0;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 420;
-      engineOsc.connect(lp);
-      lp.connect(engineGain);
+      engineGain.gain.value = 0.0;
+      engineOsc.connect(engineFilter);
+      engineFilter.connect(engineGain);
       engineGain.connect(ctx.destination);
       engineOsc.start();
+      // Siren: two alternating tones.
       sirenOsc = ctx.createOscillator();
       sirenOsc.type = 'triangle';
       sirenOsc.frequency.value = 750;
       sirenGain = ctx.createGain();
-      sirenGain.gain.value = 0;
+      sirenGain.gain.value = 0.0;
       sirenOsc.connect(sirenGain);
       sirenGain.connect(ctx.destination);
       sirenOsc.start();
-    } catch (e) { ctx = null; }
+    } catch (e) { /* audio unavailable — stay silent */ }
   }
-  return {
-    unlock() { ensure(); if (ctx && ctx.state === 'suspended') ctx.resume(); },
-    setEngine(speed01, on) {
-      if (!ctx || muted) { if (engineGain) engineGain.gain.value = 0; return; }
-      engineGain.gain.value = on ? 0.03 + speed01 * 0.05 : 0;
-      engineOsc.frequency.value = 55 + speed01 * 130;
-    },
-    setSiren(on, t) {
-      sirenOn = on;
-      if (!ctx || muted) { if (sirenGain) sirenGain.gain.value = 0; return; }
-      sirenGain.gain.value = on ? 0.02 : 0;
-      if (on) sirenOsc.frequency.value = 700 + Math.sin(t * 4) * 180;
-    },
-    beep(freq = 880, dur = 0.08, vol = 0.06) {
-      if (!ctx || muted) return;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'sine';
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(vol, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + dur);
-    },
-    toggleMute() {
-      muted = !muted;
-      if (engineGain) engineGain.gain.value = 0;
-      if (sirenGain) sirenGain.gain.value = 0;
-      return muted;
-    },
-    get isMuted() { return muted; },
-  };
-}
+
+  function update(speedKmh, policeNear, t) {
+    if (!ctx || muted) return;
+    try {
+      if (engineOsc) {
+        engineOsc.frequency.value = 50 + speedKmh * 1.1;
+        engineGain.gain.value = 0.03 + Math.min(0.05, speedKmh * 0.0004);
+      }
+      if (sirenOsc) {
+        sirenOsc.frequency.value = Math.sin(t * 5) > 0 ? 750 : 950;
+        sirenGain.gain.value = policeNear ? 0.035 : 0.0;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function sting() {
+    if (!ctx || muted) return;
+    try {
+      [523, 659, 784].forEach(function (f, i) {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.09);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.09 + 0.4);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + i * 0.09);
+        o.stop(ctx.currentTime + i * 0.09 + 0.45);
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    if (ctx) {
+      try {
+        if (engineGain) engineGain.gain.value = muted ? 0 : 0.04;
+        if (sirenGain) sirenGain.gain.value = 0;
+      } catch (e) { /* ignore */ }
+    }
+    return muted;
+  }
+
+  return { ensure: ensure, update: update, sting: sting, toggleMute: toggleMute, isMuted: function () { return muted; } };
+})();

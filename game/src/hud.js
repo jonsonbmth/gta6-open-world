@@ -1,266 +1,339 @@
-// HUD: dense four-corner panels, circular minimap, full city map overlay,
-// dialogue bar, floating score text, title + pause screens. All DOM + 2D canvas.
-import { DISTRICTS, LANDMARKS, STREET_X, STREET_Z, STREET_NAMES_X, STREET_NAMES_Z, CHECKPOINTS, RADIO } from './config.js';
-import { clamp } from './random.js';
+// HUD: the top-10 formula rendered as DOM — mission panel, police dispatch
+// board, weapon slots, crew cards, drawn-portrait dialog, round minimap,
+// speed/car/radio cluster, motion cues, plus the full city-map screen.
+var CV = window.CV || (window.CV = {});
 
-const $ = (id) => document.getElementById(id);
+CV.hud = (function () {
+  var C = CV.config;
+  var el = {};
+  var minimapCtx = null, mapCtx = null;
+  var cueTimer = 0;
+  var lastTextUpdate = 0;
 
-export function districtAt(x, z) {
-  for (const d of DISTRICTS) {
-    if (x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1) return d.name;
-  }
-  return 'SOLMAR BAY';
-}
+  function $(id) { return document.getElementById(id); }
 
-function money(n) { return '$' + n.toLocaleString('en-US'); }
-
-export function createHUD(game) {
-  const minimap = $('minimap');
-  const mctx = minimap.getContext('2d');
-  const bigmap = $('bigmap');
-  const bctx = bigmap.getContext('2d');
-  let dialogueTimer = 0;
-  let floatTimer = 0;
-  let radioIndex = 0;
-
-  function drawMinimap() {
-    const W = 150; const H = 150;
-    mctx.clearRect(0, 0, W, H);
-    mctx.fillStyle = '#0e2438';
-    mctx.fillRect(0, 0, W, H);
-    const sx = (x) => ((x + 380) / 840) * W;
-    const sz = (z) => ((z + 290) / 580) * H;
-    // streets
-    mctx.strokeStyle = 'rgba(200,220,240,0.35)';
-    mctx.lineWidth = 1;
-    for (const x of STREET_X) { mctx.beginPath(); mctx.moveTo(sx(x), 0); mctx.lineTo(sx(x), H); mctx.stroke(); }
-    for (const z of STREET_Z) { mctx.beginPath(); mctx.moveTo(0, sz(z)); mctx.lineTo(W, sz(z)); mctx.stroke(); }
-    // sea
-    mctx.fillStyle = '#1a5a7a';
-    mctx.fillRect(sx(380), 0, W - sx(380), H);
-    // GPS route: Manhattan path player -> next checkpoint
-    const cp = game.nextCheckpoint();
-    if (cp) {
-      mctx.strokeStyle = '#ff5a8a';
-      mctx.lineWidth = 2;
-      mctx.setLineDash([5, 4]);
-      mctx.beginPath();
-      const px = sx(game.player.x); const pz = sz(game.player.z);
-      mctx.moveTo(px, pz);
-      mctx.lineTo(sx(cp.x), pz);
-      mctx.lineTo(sx(cp.x), sz(cp.z));
-      mctx.stroke();
-      mctx.setLineDash([]);
-      mctx.fillStyle = '#ffa020';
-      mctx.beginPath(); mctx.arc(sx(cp.x), sz(cp.z), 4, 0, Math.PI * 2); mctx.fill();
-      mctx.strokeStyle = '#fff'; mctx.lineWidth = 1; mctx.stroke();
-    }
-    // police
-    mctx.fillStyle = '#5a8aff';
-    for (const p of game.policePositions()) {
-      mctx.beginPath(); mctx.arc(sx(p.x), sz(p.z), 2.5, 0, Math.PI * 2); mctx.fill();
-    }
-    // player arrow (heading: forward = (-cos θ, sin θ))
-    const px = sx(game.player.x); const pz = sz(game.player.z);
-    const th = game.player.angle;
-    const fx = -Math.cos(th); const fz = Math.sin(th);
-    mctx.fillStyle = '#ffffff';
-    mctx.beginPath();
-    mctx.moveTo(px + fx * 7, pz + fz * 7);
-    mctx.lineTo(px - fz * 4 - fx * 4, pz + fx * 4 - fz * 4);
-    mctx.lineTo(px + fz * 4 - fx * 4, pz - fx * 4 - fz * 4);
-    mctx.closePath(); mctx.fill();
-    mctx.strokeStyle = '#000'; mctx.lineWidth = 1; mctx.stroke();
+  function stars(n) {
+    var s = '';
+    for (var i = 0; i < 5; i++) s += i < n ? '★' : '☆';
+    return s;
   }
 
-  function drawBigMap() {
-    const W = 1100; const H = 640;
-    bctx.clearRect(0, 0, W, H);
-    bctx.fillStyle = '#0a1626';
-    bctx.fillRect(0, 0, W, H);
-    const sx = (x) => 70 + ((x + 380) / 840) * 940;
-    const sz = (z) => 40 + ((z + 290) / 580) * 540;
-    // grid labels
-    bctx.fillStyle = '#8aa0b8';
-    bctx.font = '12px Arial';
-    bctx.textAlign = 'center';
-    'ABCDEFGH'.split('').forEach((ch, i) => bctx.fillText(ch, 70 + (i + 0.5) * (940 / 8), 28));
-    bctx.textAlign = 'right';
-    for (let i = 1; i <= 6; i++) bctx.fillText(String(i), 58, 40 + (i - 0.5) * 90 + 4);
-    // districts
-    for (const d of DISTRICTS) {
-      bctx.strokeStyle = d.color;
-      bctx.setLineDash([6, 5]);
-      bctx.lineWidth = 1.5;
-      bctx.strokeRect(sx(d.x0), sz(d.z0), sx(d.x1) - sx(d.x0), sz(d.z1) - sz(d.z0));
-      bctx.setLineDash([]);
-      bctx.fillStyle = d.color;
-      bctx.font = 'bold 14px Arial';
-      bctx.textAlign = 'left';
-      bctx.fillText(d.name, sx(d.x0) + 8, sz(d.z0) + 20);
-    }
-    // water
-    bctx.fillStyle = '#144a66';
-    bctx.fillRect(sx(380), 40, 940 - (sx(380) - 70), 540);
-    bctx.fillStyle = '#7ab8d8';
-    bctx.font = '12px Arial';
-    bctx.save();
-    bctx.translate(sx(410), 300);
-    bctx.rotate(Math.PI / 2);
-    bctx.textAlign = 'center';
-    bctx.fillText('S O L M A R   B A Y', 0, 0);
-    bctx.restore();
-    // streets
-    bctx.strokeStyle = 'rgba(200,220,240,0.55)';
-    bctx.lineWidth = 1.5;
-    for (const x of STREET_X) { bctx.beginPath(); bctx.moveTo(sx(x), 40); bctx.lineTo(sx(x), 580); bctx.stroke(); }
-    for (const z of STREET_Z) { bctx.beginPath(); bctx.moveTo(70, sz(z)); bctx.lineTo(1010, sz(z)); bctx.stroke(); }
-    // street names
-    bctx.fillStyle = 'rgba(180,200,220,0.75)';
-    bctx.font = '10px Arial';
-    bctx.textAlign = 'left';
-    STREET_X.forEach((x, i) => bctx.fillText(STREET_NAMES_X[i], sx(x) + 4, 56));
-    bctx.textAlign = 'right';
-    STREET_Z.forEach((z, i) => bctx.fillText(STREET_NAMES_Z[i], 1006, sz(z) - 4));
-    // landmarks
-    bctx.font = 'bold 11px Arial';
-    for (const lm of LANDMARKS) {
-      bctx.fillStyle = '#ffd25a';
-      bctx.beginPath();
-      bctx.moveTo(sx(lm.x), sz(lm.z) - 6);
-      bctx.lineTo(sx(lm.x) + 5, sz(lm.z) + 4);
-      bctx.lineTo(sx(lm.x) - 5, sz(lm.z) + 4);
-      bctx.closePath(); bctx.fill();
-      bctx.fillStyle = '#e8eef4';
-      bctx.textAlign = 'left';
-      bctx.fillText(lm.name, sx(lm.x) + 8, sz(lm.z) + 4);
-    }
-    // GPS route through all remaining checkpoints
-    const cps = game.remainingCheckpoints();
-    if (cps.length) {
-      bctx.strokeStyle = '#2ad8c8';
-      bctx.lineWidth = 2.5;
-      bctx.setLineDash([8, 6]);
-      bctx.beginPath();
-      bctx.moveTo(sx(game.player.x), sz(game.player.z));
-      for (const cp of cps) bctx.lineTo(sx(cp.x), sz(cp.z));
-      bctx.stroke();
-      bctx.setLineDash([]);
-      cps.forEach((cp, i) => {
-        bctx.fillStyle = '#ffa020';
-        bctx.beginPath(); bctx.arc(sx(cp.x), sz(cp.z), 7, 0, Math.PI * 2); bctx.fill();
-        bctx.fillStyle = '#fff';
-        bctx.font = 'bold 10px Arial';
-        bctx.textAlign = 'center';
-        bctx.fillText(String(i + 1), sx(cp.x), sz(cp.z) + 3.5);
-      });
-      const cp = cps[0];
-      const km = Math.hypot(cp.x - game.player.x, cp.z - game.player.z) / 1000;
-      bctx.fillStyle = '#2ad8c8';
-      bctx.font = 'bold 13px Arial';
-      bctx.textAlign = 'center';
-      bctx.fillText(`GPS ${km.toFixed(2)} KM · ETA ${Math.max(1, Math.round(km * 2.2))} MIN`, 540, 610);
-    }
-    // police
-    bctx.fillStyle = '#5a8aff';
-    for (const p of game.policePositions()) {
-      bctx.beginPath(); bctx.arc(sx(p.x), sz(p.z), 4, 0, Math.PI * 2); bctx.fill();
-    }
-    // player
-    const px = sx(game.player.x); const pz = sz(game.player.z);
-    bctx.fillStyle = '#fff';
-    bctx.beginPath(); bctx.arc(px, pz, 6, 0, Math.PI * 2); bctx.fill();
-    bctx.strokeStyle = '#ff2020'; bctx.lineWidth = 2; bctx.stroke();
-    // compass
-    bctx.fillStyle = '#0e2438';
-    bctx.beginPath(); bctx.arc(1010, 70, 22, 0, Math.PI * 2); bctx.fill();
-    bctx.strokeStyle = '#e8eef4'; bctx.lineWidth = 1.5; bctx.stroke();
-    bctx.fillStyle = '#ff5a5a';
-    bctx.beginPath(); bctx.moveTo(1010, 52); bctx.lineTo(1016, 70); bctx.lineTo(1004, 70); bctx.closePath(); bctx.fill();
-    bctx.fillStyle = '#e8eef4';
-    bctx.font = 'bold 11px Arial'; bctx.textAlign = 'center';
-    bctx.fillText('N', 1010, 48);
-    // legend
-    bctx.fillStyle = 'rgba(10,22,38,0.9)';
-    bctx.fillRect(830, 440, 180, 110);
-    bctx.strokeStyle = '#5a7a9a'; bctx.strokeRect(830, 440, 180, 110);
-    bctx.fillStyle = '#ffd25a';
-    bctx.font = 'bold 12px Arial'; bctx.textAlign = 'left';
-    bctx.fillText('LEGEND', 844, 460);
-    bctx.font = '11px Arial';
-    const rows = [['#2ad8c8', 'GPS route'], ['#ff2020', 'Mission target'], ['#ffffff', 'Rico'], ['#5a8aff', 'Police'], ['#144a66', 'Water / bay']];
-    rows.forEach((r, i) => {
-      bctx.fillStyle = r[0];
-      bctx.fillRect(844, 470 + i * 15, 12, 8);
-      bctx.fillStyle = '#e8eef4';
-      bctx.fillText(r[1], 862, 478 + i * 15);
+  function tacticColor(t) {
+    return { RAMMING: '#ff4757', PURSUE: '#ffa502', FLANKING: '#eccc68', SPOTLIGHT: '#70a1ff', ROADBLOCK: '#e84118', FIRING: '#ff6b81', 'CLOSING IN': '#2ed573' }[t] || '#a4b0be';
+  }
+
+  function init() {
+    ['hud', 'hud-mission', 'hud-dispatch', 'hud-money', 'hud-weapons', 'hud-crew',
+     'hud-dialog', 'hud-speed', 'hud-cues', 'hud-hint', 'minimap', 'district',
+     'health-bar', 'armor-bar', 'rep-bar', 'map-screen', 'map-canvas',
+     'title-screen', 'playtest-results'].forEach(function (id) { el[id] = $(id); });
+    if (el.minimap) minimapCtx = el.minimap.getContext('2d');
+    if (el['map-canvas']) mapCtx = el['map-canvas'].getContext('2d');
+    buildMission();
+    buildDispatch();
+    buildWeapons();
+    buildCrew();
+    buildDialog();
+    buildMoney();
+  }
+
+  function buildMission() {
+    var job = CV.missions.currentJob();
+    el['hud-mission'].innerHTML =
+      '<div class="m-job">JOB ' + (CV.missions.state.jobIndex + 1) + '/8 · ' + job.title + ' <span class="m-timer" id="m-timer">2:47</span></div>' +
+      '<div class="m-brief">' + job.brief + '</div>' +
+      '<div class="m-stage"><span>STAGE ' + CV.missions.state.stage + '/' + CV.missions.state.stages + '</span>' +
+      '<div class="bar"><div class="fill" id="m-stage-fill" style="width:' + (CV.missions.state.stage / CV.missions.state.stages * 100) + '%"></div></div></div>' +
+      '<div class="m-next">NEXT &nbsp;' + job.next + '</div>';
+  }
+
+  function buildDispatch() {
+    var rows = CV.police.dispatchRows();
+    var html = '<div class="d-head"><span>CVPD DISPATCH</span><span>6 UNITS · CODE 4</span></div>';
+    rows.forEach(function (r) {
+      html += '<div class="d-row"><span class="d-call">' + r.call + '</span>' +
+        '<span class="d-tactic" style="background:' + tacticColor(r.tactic) + '">' + r.tactic + '</span>' +
+        '<span class="d-dist">' + r.dist + ' m</span></div>';
     });
-    // scale
-    bctx.fillStyle = '#e8eef4';
-    bctx.fillRect(70, 596, 94, 3);
-    bctx.font = '11px Arial';
-    bctx.fillText('100 m', 70, 590);
+    html += '<div class="d-foot">+2 more units · roadblock ahead</div>';
+    el['hud-dispatch'].innerHTML = html;
   }
 
-  function showDialogue(who, text) {
-    $('dlg-name').textContent = who;
-    $('dlg-text').textContent = text;
-    $('dlg-face').textContent = who.charAt(0);
-    $('dialogue').style.opacity = '1';
-    dialogueTimer = 6;
+  function buildWeapons() {
+    var html = '';
+    C.WEAPONS.forEach(function (w, i) {
+      html += '<div class="w-slot' + (w.locked ? ' locked' : '') + (i === 2 ? ' active' : '') + '">' +
+        '<span class="w-num">' + (i + 1) + '</span>' +
+        '<span class="w-icon">' + (w.locked ? '🔒' : ['✊', '🔫', '🔫', '💣', '🔫', '🚀'][i]) + '</span>' +
+        '<span class="w-name">' + w.name + '</span>' +
+        '<span class="w-ammo">' + (w.locked ? 'LOCKED' : w.ammo) + '</span></div>';
+    });
+    el['hud-weapons'].innerHTML = html;
   }
-  function showFloat(text) {
-    const el = $('float-text');
-    el.textContent = text;
-    el.style.opacity = '1';
-    floatTimer = 2.2;
+
+  function buildCrew() {
+    var html = '';
+    C.CREW.forEach(function (m, idx) {
+      html += '<div class="crew-card"><canvas class="crew-port" width="48" height="48" data-port="' + idx + '"></canvas>' +
+        '<div><div class="crew-ability"><span class="key">' + m.key + '</span> ' + m.ability + '</div>' +
+        '<div class="crew-name">' + m.name.split(' ')[0] + ' · ' + m.role + '</div></div></div>';
+    });
+    el['hud-crew'].innerHTML = html;
+    // paint the drawn portraits into the crew canvases
+    el['hud-crew'].querySelectorAll('canvas').forEach(function (cv) {
+      var member = C.CREW[parseInt(cv.getAttribute('data-port'), 10)];
+      if (member) cv.getContext('2d').drawImage(CV.textures.portrait(member).canvas, 0, 0, 48, 48);
+    });
   }
-  // Pin a text on screen indefinitely (used by screenshot shots, where the
-  // capture happens seconds after the setup runs).
-  function pinFloat(text) { showFloat(text); floatTimer = 9999; }
-  function pinDialogue(who, text) { showDialogue(who, text); dialogueTimer = 9999; }
-  function update(dt, t) {
-    const m = game.missions.state;
-    // mission panel
-    $('ms-chapter').textContent = `CH ${m.chapter}`;
-    $('ms-title').textContent = m.chapterTitle;
-    $('ms-objective').textContent = m.objective;
-    $('ms-next').textContent = 'NEXT ... ' + m.next;
-    $('ms-progress').style.width = `${(m.checkpointIndex / m.checkpointTotal) * 100}%`;
-    // wanted
-    const stars = '★'.repeat(m.wanted) + '☆'.repeat(5 - m.wanted);
-    $('wanted-stars').textContent = stars;
-    $('wanted').style.opacity = m.wanted > 0 ? '1' : '0.55';
-    // cash panel
-    $('cash-time').textContent = `DAY 1 · ${game.clock()}`;
-    $('cash-amount').textContent = money(m.cash);
-    $('cash-stars').textContent = stars;
-    $('cash-state').textContent = m.wanted > 0 ? 'PURSUIT ACTIVE' : 'CLEAN';
-    $('cash-state').style.color = m.wanted > 0 ? '#ff5a5a' : '#5aff8a';
-    // minimap
-    drawMinimap();
-    $('mm-district').textContent = districtAt(game.player.x, game.player.z).toUpperCase();
-    $('mm-respect').style.width = `${clamp(game.respect(), 0, 100)}%`;
-    // radio + speed
-    $('radio-station').textContent = RADIO[radioIndex].station;
-    $('radio-song').textContent = RADIO[radioIndex].song;
-    $('speed-num').textContent = String(Math.round(Math.abs(game.speedKmh())));
-    $('speed-gear').textContent = 'GEAR ' + game.gear();
-    $('speed-car').textContent = game.onFoot ? 'ON FOOT' : 'VULPINE S';
-    // timers
-    if (dialogueTimer > 0) { dialogueTimer -= dt; if (dialogueTimer <= 0) $('dialogue').style.opacity = '0'; }
-    if (floatTimer > 0) { floatTimer -= dt; if (floatTimer <= 0) $('float-text').style.opacity = '0'; }
-    // sprint timer
-    const s = Math.max(0, Math.ceil(m.sprintTime));
-    $('ms-timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  function buildDialog() {
+    var f = C.FIXER;
+    el['hud-dialog'].innerHTML =
+      '<canvas id="dlg-port" width="64" height="64"></canvas>' +
+      '<div><div class="dlg-name">' + f.name + ' <span>' + f.role + '</span></div>' +
+      '<div class="dlg-line">' + f.line + '</div></div>';
+    var cv = $('dlg-port');
+    if (cv) cv.getContext('2d').drawImage(CV.textures.portrait(f).canvas, 0, 0, 64, 64);
   }
+
+  function buildMoney() {
+    el['hud-money'].innerHTML =
+      '<div class="money-day">' + C.DAY.label + ' ' + C.DAY.time + '</div>' +
+      '<div class="money-cash" id="money-cash">$' + CV.missions.state.cash.toLocaleString('en-US') + '</div>' +
+      '<div class="money-stars">' + stars(C.PLAYER.wanted) + '</div>' +
+      '<div class="money-sight">IN SIGHT · AIR-3</div>';
+  }
+
+  function showCue(main, sub) {
+    el['hud-cues'].innerHTML = '<div class="cue-main">' + main + '</div><div class="cue-sub">' + (sub || '') + '</div>';
+    el['hud-cues'].style.opacity = '1';
+    cueTimer = 2.2;
+  }
+
+  // ---- Minimap (round canvas, north up, GPS route + blips).
+  function drawMinimap(hero, police, checkpoints, cpIndex) {
+    if (!minimapCtx) return;
+    var g = minimapCtx, S = 150, R = 120; // world radius shown
+    g.clearRect(0, 0, S, S);
+    g.save();
+    g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2); g.clip();
+    g.fillStyle = '#101c26'; g.fillRect(0, 0, S, S);
+    var px = function (x) { return S / 2 + (x - hero.x) / R * (S / 2); };
+    var py = function (z) { return S / 2 + (z - hero.z) / R * (S / 2); };
+    // ocean + beach (east)
+    g.fillStyle = '#1f7fb8'; g.fillRect(px(C.OCEAN_X), 0, S, S);
+    g.fillStyle = '#e8c88f'; g.fillRect(px(C.BEACH.x0), 0, px(C.OCEAN_X) - px(C.BEACH.x0), S);
+    // roads
+    g.strokeStyle = '#4a5a6a'; g.lineWidth = 5;
+    g.beginPath(); g.moveTo(px(C.AVENUE_X), 0); g.lineTo(px(C.AVENUE_X), S); g.stroke();
+    [-120, -80, -40, 0, 40].forEach(function (x) {
+      g.beginPath(); g.moveTo(px(x), 0); g.lineTo(px(x), S); g.stroke();
+    });
+    [-160, -120, -80, -40, 0, 40, 80, 120].forEach(function (z) {
+      g.beginPath(); g.moveTo(0, py(z)); g.lineTo(S, py(z)); g.stroke();
+    });
+    // GPS route: hero -> remaining checkpoints
+    g.strokeStyle = '#39ff88'; g.lineWidth = 3; g.setLineDash([6, 4]);
+    g.beginPath(); g.moveTo(px(hero.x), py(hero.z));
+    for (var i = cpIndex; i < checkpoints.length; i++) g.lineTo(px(checkpoints[i].x), py(checkpoints[i].z));
+    g.stroke(); g.setLineDash([]);
+    // checkpoints
+    checkpoints.forEach(function (cp, i) {
+      if (i < cpIndex) return;
+      g.fillStyle = i === cpIndex ? '#39ff88' : '#e8c33d';
+      g.beginPath(); g.arc(px(cp.x), py(cp.z), i === cpIndex ? 6 : 4, 0, Math.PI * 2); g.fill();
+    });
+    // police blips
+    g.fillStyle = '#4d8dff';
+    police.forEach(function (u) {
+      g.beginPath(); g.arc(px(u.state.x), py(u.state.z), 3.5, 0, Math.PI * 2); g.fill();
+    });
+    // hero arrow
+    g.save();
+    g.translate(px(hero.x), py(hero.z));
+    g.rotate(Math.atan2(Math.sin(hero.heading), Math.cos(hero.heading)));
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(-6, 7); g.closePath(); g.fill();
+    g.restore();
+    g.restore();
+    // ring + N
+    g.strokeStyle = '#f5c518'; g.lineWidth = 3;
+    g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#ffffff'; g.font = 'bold 12px Arial'; g.textAlign = 'center';
+    g.fillText('N', S / 2, 14);
+  }
+
+  // ---- Full city-map screen (M): districts, landmarks, GPS route, stats.
+  function drawMapScreen(hero, cpIndex) {
+    if (!mapCtx) return;
+    var g = mapCtx, W = 640, H = 520;
+    var X0 = -190, X1 = 200, Z0 = -230, Z1 = 240;
+    var px = function (x) { return 30 + (x - X0) / (X1 - X0) * (W - 60); };
+    var py = function (z) { return 24 + (z - Z0) / (Z1 - Z0) * (H - 60); };
+    g.fillStyle = '#0d1822'; g.fillRect(0, 0, W, H);
+    // ocean
+    g.fillStyle = '#1668a0'; g.fillRect(px(C.OCEAN_X), 0, W - px(C.OCEAN_X), H);
+    g.fillRect(0, py(230), W, H - py(230));
+    // beach
+    g.fillStyle = '#d9b878'; g.fillRect(px(C.BEACH.x0), 0, px(C.OCEAN_X) - px(C.BEACH.x0), H);
+    // districts
+    C.DISTRICTS.forEach(function (d) {
+      g.fillStyle = d.color + '33';
+      g.fillRect(px(d.x0), py(d.z0), px(d.x1) - px(d.x0), py(d.z1) - py(d.z0));
+      g.strokeStyle = d.color; g.lineWidth = 1.5; g.setLineDash([5, 4]);
+      g.strokeRect(px(d.x0), py(d.z0), px(d.x1) - px(d.x0), py(d.z1) - py(d.z0));
+      g.setLineDash([]);
+      g.fillStyle = d.color; g.font = 'bold 13px Arial'; g.textAlign = 'left';
+      g.strokeStyle = 'rgba(0,0,0,0.8)'; g.lineWidth = 3;
+      g.strokeText(d.name, px(d.x0) + 6, py(d.z0) + 18);
+      g.fillText(d.name, px(d.x0) + 6, py(d.z0) + 18);
+      g.font = '10px Arial'; g.fillStyle = '#ffffff';
+      g.strokeText(d.sub, px(d.x0) + 6, py(d.z0) + 32);
+      g.fillText(d.sub, px(d.x0) + 6, py(d.z0) + 32);
+    });
+    // roads
+    g.strokeStyle = '#5a6a7a'; g.lineWidth = 3;
+    [C.AVENUE_X, -120, -80, -40, 0, 40].forEach(function (x) {
+      g.beginPath(); g.moveTo(px(x), py(Z0)); g.lineTo(px(x), py(Z1)); g.stroke();
+    });
+    [-160, -120, -80, -40, 0, 40, 80, 120].forEach(function (z) {
+      g.beginPath(); g.moveTo(px(X0), py(z)); g.lineTo(px(X1), py(z)); g.stroke();
+    });
+    // grid letters + numbers
+    g.fillStyle = '#8fa3b0'; g.font = '11px Arial'; g.textAlign = 'center';
+    'ABCDEFGH'.split('').forEach(function (ch, i) { g.fillText(ch, px(X0) + (i + 0.5) * (W - 60) / 8, 14); });
+    for (var r = 0; r < 6; r++) g.fillText(String(r + 1), 12, py(Z0) + (r + 0.5) * (H - 60) / 6);
+    // landmarks
+    C.LANDMARKS.forEach(function (lm) {
+      g.fillStyle = '#ffc53d';
+      g.beginPath(); g.moveTo(px(lm.x), py(lm.z) - 7); g.lineTo(px(lm.x) + 6, py(lm.z) + 5); g.lineTo(px(lm.x) - 6, py(lm.z) + 5); g.closePath(); g.fill();
+      g.fillStyle = '#ffffff'; g.font = '10px Arial'; g.textAlign = 'left';
+      g.strokeStyle = 'rgba(0,0,0,0.8)'; g.lineWidth = 3;
+      g.strokeText(lm.name, px(lm.x) + 9, py(lm.z) + 4);
+      g.fillText(lm.name, px(lm.x) + 9, py(lm.z) + 4);
+    });
+    // GPS route + checkpoints
+    g.strokeStyle = '#39ff88'; g.lineWidth = 3; g.setLineDash([8, 5]);
+    g.beginPath(); g.moveTo(px(hero.x), py(hero.z));
+    for (var i = cpIndex; i < C.CHECKPOINTS.length; i++) g.lineTo(px(C.CHECKPOINTS[i].x), py(C.CHECKPOINTS[i].z));
+    g.stroke(); g.setLineDash([]);
+    C.CHECKPOINTS.forEach(function (cp, i) {
+      g.fillStyle = i === cpIndex ? '#39ff88' : '#e8c33d';
+      g.beginPath(); g.arc(px(cp.x), py(cp.z), 7, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#0d1822'; g.font = 'bold 10px Arial'; g.textAlign = 'center';
+      g.fillText(String(i + 1), px(cp.x), py(cp.z) + 3);
+    });
+    // player arrow
+    g.save();
+    g.translate(px(hero.x), py(hero.z));
+    g.rotate(Math.atan2(Math.sin(hero.heading), Math.cos(hero.heading)));
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.moveTo(0, -11); g.lineTo(8, 9); g.lineTo(-8, 9); g.closePath(); g.fill();
+    g.restore();
+    // compass + scale
+    g.fillStyle = '#ffffff'; g.font = 'bold 14px Arial'; g.textAlign = 'right';
+    g.fillText('N ↑', W - 14, 44);
+    g.fillStyle = '#ffffff'; g.fillRect(30, H - 16, 60, 3);
+    g.font = '11px Arial'; g.textAlign = 'left';
+    g.fillText('100 m', 30, H - 22);
+    // footer: GPS distance + ETA
+    var d = CV.missions.distanceToCheckpoint(hero);
+    g.fillStyle = '#39ff88'; g.font = 'bold 13px Arial'; g.textAlign = 'center';
+    g.fillText('GPS ' + (d / 1000).toFixed(2) + ' KM · ETA ' + Math.max(1, Math.round(d / 220)) + ' MIN', W / 2, H - 6);
+  }
+
+  function fillMapPanels() {
+    var m = CV.missions.state;
+    var pct = Math.round((m.jobsDone / 8) * 100);
+    $('map-complete').textContent = pct + '%';
+    $('map-rank').textContent = 'RANK ' + C.PLAYER.repLevel + ' · ' + C.PLAYER.repRank;
+    $('map-rep').textContent = m.rep.toLocaleString('en-US') + ' RP';
+    $('map-cash').textContent = '$' + m.cash.toLocaleString('en-US');
+    $('map-jobs').textContent = m.jobsDone + '/8';
+    $('map-drift').textContent = m.bestDrift + ' pts';
+    $('map-near').textContent = m.nearMiss;
+    var slots = CV.save.listSlots();
+    var html = '';
+    slots.forEach(function (s, i) {
+      html += '<div class="save-row"><span>SLOT ' + (i + 1) + ' · ' + (s ? ('$' + s.cash.toLocaleString('en-US') + ' · ' + s.jobsDone + '/8 jobs') : 'EMPTY') + '</span><button data-slot="' + (i + 1) + '">SAVE</button></div>';
+    });
+    $('map-saves').innerHTML = html;
+  }
+
+  // The HUD shows only when neither the title nor the map screen is up
+  // (both are full-screen; the HUD would ghost through their translucency).
+  function syncHud() {
+    var titleOn = el['title-screen'].style.display === 'flex';
+    var mapOn = el['map-screen'].style.display === 'flex';
+    el.hud.style.display = (titleOn || mapOn) ? 'none' : '';
+  }
+
+  function showMap(hero, cpIndex) {
+    el['map-screen'].style.display = 'flex';
+    syncHud();
+    drawMapScreen(hero, cpIndex);
+    fillMapPanels();
+  }
+  function hideMap() {
+    el['map-screen'].style.display = 'none';
+    syncHud();
+  }
+  function mapVisible() { return el['map-screen'].style.display === 'flex'; }
+  function showTitle() {
+    el['title-screen'].style.display = 'flex';
+    syncHud();
+  }
+  function hideTitle() {
+    el['title-screen'].style.display = 'none';
+    syncHud();
+  }
+
+  function update(dt, game) {
+    // Motion-cue fade.
+    if (cueTimer > 0) {
+      cueTimer -= dt;
+      if (cueTimer <= 0) el['hud-cues'].style.opacity = '0';
+    }
+    // The minimap + district follow the feet on foot, the car while driving.
+    var who = (game.mode === 'onfoot' || game.mode === 'marina') ? game.foot : game.hero;
+    // Text updates at ~10 Hz.
+    lastTextUpdate += dt;
+    if (lastTextUpdate < 0.1) {
+      drawMinimap(who, CV.police.units, C.CHECKPOINTS, CV.missions.state.checkpoint);
+      return;
+    }
+    lastTextUpdate = 0;
+    var m = CV.missions.state;
+    var timerEl = $('m-timer');
+    if (timerEl) timerEl.textContent = CV.missions.timerText();
+    var cashEl = $('money-cash');
+    if (cashEl) cashEl.textContent = '$' + m.cash.toLocaleString('en-US');
+    // Dispatch distances (live).
+    var rows = CV.police.dispatchRows();
+    var dRows = el['hud-dispatch'].querySelectorAll('.d-row');
+    rows.forEach(function (r, i) {
+      if (dRows[i]) dRows[i].querySelector('.d-dist').textContent = r.dist + ' m';
+    });
+    // Speed cluster.
+    var hero = game.hero;
+    $('speed-num').textContent = hero.kmh();
+    $('speed-car').textContent = C.CAR.name;
+    $('cond-fill').style.width = C.CAR.condition + '%';
+    $('cond-num').textContent = C.CAR.condition + '%';
+    // District + bars follow the feet on foot, the car while driving.
+    var d = CV.world.districtAt(who.x, who.z);
+    el.district.innerHTML = '<b>' + d.name + '</b><span>' + d.sub + '</span>';
+    el['health-bar'].style.width = C.PLAYER.health + '%';
+    el['armor-bar'].style.width = C.PLAYER.armor + '%';
+    el['rep-bar'].style.width = (m.rep / C.PLAYER.repMax * 100) + '%';
+    $('rep-text').textContent = 'REP ' + C.PLAYER.repLevel + ' · ' + C.PLAYER.repRank + ' — ' + m.rep + ' / ' + C.PLAYER.repMax + ' XP';
+    drawMinimap(who, CV.police.units, C.CHECKPOINTS, m.checkpoint);
+    if (mapVisible()) drawMapScreen(hero, m.checkpoint);
+  }
+
   return {
-    update, drawBigMap, showDialogue, showFloat, pinFloat, pinDialogue,
-    setRadio(i) { radioIndex = i % RADIO.length; },
-    showTitle() { $('title-screen').style.display = 'flex'; $('hud').style.display = 'none'; },
-    hideTitle() { $('title-screen').style.display = 'none'; $('hud').style.display = 'block'; },
-    showMap() { $('map-overlay').style.display = 'flex'; drawBigMap(); },
-    hideMap() { $('map-overlay').style.display = 'none'; },
-    showPause(v) { $('pause-overlay').style.display = v ? 'flex' : 'none'; },
+    init: init, update: update, showCue: showCue, showMap: showMap, hideMap: hideMap,
+    mapVisible: mapVisible, showTitle: showTitle, hideTitle: hideTitle,
+    drawMinimap: drawMinimap, drawMapScreen: drawMapScreen,
   };
-}
+})();
