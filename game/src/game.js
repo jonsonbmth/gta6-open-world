@@ -37,6 +37,10 @@ window.SB = window.SB || {};
   sun.shadow.bias = -0.0006;
   scene.add(sun);
   scene.add(sun.target);
+  // warm fill from the east so sunset-backlit faces and car rears stay readable
+  const fill = new THREE.DirectionalLight(0xffd9a0, 0.55);
+  fill.position.set(80, 40, -30);
+  scene.add(fill);
   scene.add(new THREE.HemisphereLight(0x8a6bbf, 0x8a6a4a, 0.95));
   scene.add(new THREE.AmbientLight(0x604a6a, 0.35));
 
@@ -55,7 +59,7 @@ window.SB = window.SB || {};
   const NORTH = Math.PI / 2;
   cars.hero = placeCar(SB.Models.car({ color: CFG.car.color }), 0, 30, NORTH);
   const cruiserCols = [0xf2f2f2, 0xf2f2f2, 0xe8e8e8, 0xf2f2f2];
-  const cruiserSpots = [[-6, 8], [7, 2], [-8, 32], [8, 38]];
+  const cruiserSpots = [[-6, 8], [7, 2], [-7, 30], [7, 34]];
   for (let i = 0; i < 4; i++) {
     const c = SB.Models.car({ color: cruiserCols[i], police: true });
     placeCar(c, cruiserSpots[i][0], cruiserSpots[i][1], NORTH);
@@ -431,15 +435,16 @@ window.SB = window.SB || {};
   function updateCamera(dt) {
     if (SHOT === 'chase' && FROZEN) {
       // staged cover shot: fixed camera, all 4 cruisers + heli in frame
-      camPos.set(0, 7, 52);
-      camLook.set(0, 2, 5);
+      camPos.set(0, 6, 46);
+      camLook.set(0, 2.2, 8);
     } else if (SHOT === 'marina') {
-      camPos.lerp(new THREE.Vector3(-138, 4.5, 92), 1 - Math.pow(0.001, dt));
-      camLook.lerp(new THREE.Vector3(-152, 1.8, 92), 1 - Math.pow(0.001, dt));
+      camPos.lerp(new THREE.Vector3(-144, 2.0, 92), 1 - Math.pow(0.001, dt));
+      camLook.lerp(new THREE.Vector3(-152, 1.4, 92), 1 - Math.pow(0.001, dt));
     } else if (SHOT === 'title') {
+      // high establishing view over the whole city grid toward the sunset
       const t = performance.now() / 1000;
-      camPos.set(70 + Math.sin(t * 0.05) * 10, 26, 110);
-      camLook.set(-40, 6, -20);
+      camPos.set(Math.sin(t * 0.05) * 8, 110, 170);
+      camLook.set(0, 0, -30);
     } else if (game.onFoot) {
       const p = heroPed.position;
       const back = new THREE.Vector3(Math.sin(game.heading + camYaw) * 6, 0, Math.cos(game.heading + camYaw) * 6);
@@ -633,22 +638,31 @@ window.SB = window.SB || {};
       $('title-screen').style.display = 'none';
       $('speed').textContent = '108';
       game.started = true;
-      camPos.set(0, 6.5, 50);
-      camLook.set(0, 2, 0);
+      cars.hero.rotation.y = NORTH + 0.22; // drift angle: rear kicked out, side profile visible
+      camPos.set(0, 6, 46);
+      camLook.set(0, 2.2, 8);
     } else if (SHOT === 'title') {
       $('title-screen').style.display = 'flex';
+      $('popup').style.opacity = '0';
+      $('controls-hint').style.display = 'none';
+      $('speed').textContent = '0';
     } else if (SHOT === 'map') {
       $('title-screen').style.display = 'none';
+      $('popup').style.opacity = '0';
+      $('controls-hint').style.display = 'none';
+      $('speed').textContent = '0';
       game.started = true;
       game.paused = true;
       $('pause-menu').style.display = 'flex';
       drawBigMap();
     } else if (SHOT === 'marina') {
       $('title-screen').style.display = 'none';
+      $('popup').style.opacity = '0';
+      $('controls-hint').style.display = 'none';
       game.started = true;
       $('speed').textContent = '0';
-      camPos.set(-138, 4.5, 92);
-      camLook.set(-152, 1.8, 92);
+      camPos.set(-144, 2.0, 92);
+      camLook.set(-152, 1.4, 92);
     }
   }
 
@@ -657,7 +671,9 @@ window.SB = window.SB || {};
   let miniTimer = 0;
   function loop(now) {
     requestAnimationFrame(loop);
-    const dt = Math.min(0.1, (now - last) / 1000);
+    // dt clamp 0.25: swiftshader/software renderers run ~1 fps, and the car
+    // must still cover real ground per rendered frame (60 fps browsers see 0.016)
+    const dt = Math.min(0.25, (now - last) / 1000);
     last = now;
     const running = game.started && !game.paused && !FROZEN;
     if (running) {

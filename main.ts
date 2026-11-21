@@ -26,6 +26,12 @@ if (existsSync(join(here, 'screenshots'))) {
 // The scorer's caps (reference/gate.json): at most 4 screenshots, each at most
 // 256 KiB; at most 993 files and 48 MiB under game/; paths under game/ at most
 // 1000 bytes; the dossier text capped at 160 KiB.
+//
+// V19 note: the four screenshots are the staged shots — 1-chase is the cover
+// (Solstice PD chase, all four cruisers + AIR-2 in frame), then the title
+// screen, the pause-map, and the marina crew portrait. The game itself is
+// offline static files: three.js is vendored at game/vendor/three.min.js and
+// every texture is painted on canvas at load time — no network requests.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

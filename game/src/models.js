@@ -59,7 +59,7 @@ SB.Models = (function () {
     const o = opts || {};
     const g = new THREE.Group();
     const paint = new THREE.MeshPhysicalMaterial({
-      color: o.color || 0xc2242e, roughness: 0.32, metalness: 0.55,
+      color: o.color || 0xc2242e, roughness: 0.35, metalness: 0.25,
       clearcoat: 0.9, clearcoatRoughness: 0.25,
     });
     const body = mesh(carBodyGeo(), paint, 0, 0, 0);
@@ -162,9 +162,10 @@ SB.Models = (function () {
     const faceTex = new THREE.CanvasTexture(faceCanvas);
     faceTex.colorSpace = THREE.SRGBColorSpace;
     const head = mesh(new THREE.SphereGeometry(0.175, 22, 18), new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6 }), 0, 1.52, 0);
-    // hair cap: slightly larger flattened sphere, offset up-back
-    const hair = mesh(new THREE.SphereGeometry(0.185, 18, 14), hairM, -0.03, 1.58, 0);
-    hair.scale.set(1, 0.82, 1);
+    // hair cap: partial sphere covering top-back only, tilted back so the
+    // drawn face stays visible from the front (a full sphere would swallow it)
+    const hair = mesh(new THREE.SphereGeometry(0.185, 18, 14, 0, Math.PI * 2, 0, 1.75), hairM, 0, 1.52, 0);
+    hair.rotation.z = 0.5;
     g.add(torso, hips, head, hair);
     // arms: capsules, angled slightly out + bent
     for (const s of [1, -1]) {

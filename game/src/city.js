@@ -243,7 +243,7 @@ SB.buildCity = function (scene) {
     marina.add(b);
   });
   // marina crew platform (where the crew stands for the marina shot)
-  const platform = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.4, 0.5, 20), dockMat);
+  const platform = new THREE.Mesh(new THREE.CylinderGeometry(5, 5.3, 0.5, 20), dockMat);
   platform.position.set(-152, 0.25, 92);
   platform.castShadow = true;
   platform.receiveShadow = true;
