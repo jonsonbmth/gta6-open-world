@@ -3,216 +3,134 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CORAL VISTA — a golden-hour open-world crime game</title>
-<link rel="icon" href="data:,">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1822; font-family: Arial, Helvetica, sans-serif; color: #fff; }
-  #game-holder, #game-holder canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-  .panel { background: rgba(8, 16, 26, 0.82); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(2px); }
-  /* Mission — top left */
-  #hud-mission { position: absolute; top: 14px; left: 14px; width: 330px; }
-  .m-job { font-size: 17px; font-weight: bold; letter-spacing: 0.5px; color: #ffd23d; }
-  .m-timer { float: right; color: #fff; background: #c9402e; border-radius: 5px; padding: 1px 7px; font-size: 15px; }
-  .m-brief { font-size: 13px; color: #e8e8e8; margin: 5px 0 7px; line-height: 1.35; }
-  .m-stage { font-size: 12px; font-weight: bold; color: #9fd8ff; display: flex; align-items: center; gap: 8px; }
-  .m-stage .bar { flex: 1; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
-  .m-stage .fill { height: 100%; background: linear-gradient(90deg, #39ff88, #ffd23d); }
-  .m-next { font-size: 12px; color: #8fe3a8; margin-top: 6px; }
-  /* Dispatch — left, under mission */
-  #hud-dispatch { position: absolute; top: 158px; left: 14px; width: 340px; padding: 8px 10px; }
-  .d-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; color: #ff8a7a; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 5px; margin-bottom: 5px; }
-  .d-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 2.5px 0; }
-  .d-call { font-weight: bold; width: 80px; color: #fff; }
-  .d-tactic { font-size: 10px; font-weight: bold; color: #fff; border-radius: 4px; padding: 2px 6px; letter-spacing: 0.5px; }
-  .d-dist { margin-left: auto; color: #ffd23d; font-weight: bold; }
-  .d-foot { font-size: 11px; color: #9fb3c8; margin-top: 4px; }
-  /* Left bottom: minimap + district + bars */
-  #hud-left-bottom { position: absolute; left: 14px; bottom: 14px; width: 210px; }
-  #minimap { width: 150px; height: 150px; border-radius: 50%; display: block; }
-  #district { margin-top: 8px; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
-  #district b { color: #ffd23d; font-size: 15px; display: block; letter-spacing: 1px; }
-  #district span { color: #c8d6e0; }
-  .hbar { height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; margin-top: 5px; }
-  .hbar > div { height: 100%; }
-  #health-bar { background: #39ff88; }
-  #armor-bar { background: #4d8dff; }
-  #rep-bar { background: #ff9f43; }
-  .hbar-label { font-size: 10px; font-weight: bold; letter-spacing: 1px; color: #c8d6e0; margin-top: 4px; display: flex; justify-content: space-between; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
-  #rep-text { font-size: 11px; color: #ffb35c; font-weight: bold; margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
-  /* Money — top right */
-  #hud-money { position: absolute; top: 14px; right: 14px; width: 210px; text-align: right; }
-  .money-day { font-size: 12px; color: #9fb3c8; font-weight: bold; letter-spacing: 1px; }
-  .money-cash { font-size: 34px; font-weight: bold; color: #7dff9a; line-height: 1.1; }
-  .money-stars { font-size: 22px; color: #ffd23d; letter-spacing: 3px; }
-  .money-sight { display: inline-block; font-size: 11px; font-weight: bold; color: #fff; background: #c9402e; border-radius: 4px; padding: 2px 8px; margin-top: 3px; }
-  /* Weapons — right, under money */
-  #hud-weapons { position: absolute; top: 150px; right: 14px; display: flex; gap: 5px; }
-  .w-slot { width: 62px; background: rgba(8,16,26,0.82); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 5px 4px; text-align: center; }
-  .w-slot.active { border-color: #ffd23d; box-shadow: 0 0 0 1px #ffd23d; }
-  .w-slot.locked { opacity: 0.55; }
-  .w-num { display: block; font-size: 9px; color: #9fb3c8; text-align: left; }
-  .w-icon { font-size: 20px; display: block; }
-  .w-name { display: block; font-size: 9px; font-weight: bold; color: #fff; margin-top: 1px; }
-  .w-ammo { display: block; font-size: 11px; color: #ffd23d; font-weight: bold; }
-  /* Crew — right, under weapons */
-  #hud-crew { position: absolute; top: 246px; right: 14px; width: 220px; display: flex; flex-direction: column; gap: 6px; }
-  .crew-card { display: flex; gap: 8px; align-items: center; background: rgba(8,16,26,0.82); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 5px 8px; }
-  .crew-port { width: 40px; height: 40px; border-radius: 6px; flex: none; }
-  .crew-ability { font-size: 12px; font-weight: bold; color: #fff; }
-  .crew-ability .key { display: inline-block; background: #ffd23d; color: #111; border-radius: 3px; padding: 0 5px; margin-right: 4px; font-size: 11px; }
-  .crew-name { font-size: 11px; color: #9fd8ff; }
-  /* Dialog — bottom centre */
-  #hud-dialog { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); width: 470px; display: flex; gap: 10px; align-items: center; background: rgba(8,16,26,0.85); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 9px 12px; }
-  #dlg-port { width: 56px; height: 56px; border-radius: 8px; flex: none; }
-  .dlg-name { font-size: 13px; font-weight: bold; color: #ffd23d; }
-  .dlg-name span { color: #9fd8ff; font-weight: normal; font-size: 11px; }
-  .dlg-line { font-size: 13px; color: #f2f2f2; line-height: 1.35; margin-top: 2px; }
-  /* Speed — bottom right */
-  #hud-speed { position: absolute; right: 14px; bottom: 14px; width: 230px; text-align: right; }
-  #speed-num { font-size: 56px; font-weight: bold; line-height: 0.95; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
-  #speed-unit { font-size: 15px; color: #c8d6e0; font-weight: bold; }
-  #speed-car { font-size: 15px; font-weight: bold; color: #7dd8ff; letter-spacing: 1px; }
-  .cond-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 4px; font-size: 11px; font-weight: bold; color: #c8d6e0; }
-  .cond-row .bar { width: 110px; height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
-  #cond-fill { height: 100%; background: #39ff88; }
-  #radio-line { font-size: 12px; color: #ff9ff3; font-weight: bold; margin-top: 4px; }
-  /* Motion cues — centre */
-  #hud-cues { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
-  .cue-main { font-size: 44px; font-weight: bold; color: #ffd23d; letter-spacing: 2px; }
-  .cue-sub { font-size: 24px; font-weight: bold; color: #7dff9a; }
-  #hud-hint { position: absolute; bottom: 98px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.65); white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
-  /* Title screen */
-  #title-screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(10,10,30,0.25) 0%, rgba(10,10,30,0.55) 100%); text-align: center; }
-  .t-kicker { font-size: 15px; letter-spacing: 8px; color: #ffd23d; font-weight: bold; }
-  .t-title { font-size: 110px; font-weight: bold; letter-spacing: 4px; line-height: 0.95; background: linear-gradient(90deg, #ff5e7a, #ffb35c 45%, #39d0ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6)); }
-  .t-sub { font-size: 19px; letter-spacing: 10px; color: #fff; font-weight: bold; margin-top: 6px; }
-  .t-story { font-size: 15px; color: #e8e8e8; margin-top: 16px; line-height: 1.5; max-width: 640px; }
-  #start-btn { pointer-events: auto; margin-top: 22px; font-size: 19px; font-weight: bold; letter-spacing: 4px; color: #fff; background: linear-gradient(90deg, #e84a5f, #ff7a3d); border: none; border-radius: 10px; padding: 15px 46px; cursor: pointer; box-shadow: 0 6px 24px rgba(232,74,95,0.5); }
-  #start-btn:hover { filter: brightness(1.12); }
-  .t-controls { font-size: 13px; color: #c8d6e0; margin-top: 18px; line-height: 1.7; }
-  .t-stats { font-size: 12px; color: #9fb3c8; margin-top: 10px; letter-spacing: 1px; }
-  /* Map screen */
-  #map-screen { position: fixed; inset: 0; z-index: 10; display: none; flex-direction: column; background: rgba(6, 12, 20, 0.94); padding: 18px 26px; }
-  .map-tabs { display: flex; gap: 22px; align-items: baseline; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 10px; }
-  .map-tabs .brand { font-size: 26px; font-weight: bold; color: #ffd23d; letter-spacing: 2px; }
-  .map-tabs span { font-size: 14px; font-weight: bold; color: #9fb3c8; letter-spacing: 1px; }
-  .map-tabs span.on { color: #fff; background: #c9402e; border-radius: 5px; padding: 3px 10px; }
-  .map-tabs .m-cash { margin-left: auto; font-size: 22px; color: #7dff9a; font-weight: bold; }
-  .map-body { display: flex; gap: 18px; margin-top: 14px; flex: 1; min-height: 0; }
-  .map-side { width: 230px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-  .map-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; }
-  .map-card h3 { font-size: 13px; color: #ffd23d; letter-spacing: 1px; margin-bottom: 8px; }
-  .map-card .big { font-size: 30px; font-weight: bold; }
-  .map-card .row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: #d8e2ea; }
-  .map-card .row b { color: #fff; }
-  #map-canvas { border-radius: 10px; border: 2px solid #f5c518; background: #0d1822; }
-  .save-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.08); }
-  .save-row button { pointer-events: auto; background: #ffd23d; color: #111; border: none; border-radius: 5px; padding: 4px 12px; font-weight: bold; cursor: pointer; }
-  .map-foot { font-size: 12px; color: #9fb3c8; margin-top: 10px; }
-  #playtest-results { position: fixed; left: -9999px; top: 0; }
-</style>
+<title>VERANO BAY — Open-World Crime Game</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="game-holder"></div>
+<div id="game-root"></div>
 
+<!-- ============ HUD ============ -->
 <div id="hud">
-  <div id="hud-mission" class="panel"></div>
-  <div id="hud-dispatch" class="panel"></div>
-  <div id="hud-left-bottom">
-    <canvas id="minimap" width="150" height="150"></canvas>
-    <div id="district"></div>
-    <div class="hbar-label"><span>HEALTH</span><span>ARMOUR</span></div>
-    <div class="hbar"><div id="health-bar" style="width:88%"></div></div>
-    <div class="hbar"><div id="armor-bar" style="width:64%"></div></div>
-    <div class="hbar"><div id="rep-bar" style="width:76%"></div></div>
-    <div id="rep-text"></div>
+  <div id="mission-panel" class="panel"></div>
+  <div id="dispatch-panel" class="panel"></div>
+
+  <div id="top-right">
+    <div id="money-block" class="panel">
+      <div id="clock">FRI 17:58</div>
+      <div id="money">$31,240</div>
+      <div id="stars"></div>
+      <div id="in-sight">IN SIGHT · AIR-1</div>
+    </div>
+    <div id="weapon-slots"></div>
+    <div id="crew-cards"></div>
   </div>
-  <div id="hud-money" class="panel"></div>
-  <div id="hud-weapons"></div>
-  <div id="hud-crew"></div>
-  <div id="hud-dialog"></div>
-  <div id="hud-speed">
-    <div><span id="speed-num">0</span> <span id="speed-unit">KM/H</span></div>
-    <div id="speed-car">AURORA GT</div>
-    <div class="cond-row"><span>CONDITION</span><div class="bar"><div id="cond-fill" style="width:81%"></div></div><span id="cond-num">81%</span></div>
-    <div id="radio-line">♪ CORAL FM 99.3 — Golden Static</div>
+
+  <div id="bottom-left">
+    <canvas id="minimap" width="168" height="168"></canvas>
+    <div id="district">MIRAMAR STRAND</div>
+    <div id="street">Solana Avenue</div>
+    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="health-fill" class="fill health"></div></div></div>
+    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="armor-fill" class="fill armor"></div></div></div>
+    <div id="rep-line">REP 5 · WHEELMAN — 1,940 / 2,600 XP</div>
   </div>
-  <div id="hud-cues"></div>
-  <div id="hud-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+
+  <div id="dialog" class="panel">
+    <canvas id="dialog-face" width="56" height="56"></canvas>
+    <div class="d-body">
+      <div id="dialog-name">Nico Ramos <span class="d-role">FIXER · OLD PORT</span></div>
+      <div id="dialog-text"></div>
+    </div>
+  </div>
+
+  <div id="bottom-right">
+    <div id="speed">108</div>
+    <div id="speed-unit">KM/H</div>
+    <div id="car-name">TEMPEST GT</div>
+    <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="car-cond-fill" class="fill cond"></div></div><span id="car-cond">87%</span></div>
+    <div id="radio">♪ SOL FM 101.5 — "Neon Palms" · The Miramar Club</div>
+  </div>
+
+  <div id="popup"></div>
+  <div id="hint">WASD drive / walk&nbsp;&nbsp;·&nbsp;&nbsp;E enter &amp; exit car&nbsp;&nbsp;·&nbsp;&nbsp;SPACE handbrake&nbsp;&nbsp;·&nbsp;&nbsp;SHIFT run&nbsp;&nbsp;·&nbsp;&nbsp;M city map&nbsp;&nbsp;·&nbsp;&nbsp;R radio&nbsp;&nbsp;·&nbsp;&nbsp;F action&nbsp;&nbsp;·&nbsp;&nbsp;N mute</div>
+  <div id="debug"></div>
 </div>
 
+<!-- ============ TITLE SCREEN ============ -->
 <div id="title-screen">
-  <div class="t-kicker">AN OPEN-WORLD CRIME GAME</div>
-  <div class="t-title">CORAL VISTA</div>
-  <div class="t-sub">A GOLDEN HOUR IN PARADISE</div>
-  <div class="t-story">Javi "Jett" Cortez is back in Coral Vista — a sun-soaked coastal city at golden hour.<br>Eight jobs. Four stars of heat. One red AURORA GT. Lose the chopper and drive it home.</div>
-  <button id="start-btn">START ENGINE</button>
-  <div class="t-controls">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run<br>M city map · R radio · F action · Steal any car — the police will notice</div>
-  <div class="t-stats">BEST DRIFT 0 · MISSIONS WON 0 · CASH $0</div>
+  <div class="t-inner">
+    <div class="t-kicker">A VERANO BAY STORY</div>
+    <h1 class="t-title">VERANO<br>BAY</h1>
+    <div class="t-tag">Sun, salt and sirens.</div>
+    <p class="t-blurb">Dario "Daz" Mendoza is back in Verano Bay with one fast car, three loyal
+      crew and the whole VBPD on his tail. Eight jobs stand between him and the
+      King Tide score — if the heat doesn't catch him first.</p>
+    <div class="t-buttons">
+      <button id="btn-start" class="t-btn primary">▶ START ENGINE</button>
+      <button id="btn-continue" class="t-btn">CONTINUE</button>
+    </div>
+    <div class="t-saves">
+      <div class="t-save" id="save-slot-1">SAVE 1 · EMPTY SLOT</div>
+      <div class="t-save">SAVE 2 · EMPTY SLOT</div>
+      <div class="t-save">SAVE 3 · EMPTY SLOT</div>
+    </div>
+    <div class="t-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run ·
+      M map · R radio · F talk/act · N mute · drag mouse to look</div>
+    <div class="t-foot">An original game — its city, characters, vehicles and music are invented
+      for this entry. No Rockstar Games names, art or assets.</div>
+  </div>
 </div>
 
-<div id="map-screen">
-  <div class="map-tabs">
-    <span class="brand">CORAL VISTA</span>
-    <span class="on">MAP</span><span>STORY</span><span>STATS</span><span>CREW</span><span>SETTINGS</span><span>CONTROLS</span><span>SAVE</span>
-    <span class="m-cash" id="map-cash">$24,680</span>
-  </div>
-  <div class="map-body">
-    <div class="map-side">
-      <div class="map-card"><h3>COMPLETION</h3><div class="big" id="map-complete">38%</div>
-        <div class="row"><span>Story missions</span><b id="map-jobs">3/8</b></div>
-        <div class="row"><span>Best drift</span><b id="map-drift">0 pts</b></div>
-        <div class="row"><span>Near misses</span><b id="map-near">0</b></div>
-        <div class="row"><span>Districts explored</span><b>4/6</b></div>
-        <div class="row"><span>Crew recruited</span><b>3/3</b></div>
+<!-- ============ PAUSE / MAP MENU ============ -->
+<div id="pause-menu">
+  <div class="p-inner">
+    <div class="p-left">
+      <h2>VERANO BAY</h2>
+      <div class="p-sub">CITY MAP · FRI 17:58 · COMPLETION 38%</div>
+      <canvas id="pause-map" width="560" height="420"></canvas>
+      <div class="p-legend">★ Garage — Solana Avenue &nbsp;·&nbsp; ● You — Miramar Strand &nbsp;·&nbsp; <span class="gps">— GPS route</span></div>
+    </div>
+    <div class="p-right">
+      <h3>STORY JOBS</h3>
+      <ul class="p-jobs">
+        <li class="done">1 · FIRST LIGHT <span>GOLD</span></li>
+        <li class="done">2 · SALT IN THE WOUND <span>SILVER</span></li>
+        <li class="done">3 · LOW TIDE <span>GOLD</span></li>
+        <li class="done">4 · NIGHT FERRY <span>BRONZE</span></li>
+        <li class="now">5 · THE TIDE RUN <span>IN PROGRESS</span></li>
+        <li>6 · GLASS HOUSE <span>—</span></li>
+        <li>7 · HIGH WATER <span>—</span></li>
+        <li>8 · KING TIDE <span>—</span></li>
+      </ul>
+      <h3>CAREER</h3>
+      <div class="p-stats">
+        <div><span>Cash</span><b>$31,240</b></div>
+        <div><span>Rep</span><b>5 · WHEELMAN</b></div>
+        <div><span>Jobs done</span><b>4 / 8</b></div>
+        <div><span>Cars owned</span><b>3</b></div>
+        <div><span>Near misses</span><b>27</b></div>
+        <div><span>Time in city</span><b>6h 12m</b></div>
       </div>
-      <div class="map-card"><h3>MISSION RATINGS</h3>
-        <div class="row"><span>1 · First Light</span><b>GOLD</b></div>
-        <div class="row"><span>2 · Salt Air</span><b>SILVER</b></div>
-        <div class="row"><span>3 · Paper Trail</span><b>GOLD</b></div>
-        <div class="row"><span>4 · The Long Way Home</span><b>—</b></div>
+      <div class="p-buttons">
+        <button id="btn-resume" class="t-btn primary">RESUME</button>
+        <button id="btn-save" class="t-btn">SAVE GAME</button>
+        <button id="btn-quit" class="t-btn">QUIT TO TITLE</button>
       </div>
     </div>
-    <canvas id="map-canvas" width="640" height="520"></canvas>
-    <div class="map-side">
-      <div class="map-card"><h3 id="map-rank">RANK 4 · RUNNER</h3>
-        <div class="row"><span>Respect</span><b id="map-rep">1,820 RP</b></div>
-        <div class="row"><span>Next rank</span><b>Street Boss</b></div>
-      </div>
-      <div class="map-card"><h3>CAREER</h3>
-        <div class="row"><span>Cars stolen</span><b>17</b></div>
-        <div class="row"><span>Cops escaped</span><b>9</b></div>
-        <div class="row"><span>Highest wanted</span><b>★★★★</b></div>
-        <div class="row"><span>Distance driven</span><b>41.6 km</b></div>
-        <div class="row"><span>Longest jump</span><b>38 m</b></div>
-      </div>
-      <div class="map-card"><h3>SAVE SLOTS</h3><div id="map-saves"></div></div>
-    </div>
   </div>
-  <div class="map-foot">M / ESC resume · Q / E switch tab · click the map to set a waypoint · GPS ROUTE TO THE NEXT CHECKPOINT</div>
 </div>
-
-<div id="playtest-results"></div>
 
 <script src="vendor/three.min.js"></script>
 <script src="src/config.js"></script>
-<script src="src/random.js"></script>
-<script src="src/textures.js"></script>
-<script src="src/world.js"></script>
-<script src="src/cars.js"></script>
-<script src="src/people.js"></script>
-<script src="src/police.js"></script>
-<script src="src/traffic.js"></script>
-<script src="src/missions.js"></script>
+<script src="src/util.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/input.js"></script>
-<script src="src/save.js"></script>
+<script src="src/world.js"></script>
+<script src="src/vehicles.js"></script>
+<script src="src/police.js"></script>
+<script src="src/peds.js"></script>
+<script src="src/missions.js"></script>
 <script src="src/hud.js"></script>
-<script src="src/render.js"></script>
 <script src="src/shots.js"></script>
-<script src="src/playtest.js"></script>
 <script src="src/main.js"></script>
 </body>
 </html>

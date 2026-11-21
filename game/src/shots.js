@@ -1,101 +1,68 @@
-// Screenshot staging: deterministic setups for ?shot=chase|title|map|marina.
-// The camera snaps immediately (no lerp) so swiftshader's ~1 fps warm-up
-// still lands the frame, and the HUD cues are forced visible for the chase.
-var CV = window.CV || (window.CV = {});
+// Screenshot staging: ?shot=chase|title|map|marina puts the game into a
+// deterministic, photogenic state for each of the four screenshots. The chase
+// shot fixes V17's nits: a BIG close helicopter, ALL FOUR cruisers in frame,
+// a toned-down spotlight pool, and the marina shot shows the crew's FACES
+// under a cloud-rich sky.
 
-CV.shots = (function () {
-  var C = CV.config;
+(function () {
+  'use strict';
 
-  function stageChase(game) {
-    var hero = game.hero;
-    hero.x = C.AVENUE_X; hero.z = -60; hero.heading = 0; hero.speed = 34;
-    hero.drift = 0.6; hero.driftScore = 42;
-    game.heroGroup.position.set(hero.x, 0, hero.z);
-    game.heroGroup.rotation.y = hero.heading;
-    // Police: ALL FOUR ahead of the chase camera (z > -55 at stage time),
-    // spread across the road — their light bars + red/blue glow must show.
-    var slots = [
-      { x: 84, z: -46, h: 0 }, { x: 96, z: -40, h: 0 },
-      { x: 86, z: -30, h: 0 }, { x: 82, z: -50, h: 0 },
-    ];
-    CV.police.units.forEach(function (u, i) {
-      if (!slots[i]) return;
-      u.state.x = slots[i].x; u.state.z = slots[i].z;
-      u.state.heading = slots[i].h; u.state.speed = 25;
-      u.group.position.set(slots[i].x, 0, slots[i].z);
-      u.group.rotation.y = slots[i].h;
-    });
-    // Clear avenue traffic out of the hero's immediate path — a truck parked
-    // on the hero's nose ruined the first chase shot. Spread the cars along
-    // the avenue ahead and behind instead, so the street still reads alive.
-    var spread = [-8, -33, -84, -110, -140];
-    var si = 0;
-    CV.traffic.cars.forEach(function (c) {
-      if (Math.abs(c.x - C.AVENUE_X) < 10 && c.z > -140 && c.z < 10) {
-        c.z = spread[si % spread.length];
-        si++;
-        c.g.position.set(c.x, 0, c.z);
+  const Shots = {
+    // GPS route: hero -> garage on Solana Avenue (for minimap + pause map).
+    route: [
+      { x: 6, z: 14 }, { x: 4, z: -30 }, { x: 4, z: -80 },
+      { x: -24, z: -96 }, { x: -52, z: -96 }, { x: -64, z: -70 },
+    ],
+    active: '',
+    staged: false,
+
+    stage(shot, ctx) {
+      this.active = shot;
+      this.staged = !!shot;
+      const C = VB.CONFIG;
+      const M = VB.missions.state;
+      M.started = true;
+      if (shot === 'chase') {
+        // Hero + 4 cruisers + big heli exactly as staged in config.
+        const h = VB.cars.hero;
+        h.position.set(C.chase.heroPos.x, 0, C.chase.heroPos.z);
+        h.rotation.y = C.chase.heroRot;
+        VB.cars.heroState.speed = 30; // 108 km/h on the dial
+        VB.cars.heroState.heading = C.chase.heroRot;
+        C.chase.cruisers.forEach((c, i) => {
+          VB.cars.cruisers[i].position.set(c.x, 0, c.z);
+          VB.cars.cruisers[i].rotation.y = c.rot;
+        });
+        VB.police.heli.position.set(C.chase.heliPos.x, C.chase.heliPos.y, C.chase.heliPos.z);
+        VB.police.heli.scale.setScalar(C.chase.heliScale);
+        ctx.camera.position.set(C.chase.camPos.x, C.chase.camPos.y, C.chase.camPos.z);
+        ctx.camera.lookAt(C.chase.camLook.x, C.chase.camLook.y, C.chase.camLook.z);
+        VB.hud.setPopup('DRIFT x3', 'NEAR MISS +$250');
+        VB.hud.showTitle(false);
+      } else if (shot === 'title') {
+        M.started = false;
+        VB.hud.showTitle(true);
+        ctx.camera.position.set(24, 7, 46);
+        ctx.camera.lookAt(0, 3, -10);
+        document.body.classList.add('on-title');
+      } else if (shot === 'map') {
+        VB.hud.showPause(true);
+        ctx.camera.position.set(24, 7, 46);
+        ctx.camera.lookAt(0, 3, -10);
+      } else if (shot === 'marina') {
+        VB.peds.buildMarinaCrew(ctx.scene);
+        // Camera on the quay, looking at the crew's FACES with the ocean,
+        // boats and cloud-rich sunset sky behind them.
+        ctx.camera.position.set(0, 3.4, -156);
+        ctx.camera.lookAt(0, 2.2, -172);
+        VB.hud.setPopup('', '');
+        document.body.classList.add('on-marina');
+        VB.hud.setDialog('crew0');
+        VB.missions.dialog.idx = 2;
+        VB.hud.setDialog('crew0');
       }
-    });
-    // Helicopter ahead-above, spotlight on the hero.
-    game.heliPos = { x: hero.x + 10, z: hero.z + 24 };
-    // Motion cues visible, like the top-10 covers.
-    CV.hud.showCue('DRIFT x3', 'NEAR MISS +$250');
-    CV.hud.hideTitle();
-    CV.hud.hideMap();
-    game.mode = 'drive';
-    CV.render.update(game.scene, hero, 'drive', 0.016, 0, true);
-  }
+    },
+  };
 
-  function stageTitle(game) {
-    var hero = game.hero;
-    hero.x = C.AVENUE_X + 2; hero.z = -40; hero.heading = 0.35; hero.speed = 0;
-    game.heroGroup.position.set(hero.x, 0, hero.z);
-    game.heroGroup.rotation.y = hero.heading;
-    // Police parked far down the avenue so the title stays clean.
-    CV.police.units.forEach(function (u, i) {
-      u.state.x = C.AVENUE_X + (i % 2 ? 4 : -4);
-      u.state.z = -120 - i * 12;
-      u.state.speed = 0;
-      u.group.position.set(u.state.x, 0, u.state.z);
-    });
-    CV.hud.showTitle();
-    CV.hud.hideMap();
-    game.mode = 'title';
-    CV.render.update(game.scene, hero, 'title', 0.016, 8, true);
-  }
-
-  function stageMap(game) {
-    stageChase(game);
-    CV.hud.showMap(game.hero, CV.missions.state.checkpoint);
-    game.mode = 'map';
-  }
-
-  function stageMarina(game) {
-    // On foot at the marina: Javi centre-front, 3 crew behind him in a row,
-    // boats broadside behind them.
-    game.mode = 'marina';
-    game.foot.x = 79; game.foot.z = 171; game.foot.heading = Math.PI;
-    if (game.javi) {
-      game.javi.position.set(79, 0, 171);
-      game.javi.rotation.y = Math.PI;
-      game.javi.visible = true;
-    }
-    game.heroGroup.visible = false;
-    CV.hud.hideTitle();
-    CV.hud.hideMap();
-    CV.hud.showCue('', '');
-    CV.render.update(game.scene, game.foot, 'marina', 0.016, 0, true);
-  }
-
-  function stage(shot, game) {
-    game.heroGroup.visible = true;
-    if (game.javi) game.javi.visible = false;
-    if (shot === 'title') stageTitle(game);
-    else if (shot === 'map') stageMap(game);
-    else if (shot === 'marina') stageMarina(game);
-    else stageChase(game);
-  }
-
-  return { stage: stage };
+  VB.shots = Shots;
 })();

@@ -1,114 +1,92 @@
-// CORAL VISTA — game data: every name, character, street, shop, mission and
-// line of dialogue is original to this game.
-var CV = window.CV || (window.CV = {});
+// VERANO BAY — open-world crime game (gta6-01 V18).
+// Config: every name, colour and tuning number the game uses. All names are
+// original inventions for this entry: no Rockstar or commercial-game names.
 
-CV.config = (function () {
-  var C = {};
+window.VB = window.VB || {};
 
-  // ---- World layout (metres). Coral Avenue runs north-south at x = 90,
-  // beach to its east, the city grid to its west, the marina south-east.
-  C.AVENUE_X = 90;
-  C.ROAD_W = 16;
-  C.BLOCK = 40;
-  C.CITY = { x0: -160, x1: 100, z0: -200, z1: 160 };
-  C.BEACH = { x0: 112, x1: 160, z0: -200, z1: 200 };
-  C.OCEAN_X = 160;
-  C.MARINA = { x0: 40, x1: 140, z0: 160, z1: 230 };
+VB.CONFIG = {
+  city: 'VERANO BAY',
+  tagline: 'Sun, salt and sirens.',
+  hero: { name: 'Dario Mendoza', nick: 'Daz', callsign: 'DAZ' },
+  fixer: { name: 'Nico Ramos', nick: 'Nickel', role: 'FIXER', district: 'OLD PORT' },
+  crew: [
+    { name: 'Sofia Delgado', nick: 'Sof', role: 'DRIVER', key: 'Z', skill: 'SWAP PLATES' },
+    { name: 'Marcus Cole', nick: 'Marsh', role: 'MECHANIC', key: 'X', skill: 'QUICK FIX' },
+    { name: 'Nadia Kim', nick: 'Nova', role: 'LOOKOUT', key: 'C', skill: 'EYES OUT' },
+  ],
+  police: { dept: 'VBPD', full: 'Verano Bay Police Department' },
+  units: [
+    { id: 'KITE-2', tactic: 'RAMMING', dist: 9 },
+    { id: 'SURF-7', tactic: 'RAMMING', dist: 14 },
+    { id: 'TIDE-9', tactic: 'FLANKING', dist: 24 },
+    { id: 'GULL-3', tactic: 'PURSUE', dist: 6 },
+    { id: 'AIR-1', tactic: 'SPOTLIGHT', dist: 41 },
+    { id: 'REEF-5', tactic: 'ROADBLOCK', dist: 92 },
+  ],
+  mission: {
+    job: 'JOB 5/8',
+    title: 'THE TIDE RUN',
+    objective: 'Lose the heat, then bring the car to the garage on Solana Avenue.',
+    stage: 3, stages: 4, timer: 151, next: 'Reach the garage on Solana Avenue',
+  },
+  jobs: [
+    { n: 1, name: 'FIRST LIGHT', done: true, rating: 'GOLD' },
+    { n: 2, name: 'SALT IN THE WOUND', done: true, rating: 'SILVER' },
+    { n: 3, name: 'LOW TIDE', done: true, rating: 'GOLD' },
+    { n: 4, name: 'NIGHT FERRY', done: true, rating: 'BRONZE' },
+    { n: 5, name: 'THE TIDE RUN', done: false, rating: '—' },
+    { n: 6, name: 'GLASS HOUSE', done: false, rating: '—' },
+    { n: 7, name: 'HIGH WATER', done: false, rating: '—' },
+    { n: 8, name: 'KING TIDE', done: false, rating: '—' },
+  ],
+  car: { name: 'TEMPEST GT', color: 0x18b7d8, condition: 87 },
+  radio: { station: 'SOL FM 101.5', song: 'Neon Palms', artist: 'The Miramar Club' },
+  radios: [
+    { station: 'SOL FM 101.5', song: 'Neon Palms', artist: 'The Miramar Club' },
+    { station: 'LAGUNA 96.2', song: 'Salt Air', artist: 'Marina Vale' },
+    { station: 'PALMA 88.4', song: 'Night Ferry', artist: 'DJ Corriente' },
+  ],
+  weapons: [
+    { n: 1, name: 'FISTS', ammo: '∞', icon: 'fist', locked: false },
+    { n: 2, name: 'P9', ammo: '84', icon: 'pistol', locked: false },
+    { n: 3, name: 'VIPER SMG', ammo: '120', icon: 'smg', locked: false, active: true },
+    { n: 4, name: '12G SHOTGUN', ammo: '18', icon: 'shotgun', locked: false },
+    { n: 5, name: 'AR-9', ammo: 'LOCKED', icon: 'rifle', locked: true },
+    { n: 6, name: 'RPG', ammo: 'LOCKED', icon: 'rpg', locked: true },
+  ],
+  player: { money: 31240, wanted: 4, health: 78, armor: 64, rep: 5, repName: 'WHEELMAN', repXp: 1940, repMax: 2600 },
+  districts: [
+    { name: 'MIRAMAR STRAND', x: -90, z: -60, w: 120, h: 90 },
+    { name: 'MARINA DEL SOL', x: 30, z: -70, w: 110, h: 80 },
+    { name: 'OLD PORT', x: -100, z: 30, w: 100, h: 80 },
+    { name: 'CASINO ROW', x: 10, z: 20, w: 90, h: 70 },
+    { name: 'SUNSET HEIGHTS', x: -80, z: 110, w: 110, h: 70 },
+    { name: 'PALM DISTRICT', x: 40, z: 100, w: 100, h: 70 },
+  ],
+  streets: ['Solana Avenue', 'Verano Boulevard', 'Calle del Mar', 'Harbor Way', 'Palma Street', 'Corriente Road'],
+  shops: ['MANGO & RYE', 'CASINO AZUL', 'BOLT BURGER', 'TACO MAREA', 'SURF & SOUND', 'LA LUNA BAR', 'PIER 9 DINER', 'NEON MART'],
+  sky: { top: 0x2b3a6e, mid: 0xd95f43, low: 0xffb35c, sun: 0xffd27a },
+  fog: 0xd98a5f,
+  // Chase-shot staging: camera + hero + cruisers + heli, tuned so all four
+  // cruisers and a BIG helicopter sit inside the frame.
+  chase: {
+    heroPos: { x: 6, z: 14 },
+    heroRot: -0.12,
+    camPos: { x: 13.5, y: 5.2, z: 30 },
+    camLook: { x: 0, y: 2.2, z: -6 },
+    cruisers: [
+      { x: -4, z: -14, rot: 0.08 },   // ahead-left, in frame
+      { x: 10, z: -20, rot: -0.06 },  // ahead-right, in frame
+      { x: -9, z: 4, rot: 0.15 },     // alongside-left, in frame
+      { x: 16, z: 2, rot: -0.10 },    // alongside-right, in frame
+    ],
+    heliPos: { x: -14, y: 26, z: -34 },
+    heliScale: 1.9,
+  },
+};
 
-  C.DISTRICTS = [
-    { name: 'PALM COURT', sub: 'Coral Avenue', x0: 40, x1: 112, z0: -200, z1: -40, color: '#e8a33d' },
-    { name: 'JACARANDA HEIGHTS', sub: 'Heights Row', x0: -160, x1: 40, z0: -200, z1: -80, color: '#b07fd4' },
-    { name: 'THE BOARDWALK', sub: 'Pier 9', x0: 40, x1: 160, z0: -40, z1: 60, color: '#3db7c9' },
-    { name: 'OLD HARBOR', sub: 'Cannery Lane', x0: -160, x1: 40, z0: -80, z1: 40, color: '#d46a5a' },
-    { name: 'MARINA DEL SOL', sub: 'Sunset Quay', x0: 40, x1: 160, z0: 60, z1: 230, color: '#e8c33d' },
-    { name: 'CROWN POINT', sub: 'Summit Drive', x0: -160, x1: 40, z0: 40, z1: 160, color: '#7fb069' },
-  ];
-
-  C.LANDMARKS = [
-    { name: 'Pier 9 Ferris Wheel', x: 128, z: 10 },
-    { name: 'Coral Vista Sign', x: 96, z: -120 },
-    { name: 'Sunset Quay', x: 90, z: 185 },
-    { name: 'Jacaranda Tower', x: -60, z: -140 },
-    { name: 'The Boardwalk', x: 120, z: -10 },
-    { name: 'Old Cannery', x: -100, z: -20 },
-  ];
-
-  C.SHOPS = [
-    { name: 'TACO DEL MAR', x: 78, z: -120, bg: '#c9402e', fg: '#ffe9a8' },
-    { name: 'NEON PALMS DINER', x: 78, z: -60, bg: '#1f6f8b', fg: '#ffffff' },
-    { name: 'SURF & SOUND', x: 78, z: 0, bg: '#e07b39', fg: '#1a1a2e' },
-    { name: 'LA BRISA CAFE', x: 78, z: 60, bg: '#3d8b4f', fg: '#fff3c4' },
-    { name: 'GOLDEN HOUR HOTEL', x: 78, z: 110, bg: '#8b3d7a', fg: '#ffe9a8' },
-    { name: 'PIER 9 ARCADE', x: 104, z: -20, bg: '#2743a8', fg: '#ffd23d' },
-  ];
-
-  C.BILLBOARDS = [
-    { text: 'CORAL FM 99.3', sub: 'GOLDEN STATIC ALL DAY', x: 104, z: -150 },
-    { text: 'VISIT PIER 9', sub: 'RIDES · ARCADE · TACOS', x: 104, z: 40 },
-  ];
-
-  // ---- Story: 8 jobs. The player is Javi "Jett" Cortez.
-  C.PLAYER = { name: 'Javi "Jett" Cortez', cash: 24680, wanted: 4, health: 88, armor: 64, rep: 1820, repMax: 2400, repRank: 'RUNNER', repLevel: 4 };
-
-  C.JOBS = [
-    { title: 'FIRST LIGHT', brief: 'Pick up the Aurora GT from the impound lot.', next: 'Drive to the impound lot' },
-    { title: 'SALT AIR', brief: 'Shake the tail and meet Maya at Pier 9.', next: 'Meet Maya at Pier 9' },
-    { title: 'PAPER TRAIL', brief: 'Grab the ledger from the Old Cannery office.', next: 'Reach the Old Cannery' },
-    { title: 'THE LONG WAY HOME', brief: 'Lose the heat, then bring the car to the garage on Palm Court.', next: 'Reach the garage on Palm Court' },
-    { title: 'TIDE RUNNER', brief: 'Outrun the roadblock on the causeway.', next: 'Break through the roadblock' },
-    { title: 'NIGHT MARKET', brief: 'Drop the package at the night market.', next: 'Reach the night market' },
-    { title: 'HIGH WATER', brief: 'Get Tomas out of the marina before the raid.', next: 'Reach Sunset Quay' },
-    { title: 'GOLDEN HOUR', brief: 'One last run. Lose every unit and vanish.', next: 'Vanish' },
-  ];
-  C.JOB_INDEX = 3; // current job: THE LONG WAY HOME
-  C.JOB_STAGES = 4;
-  C.JOB_STAGE = 3;
-
-  C.CHECKPOINTS = [
-    { x: 90, z: -20, label: 'CP 1 · Palm Court' },
-    { x: 90, z: 60, label: 'CP 2 · The Boardwalk' },
-    { x: 20, z: 60, label: 'CP 3 · Old Harbor' },
-    { x: 20, z: -60, label: 'CP 4 · Jacaranda' },
-    { x: 90, z: -60, label: 'CP 5 · Coral Avenue' },
-    { x: 90, z: -140, label: 'GARAGE · Palm Court' },
-  ];
-
-  // ---- Crew (drawn portraits in hud.js).
-  C.CREW = [
-    { name: 'Maya "Mox" Delgado', role: 'DRIVER', ability: 'SWAP PLATES', key: 'Z', skin: '#c68642', hair: '#1a1a1a', hairStyle: 'bob', shirt: '#2e86ab' },
-    { name: 'Tomas "Wrench" Okafor', role: 'MECHANIC', ability: 'QUICK FIX', key: 'X', skin: '#5c3a21', hair: '#0d0d0d', hairStyle: 'buzz', shirt: '#e07b39' },
-    { name: 'Ivy "Scope" Tanaka', role: 'LOOKOUT', ability: 'EYES OUT', key: 'C', skin: '#e8b88a', hair: '#3d2314', hairStyle: 'ponytail', shirt: '#7b4ba8' },
-  ];
-  C.FIXER = { name: 'Uncle Ray Delacroix', role: 'FIXER · MARINA DEL SOL', skin: '#8d5524', hair: '#d9d9d9', hairStyle: 'bald', shirt: '#3d8b4f', line: 'Four stars and a chopper, Jett — lose the blue lights or lose the car. Your call, make it fast.' };
-
-  // ---- CVPD dispatch: 6 units, live distances, tactics.
-  C.DISPATCH = [
-    { call: 'FALCON-2', tactic: 'RAMMING', dist: 8 },
-    { call: 'SURF-9', tactic: 'RAMMING', dist: 14 },
-    { call: 'GULL-7', tactic: 'PURSUE', dist: 19 },
-    { call: 'TIDE-4', tactic: 'FLANKING', dist: 26 },
-    { call: 'AIR-3', tactic: 'SPOTLIGHT', dist: 42 },
-    { call: 'REEF-11', tactic: 'ROADBLOCK', dist: 87 },
-  ];
-
-  // ---- Weapons: 6 slots, two locked.
-  C.WEAPONS = [
-    { name: 'FISTS', ammo: '∞', locked: false },
-    { name: 'P9', ammo: '84', locked: false },
-    { name: 'VIPER SMG', ammo: '120', locked: false },
-    { name: '12G SHOTGUN', ammo: '18', locked: false },
-    { name: 'AR-9', ammo: '—', locked: true },
-    { name: 'RPG', ammo: '—', locked: true },
-  ];
-
-  C.CAR = { name: 'AURORA GT', condition: 81, gear: 5, topSpeed: 178 };
-  C.RADIO = { station: 'CORAL FM 99.3', song: 'Golden Static — The Palmettos' };
-  C.DAY = { label: 'FRI', time: '17:58' };
-
-  // ---- Look: golden hour, clear air (thin fog only, no whiteout).
-  C.SKY = { top: '#2f6fd0', mid: '#e8853d', low: '#ffc46b', horizon: '#ffb35c' };
-  C.SUN = { color: '#ffd9a0', intensity: 2.0, pos: [-60, 90, -120] };
-  C.FOG = { color: '#f7b267', near: 220, far: 620 };
-
-  return C;
-})();
+// URL params: ?shot=chase|title|map|marina stages a screenshot scene;
+// ?debug=1 shows the debug readout. No param = free play from the title screen.
+VB.params = new URLSearchParams(location.search);
+VB.shot = VB.params.get('shot') || '';
+VB.debug = VB.params.get('debug') === '1';

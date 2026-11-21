@@ -1,82 +1,81 @@
-// Story missions: 8 jobs, stage progress, timers, GPS checkpoints, rewards.
-var CV = window.CV || (window.CV = {});
+// Missions, story and dialog. The current job, its stages, the fixer's lines
+// and the crew call-outs. Saving/loading progress via localStorage.
 
-CV.missions = (function () {
-  var C = CV.config;
-  var state = {
-    jobIndex: C.JOB_INDEX,
-    stage: C.JOB_STAGE,
-    stages: C.JOB_STAGES,
-    timer: 167, // 2:47
-    checkpoint: 0,
-    cash: C.PLAYER.cash,
-    rep: C.PLAYER.rep,
-    jobsDone: 3,
-    bestDrift: 0,
-    nearMiss: 0,
-    driftStreak: 0,
+(function () {
+  'use strict';
+
+  const Dialog = {
+    lines: [
+      { who: 'fixer', text: 'Four stars and a chopper, Daz — lose the blue lights or lose the car. Your call, make it fast.' },
+      { who: 'fixer', text: 'The garage on Solana is open till nine. After that, the car is evidence.' },
+      { who: 'crew0', text: 'Plates are hot. Say the word and I swap them at the next light.' },
+      { who: 'crew2', text: 'Air-1 is right over us. Get under the bridge and they lose the light.' },
+    ],
+    idx: 0,
+    current() { return this.lines[this.idx % this.lines.length]; },
+    next() { this.idx++; return this.current(); },
   };
 
-  function currentJob() { return C.JOBS[state.jobIndex]; }
-  function checkpoint() { return C.CHECKPOINTS[state.checkpoint]; }
+  const Missions = {
+    state: {
+      jobIndex: 4, // 0-based: JOB 5/8
+      stage: 3, stages: 4,
+      timer: VB.CONFIG.mission.timer,
+      wanted: VB.CONFIG.player.wanted,
+      money: VB.CONFIG.player.money,
+      health: VB.CONFIG.player.health,
+      armor: VB.CONFIG.player.armor,
+      rep: VB.CONFIG.player.rep,
+      repXp: VB.CONFIG.player.repXp,
+      drift: 3, nearMiss: 250,
+      paused: false, started: false,
+    },
 
-  function distanceToCheckpoint(hero) {
-    var cp = checkpoint();
-    if (!cp) return 0;
-    return Math.sqrt((cp.x - hero.x) * (cp.x - hero.x) + (cp.z - hero.z) * (cp.z - hero.z));
-  }
+    dialog: Dialog,
 
-  function update(dt, hero, drifting) {
-    if (state.timer > 0) state.timer -= dt;
-    if (drifting) {
-      state.driftStreak += dt;
-      if (state.driftStreak > 1.2) {
-        state.bestDrift = Math.max(state.bestDrift, Math.round(state.driftStreak * 14));
+    save() {
+      try {
+        localStorage.setItem('verano-bay-save', JSON.stringify({
+          jobIndex: this.state.jobIndex, money: this.state.money,
+          rep: this.state.rep, repXp: this.state.repXp,
+          at: new Date().toISOString(),
+        }));
+        return true;
+      } catch (e) { return false; }
+    },
+
+    load() {
+      try {
+        const raw = localStorage.getItem('verano-bay-save');
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        this.state.jobIndex = s.jobIndex || 0;
+        this.state.money = s.money || VB.CONFIG.player.money;
+        this.state.rep = s.rep || 1;
+        this.state.repXp = s.repXp || 0;
+        return s;
+      } catch (e) { return null; }
+    },
+
+    hasSave() {
+      try { return !!localStorage.getItem('verano-bay-save'); } catch (e) { return false; }
+    },
+
+    // Mission clock ticks only while playing (not on title / paused / staged shots).
+    tick(dt) {
+      if (!this.state.started || this.state.paused) return;
+      this.state.timer = Math.max(0, this.state.timer - dt);
+    },
+
+    addCash(n) { this.state.money += n; },
+    addRep(n) {
+      this.state.repXp += n;
+      if (this.state.repXp >= VB.CONFIG.player.repMax) {
+        this.state.repXp -= VB.CONFIG.player.repMax;
+        this.state.rep = Math.min(10, this.state.rep + 1);
       }
-    } else {
-      state.driftStreak = 0;
-    }
-    // Checkpoint reached?
-    var cp = checkpoint();
-    if (cp) {
-      var d = distanceToCheckpoint(hero);
-      if (d < 7) {
-        state.cash += 250;
-        state.rep = Math.min(C.PLAYER.repMax, state.rep + 40);
-        state.checkpoint++;
-        if (state.checkpoint >= C.CHECKPOINTS.length) {
-          // Job complete: advance to the next job.
-          state.jobsDone++;
-          state.cash += 1200;
-          state.jobIndex = Math.min(C.JOBS.length - 1, state.jobIndex + 1);
-          state.stage = 1;
-          state.checkpoint = 0;
-          state.timer = 240;
-        } else {
-          state.stage = Math.min(state.stages, state.stage + 1);
-        }
-        CV.world.setCheckpoint(state.checkpoint % C.CHECKPOINTS.length);
-        return { checkpoint: true, job: currentJob().title };
-      }
-    }
-    return null;
-  }
-
-  function nearMissBonus() {
-    state.cash += 250;
-    state.nearMiss++;
-    return 250;
-  }
-
-  function timerText() {
-    var t = Math.max(0, Math.ceil(state.timer));
-    var m = Math.floor(t / 60), s = t % 60;
-    return m + ':' + (s < 10 ? '0' : '') + s;
-  }
-
-  return {
-    state: state, currentJob: currentJob, checkpoint: checkpoint,
-    distanceToCheckpoint: distanceToCheckpoint, update: update,
-    nearMissBonus: nearMissBonus, timerText: timerText,
+    },
   };
+
+  VB.missions = Missions;
 })();

@@ -1,196 +1,254 @@
-// CORAL VISTA — boot, game loop, modes (title / drive / on-foot / map),
-// near-miss + drift cues, save hooks, and the debug/playtest hooks.
-var CV = window.CV || (window.CV = {});
+// VERANO BAY — main entrypoint: renderer, scene, game loop, camera modes,
+// state machine (title / playing / paused), on-foot + driving, and the HUD
+// wiring. Classic scripts, no modules, no network: everything is local.
 
 (function () {
-  // Console-error tracking for the playtest.
-  window.__errors = [];
-  window.addEventListener('error', function (e) { window.__errors.push(e.message || 'error'); });
-  var origErr = console.error.bind(console);
-  console.error = function () {
-    window.__errors.push(Array.prototype.slice.call(arguments).join(' '));
-    origErr.apply(console, arguments);
-  };
+  'use strict';
+  const U = VB.util;
 
-  var params = new URLSearchParams(window.location.search);
-  var shot = params.get('shot') || 'chase';
-  var seed = parseInt(params.get('seed') || '1', 10);
+  const Game = {
+    renderer: null, scene: null, camera: null,
+    clock: null, elapsed: 0, frame: 0,
+    heroPed: null, onFoot: false, radioIdx: 0,
+    camYaw: 0, camPitch: 0,
+    ready: false, errors: [],
 
-  var scene = new THREE.Scene();
-  var holder = document.getElementById('game-holder');
-  var view = CV.render.init(scene, holder);
+    init() {
+      window.addEventListener('error', (e) => this.errors.push(String(e.message || e.error)));
 
-  var worldInfo = CV.world.build(scene, seed);
-  var hero = new CV.cars.CarState(CV.config.AVENUE_X, -60, 0);
-  var heroGroup = CV.cars.buildHeroCar();
-  heroGroup.position.set(hero.x, 0, hero.z);
-  scene.add(heroGroup);
+      this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      this.renderer.setSize(innerWidth, innerHeight);
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.05;
+      document.getElementById('game-root').appendChild(this.renderer.domElement);
 
-  CV.police.spawn(scene, { x: hero.x, z: hero.z });
-  CV.traffic.spawn(scene, seed);
-  var peopleInfo = CV.people.spawn(scene, seed);
-  var javi = CV.people.heroOnFoot(scene, 81, 172);
-  javi.visible = false;
-  CV.world.setCheckpoint(0);
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 900);
+      this.camera.position.set(24, 7, 46);
 
-  CV.input.init();
-  CV.hud.init();
+      VB.world.build(this.scene);
+      VB.cars.build(this.scene);
+      VB.police.buildHeli(this.scene);
+      VB.peds.build(this.scene);
 
-  var game = {
-    scene: scene, hero: hero, heroGroup: heroGroup, javi: javi,
-    worldInfo: worldInfo, peopleInfo: peopleInfo, shot: shot,
-    mode: 'drive', frame: 0, foot: { x: 81, z: 172, heading: Math.PI, speed: 0 },
-  };
+      // On-foot hero figure (hidden while driving).
+      this.heroPed = VB.makePerson(0x18b7d8, 0x223044, 0xc98a5a, { hair: 0x1a1a1a, face: true });
+      this.heroPed.visible = false;
+      this.scene.add(this.heroPed);
 
-  window.SB = { game: game };
-  window.__dbg = function () {
-    var cam = view.camera.position;
-    return {
-      shot: shot, mode: game.mode, frame: game.frame,
-      hero: { x: +hero.x.toFixed(1), z: +hero.z.toFixed(1), heading: +hero.heading.toFixed(2), kmh: hero.kmh() },
-      camera: { x: +cam.x.toFixed(1), y: +cam.y.toFixed(1), z: +cam.z.toFixed(1) },
-      heliVisible: CV.police.heliVisibleFrom(view.camera),
-      checkpoint: CV.missions.state.checkpoint,
-      errors: window.__errors.length,
-    };
-  };
+      VB.input.init();
+      VB.hud.build();
+      this.wireUi();
 
-  // Title screen: START button (also Enter) drops into the drive.
-  var startBtn = document.getElementById('start-btn');
-  function startGame() {
-    CV.audio.ensure();
-    CV.audio.sting();
-    CV.hud.hideTitle();
-    game.mode = 'drive';
-  }
-  if (startBtn) startBtn.addEventListener('click', startGame);
+      // Save slot buttons + title buttons.
+      const save = VB.missions.load();
+      if (save) {
+        const slot = document.getElementById('save-slot-1');
+        if (slot) slot.textContent = 'SAVE 1 · JOB ' + (save.jobIndex + 1) + '/8 · ' + U.fmtMoney(save.money);
+      }
 
-  // Map-screen save buttons (event delegation).
-  var savesEl = document.getElementById('map-saves');
-  if (savesEl) savesEl.addEventListener('click', function (e) {
-    var slot = e.target.getAttribute && e.target.getAttribute('data-slot');
-    if (slot) {
-      CV.save.saveSlot(parseInt(slot, 10), {
-        cash: CV.missions.state.cash, jobsDone: CV.missions.state.jobsDone,
-        bestDrift: CV.missions.state.bestDrift, rep: CV.missions.state.rep,
-        jobIndex: CV.missions.state.jobIndex, x: hero.x, z: hero.z,
+      if (VB.shot) {
+        VB.shots.stage(VB.shot, this);
+      } else {
+        VB.hud.showTitle(true);
+        document.body.classList.add('on-title');
+      }
+
+      this.clock = new THREE.Clock();
+      this.ready = true;
+      this.loop();
+      window.addEventListener('resize', () => this.onResize());
+    },
+
+    wireUi() {
+      const start = () => {
+        if (VB.missions.state.started) return;
+        VB.audio.init();
+        VB.audio.startEngine();
+        VB.audio.startSiren();
+        VB.missions.state.started = true;
+        VB.hud.showTitle(false);
+        document.body.classList.remove('on-title');
+        VB.audio.blip(660, 0.15);
+      };
+      document.getElementById('btn-start').addEventListener('click', start);
+      document.getElementById('btn-continue').addEventListener('click', start);
+      document.getElementById('btn-resume').addEventListener('click', () => this.togglePause(false));
+      document.getElementById('btn-save').addEventListener('click', () => {
+        if (VB.missions.save()) {
+          VB.hud.setPopup('GAME SAVED', 'Progress stored in this browser');
+          VB.audio.blip(880, 0.2);
+        }
       });
-      CV.audio.sting();
-    }
-  });
+      document.getElementById('btn-quit').addEventListener('click', () => {
+        this.togglePause(false);
+        VB.missions.state.started = false;
+        VB.hud.showTitle(true);
+        document.body.classList.add('on-title');
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter' && !VB.missions.state.started) start();
+      });
+      // Radio + mute + dialog advance.
+      document.getElementById('radio').addEventListener('click', () => this.cycleRadio());
+    },
 
-  // Stage the requested shot, then run the playtest (it re-stages after).
-  CV.shots.stage(shot, game);
-  if (shot === 'title') game.mode = 'title';
-  else if (shot === 'marina') game.mode = 'marina';
-  else if (shot === 'map') game.mode = 'map';
-  else game.mode = 'drive';
-  setTimeout(function () { CV.playtest.run(game); }, 1200);
+    cycleRadio() {
+      this.radioIdx = (this.radioIdx + 1) % VB.CONFIG.radios.length;
+      const r = VB.CONFIG.radios[this.radioIdx];
+      document.getElementById('radio').innerHTML =
+        '♪ ' + r.station + ' — "' + r.song + '" · ' + r.artist;
+      VB.audio.blip(520, 0.1);
+    },
 
-  var clock = new THREE.Clock();
-  var nearMissCooldown = 0;
-  var driftCueCooldown = 0;
-  var lastTime = performance.now();
+    togglePause(force) {
+      const M = VB.missions.state;
+      const want = typeof force === 'boolean' ? force : !M.paused;
+      if (!M.started) return;
+      M.paused = want;
+      VB.hud.showPause(want);
+      if (want) VB.audio.blip(440, 0.12);
+    },
 
-  function loop() {
-    requestAnimationFrame(loop);
-    // dt clamp [0.001, 0.05]: a negative first-frame dt once threw the
-    // chase camera hundreds of metres (V16 bug) — never again.
-    var now = performance.now();
-    var dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
-    lastTime = now;
-    var t = now / 1000;
-    game.frame++;
+    onResize() {
+      this.camera.aspect = innerWidth / innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(innerWidth, innerHeight);
+    },
 
-    // Actions.
-    var action = CV.input.consumeAction();
-    if (action === 'start' && game.mode === 'title') startGame();
-    if (action === 'map') {
-      if (CV.hud.mapVisible()) { CV.hud.hideMap(); game.mode = 'drive'; }
-      else if (game.mode === 'drive' || game.mode === 'onfoot') {
-        CV.hud.showMap(hero, CV.missions.state.checkpoint);
-        game.mode = 'map';
+    // Chase camera: behind + above the hero, eased; mouse drag orbits.
+    updateCamera(dt) {
+      if (VB.shots.staged && VB.shot !== 'title') return; // staged shots hold the frame
+      const hero = VB.cars.hero;
+      const target = this.onFoot ? this.heroPed : hero;
+      if (!VB.missions.state.started) {
+        // Title orbit: slow cinematic sweep over the avenue.
+        const a = this.elapsed * 0.05;
+        this.camera.position.set(Math.sin(a) * 34, 8 + Math.sin(a * 0.7) * 2, Math.cos(a) * 34);
+        this.camera.lookAt(0, 3, -6);
+        return;
       }
-    }
-    if (action === 'radio') { CV.audio.ensure(); CV.audio.sting(); }
-    if (action === 'mute') CV.audio.toggleMute();
-    if (action === 'action' && game.mode === 'drive') {
-      // Exit the car: on foot next to it.
-      game.mode = 'onfoot';
-      game.foot.x = hero.x + 3; game.foot.z = hero.z;
-      game.foot.heading = hero.heading;
-      javi.position.set(game.foot.x, 0, game.foot.z);
-      javi.visible = true;
-    } else if (action === 'action' && game.mode === 'onfoot') {
-      var dx = hero.x - game.foot.x, dz = hero.z - game.foot.z;
-      if (dx * dx + dz * dz < 36) {
-        game.mode = 'drive';
-        javi.visible = false;
-      }
-    }
-    if (action === 'escape' && CV.hud.mapVisible()) { CV.hud.hideMap(); game.mode = 'drive'; }
-    CV.input.clearPressed();
+      const heading = this.onFoot ? this.heroPed.rotation.y : VB.cars.heroState.heading;
+      const yaw = heading + this.camYaw + (VB.input.dragX * 0.003);
+      const dist = this.onFoot ? 7 : 11.5;
+      const height = this.onFoot ? 3.4 : 4.8;
+      const bx = target.position.x + Math.sin(yaw) * dist;
+      const bz = target.position.z + Math.cos(yaw) * dist;
+      this.camera.position.x = U.damp(this.camera.position.x, bx, 6, dt);
+      this.camera.position.y = U.damp(this.camera.position.y, height, 6, dt);
+      this.camera.position.z = U.damp(this.camera.position.z, bz, 6, dt);
+      this.camera.lookAt(target.position.x, target.position.y + 2, target.position.z - 4);
+    },
 
-    if (game.mode === 'drive') {
-      var res = hero.update(dt, CV.input.state, CV.config.CAR.topSpeed / 3.6);
-      var p = CV.world.collide(hero.x, hero.z, 1.5);
-      hero.x = p.x; hero.z = p.z;
-      heroGroup.position.set(hero.x, 0, hero.z);
-      heroGroup.rotation.y = hero.heading;
-      heroGroup.rotation.z = -hero.steer * hero.drift * 0.22;
-      heroGroup.userData.wheels.forEach(function (w) { w.rotation.x += hero.speed * dt * 2.6; });
-      // Drift cue.
-      if (res.drifting && driftCueCooldown <= 0) {
-        CV.hud.showCue('DRIFT x3', 'NEAR MISS +$250');
-        driftCueCooldown = 5;
+    updateOnFoot(dt) {
+      const input = VB.input;
+      const sp = input.down('ShiftLeft') || input.down('ShiftRight') ? 9 : 4.5;
+      const f = input.throttle(), s = input.steer();
+      if (f || s) {
+        const yaw = Math.atan2(-s, -f) + this.camera.rotation.y;
+        this.heroPed.rotation.y = yaw;
+        this.heroPed.position.x += -Math.sin(yaw) * sp * dt * (f < 0 ? -0.6 : 1);
+        this.heroPed.position.z += -Math.cos(yaw) * sp * dt * (f < 0 ? -0.6 : 1);
+        this.heroPed.position.y = Math.abs(Math.sin(this.elapsed * 10)) * 0.08;
+      } else {
+        this.heroPed.position.y = 0;
       }
-      // Near miss: traffic car passing close at speed.
-      if (nearMissCooldown <= 0 && Math.abs(hero.speed) > 18) {
-        for (var i = 0; i < CV.traffic.cars.length; i++) {
-          var tc = CV.traffic.cars[i];
-          var tdx = tc.x - hero.x, tdz = tc.z - hero.z;
-          var ahead = Math.sin(hero.heading) * tdx + Math.cos(hero.heading) * tdz;
-          var side = Math.abs(Math.cos(hero.heading) * tdx - Math.sin(hero.heading) * tdz);
-          if (ahead > -2 && ahead < 6 && side > 1.8 && side < 4) {
-            CV.missions.nearMissBonus();
-            CV.hud.showCue('NEAR MISS', '+$250');
-            nearMissCooldown = 6;
-            break;
-          }
+      const b = VB.world.bounds;
+      this.heroPed.position.x = U.clamp(this.heroPed.position.x, b.minX, b.maxX);
+      this.heroPed.position.z = U.clamp(this.heroPed.position.z, b.minZ, b.maxZ);
+    },
+
+    toggleCar() {
+      const M = VB.missions.state;
+      if (!M.started || M.paused) return;
+      if (!this.onFoot) {
+        // Exit: step out beside the car.
+        this.onFoot = true;
+        VB.cars.heroState.inCar = false;
+        VB.cars.heroState.speed = 0;
+        this.heroPed.position.set(
+          VB.cars.hero.position.x + 2.2, 0, VB.cars.hero.position.z + 1
+        );
+        this.heroPed.visible = true;
+        VB.hud.setPopup('ON FOOT', 'Press E near the car to get back in');
+      } else {
+        const d = this.heroPed.position.distanceTo(VB.cars.hero.position);
+        if (d < 5) {
+          this.onFoot = false;
+          VB.cars.heroState.inCar = true;
+          this.heroPed.visible = false;
+          VB.hud.setPopup('TEMPEST GT', 'You are driving');
         }
       }
-      var missionEvent = CV.missions.update(dt, hero, res.drifting);
-      if (missionEvent && missionEvent.checkpoint) CV.audio.sting();
-    } else if (game.mode === 'onfoot') {
-      // Walk Javi with WASD.
-      var mv = { x: 0, z: 0 };
-      var sp = CV.input.state.run ? 7 : 3.6;
-      if (CV.input.state.forward) { mv.x += Math.sin(game.foot.heading); mv.z += Math.cos(game.foot.heading); }
-      if (CV.input.state.back) { mv.x -= Math.sin(game.foot.heading); mv.z -= Math.cos(game.foot.heading); }
-      if (CV.input.state.left) game.foot.heading += dt * 2.4;
-      if (CV.input.state.right) game.foot.heading -= dt * 2.4;
-      game.foot.x += mv.x * sp * dt;
-      game.foot.z += mv.z * sp * dt;
-      var fp = CV.world.collide(game.foot.x, game.foot.z, 0.5);
-      game.foot.x = fp.x; game.foot.z = fp.z;
-      javi.position.set(game.foot.x, 0, game.foot.z);
-      javi.rotation.y = game.foot.heading;
-    }
+    },
 
-    if (nearMissCooldown > 0) nearMissCooldown -= dt;
-    if (driftCueCooldown > 0) driftCueCooldown -= dt;
+    loop() {
+      requestAnimationFrame(() => this.loop());
+      const dt = Math.min(this.clock.getDelta(), 0.05);
+      const t = this.elapsed += dt;
+      this.frame++;
+      const M = VB.missions.state;
+      const input = VB.input;
 
-    CV.police.update(dt, t, hero);
-    CV.traffic.update(dt, hero);
-    CV.people.update(dt, t, hero);
-    CV.world.update(dt, t);
-    CV.audio.update(hero.kmh(), true, t);
+      // Keys.
+      if (input.hit('KeyM') || input.hit('KeyP') || input.hit('Escape')) this.togglePause();
+      if (input.hit('KeyE')) this.toggleCar();
+      if (input.hit('KeyR')) this.cycleRadio();
+      if (input.hit('KeyN')) VB.audio.toggleMute();
+      if (input.hit('KeyF')) {
+        VB.missions.dialog.next();
+        VB.hud.setDialog();
+        VB.audio.blip(700, 0.1);
+      }
 
-    var camMode = game.mode === 'map' ? 'drive' : game.mode;
-    var camTarget = game.mode === 'onfoot' || game.mode === 'marina' ? game.foot : hero;
-    CV.render.update(scene, camTarget, camMode, dt, t, false);
-    CV.hud.update(dt, game);
-    CV.render.render(scene);
-  }
-  loop();
+      if (M.started && !M.paused) {
+        VB.missions.tick(dt);
+        if (!this.onFoot) VB.cars.drive(dt, input);
+        else this.updateOnFoot(dt);
+        if (!VB.shots.staged) {
+          VB.police.updateGround(dt, VB.cars.hero.position);
+          VB.police.update(dt, t, VB.cars.hero.position, false);
+        } else {
+          VB.police.update(dt, t, VB.cars.hero.position, true);
+        }
+        VB.audio.setEngine(U.clamp(Math.abs(VB.cars.heroState.speed) / 38, 0, 1));
+        VB.audio.setSiren(M.wanted > 0);
+        // Near-miss bonus while drifting at speed.
+        if (VB.cars.heroState.drift > 0.6 && VB.cars.speedKmh() > 70 && this.frame % 240 === 0) {
+          M.money += 250;
+          VB.hud.setPopup('DRIFT x3', 'NEAR MISS +$250');
+        }
+      } else if (VB.shots.staged) {
+        VB.police.update(dt, t, VB.cars.hero.position, true);
+      }
+
+      VB.cars.update(dt, t);
+      VB.peds.update(dt, t);
+      VB.world.update(t);
+      this.updateCamera(dt);
+
+      // HUD refresh.
+      const player = {
+        x: this.onFoot ? this.heroPed.position.x : VB.cars.hero.position.x,
+        z: this.onFoot ? this.heroPed.position.z : VB.cars.hero.position.z,
+        fx: -Math.sin(this.onFoot ? this.heroPed.rotation.y : VB.cars.heroState.heading),
+        fz: -Math.cos(this.onFoot ? this.heroPed.rotation.y : VB.cars.heroState.heading),
+      };
+      VB.hud.update(M, player, VB.cars.cruisers, dt);
+      if (VB.debug) {
+        VB.hud.els.debug.textContent =
+          'frame ' + this.frame + ' · fps ' + Math.round(1 / Math.max(dt, 0.001)) +
+          ' · hero ' + player.x.toFixed(1) + ',' + player.z.toFixed(1) +
+          ' · speed ' + VB.cars.speedKmh() + ' · errors ' + this.errors.length;
+      }
+
+      this.renderer.render(this.scene, this.camera);
+      input.endFrame();
+    },
+  };
+
+  VB.game = Game;
+  window.addEventListener('DOMContentLoaded', () => Game.init());
 })();
