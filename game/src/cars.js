@@ -41,13 +41,13 @@ function glassProfile() {
   return s;
 }
 
-function makeWheel(rimColor = 0xd8dce2) {
+function makeWheel(rimColor = 0xe8ecf0) {
   const w = new THREE.Group();
   const tireMat = std(0x141414, 0.9, 0);
   const tire = mesh(new THREE.TorusGeometry(0.32, 0.115, 12, 24), tireMat, 0, 0, 0);
   w.add(tire);
-  const rimMat = std(rimColor, 0.25, 0.8);
-  const rim = mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.1, 20), rimMat, 0, 0, 0);
+  const rimMat = std(rimColor, 0.35, 0.4);
+  const rim = mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.1, 20), rimMat, 0, 0, 0);
   rim.rotation.x = Math.PI / 2;
   w.add(rim);
   // five spokes on the outer face
@@ -59,6 +59,8 @@ function makeWheel(rimColor = 0xd8dce2) {
   const hub = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.13, 12), std(0x222222, 0.4, 0.6), 0, 0, 0);
   hub.rotation.x = Math.PI / 2;
   w.add(hub);
+  // wheels don't cast shadows — saves ~700 draw calls in the shadow pass
+  w.traverse((o) => { if (o.isMesh) o.castShadow = false; });
   return w;
 }
 
@@ -90,7 +92,7 @@ export function buildCar(opts = {}) {
   g.add(mesh(new THREE.BoxGeometry(1.05, 0.045, 1.3), bodyMat, -0.2, 1.02, 0));
 
   // wheel arches: dark discs behind each wheel, peeking out as a ring
-  const archGeo = new THREE.CircleGeometry(0.47, 24);
+  const archGeo = new THREE.CircleGeometry(0.44, 24);
   const archMat = new THREE.MeshBasicMaterial({ color: 0x070708 });
   [[1.45, 0.93], [1.45, -0.93], [-1.45, 0.93], [-1.45, -0.93]].forEach(([x, z]) => {
     const a = new THREE.Mesh(archGeo, archMat);
@@ -99,9 +101,11 @@ export function buildCar(opts = {}) {
     g.add(a);
   });
 
-  // wheels with spoked rims, each on a steering pivot — spun in main.js
+  // wheels with spoked rims, each on a steering pivot — spun in main.js.
+  // Set slightly outboard so the rim and spokes sit proud of the body side
+  // and read in front of the dark arch discs.
   g.userData.wheels = [];
-  [[1.45, 0.84], [1.45, -0.84], [-1.45, 0.84], [-1.45, -0.84]].forEach(([x, z]) => {
+  [[1.45, 0.9], [1.45, -0.9], [-1.45, 0.9], [-1.45, -0.9]].forEach(([x, z]) => {
     const pivot = new THREE.Group();
     pivot.position.set(x, 0.34, z);
     const w = makeWheel(opts.rimColor);

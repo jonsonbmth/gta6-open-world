@@ -8,7 +8,7 @@ import { buildSky, buildGround, buildBuildings, buildPalms, buildMarina, buildTr
 import { buildCar } from './cars.js';
 import { buildPerson } from './people.js';
 import { buildCruisers, buildHeli, flashLights, spinRotors } from './police.js';
-import { buildHUD, setSpeed, cycleRadio, drawMinimap, showPopup } from './hud.js';
+import { buildHUD, setSpeed, cycleRadio, drawMinimap, drawBigMap, showPopup } from './hud.js';
 import { initAudio, setEngine, setSiren, sirenWail, chime, toggleMute } from './audio.js';
 import { createInput } from './input.js';
 import { stageChase, stageTitle, stageMap, stageMarina } from './shots.js';
@@ -89,6 +89,7 @@ const crew = crewDefs.map((def, i) => {
   const [x, z] = marina.crewSpots[i];
   p.position.set(x, 0.52, z);
   p.rotation.y = 0;
+  p.scale.setScalar(1.1);
   scene.add(p);
   return p;
 });
@@ -126,67 +127,17 @@ window.SB = {
 buildHUD();
 const minimapCtx = document.getElementById('minimap').getContext('2d');
 const bigmapCtx = document.getElementById('bigmap').getContext('2d');
-const ROUTE = [[0, 0], [45, 0], [95, 0]];
+const ROUTE = [[-20, 0], [45, 0], [95, 0]];
 
 function showTitle(show) {
   document.getElementById('title-screen').style.display = show ? 'flex' : 'none';
+  // the dialog box and the controls hint would overlap the title text
+  document.getElementById('dialog').style.display = show ? 'none' : 'flex';
+  document.getElementById('controls-hint').style.display = show ? 'none' : 'block';
 }
 function showPause(show) {
   document.getElementById('pause-menu').style.display = show ? 'flex' : 'none';
-  if (show) drawBigMap();
-}
-
-function drawBigMap() {
-  const c = bigmapCtx;
-  const W = c.canvas.width, H = c.canvas.height;
-  c.fillStyle = '#0e1a24';
-  c.fillRect(0, 0, W, H);
-  c.fillStyle = '#14506e';
-  c.fillRect(0, H * 0.7, W, H * 0.3);
-  c.fillStyle = '#1d2f3d';
-  for (let x = 0; x < 10; x++) {
-    for (let z = 0; z < 7; z++) {
-      if (z === 3) continue;
-      c.fillRect(20 + x * (W - 40) / 10 + 3, 20 + z * (H - 40) / 7 + 3, (W - 40) / 10 - 6, (H - 40) / 7 - 6);
-    }
-  }
-  c.strokeStyle = '#3a4a58';
-  c.lineWidth = 10;
-  c.beginPath(); c.moveTo(0, H * 0.5); c.lineTo(W, H * 0.5); c.stroke();
-  c.lineWidth = 6;
-  [0.15, 0.32, 0.5, 0.68, 0.85].forEach((fx) => {
-    c.beginPath(); c.moveTo(W * fx, 0); c.lineTo(W * fx, H); c.stroke();
-  });
-  // GPS route to the garage
-  const toMap = (x, z) => [W / 2 + (x / 160) * W, H / 2 + (z / 160) * H];
-  c.strokeStyle = '#37e08b';
-  c.lineWidth = 5;
-  c.setLineDash([12, 8]);
-  c.beginPath();
-  ROUTE.forEach(([x, z], i) => {
-    const [mx, mz] = toMap(x, z);
-    i ? c.lineTo(mx, mz) : c.moveTo(mx, mz);
-  });
-  c.stroke();
-  c.setLineDash([]);
-  const [gx, gz] = toMap(95, 0);
-  c.fillStyle = '#37e08b';
-  c.beginPath(); c.arc(gx, gz, 10, 0, 7); c.fill();
-  c.fillStyle = '#ffffff';
-  c.font = 'bold 20px Arial';
-  c.fillText('GARAGE', gx - 34, gz - 16);
-  // districts
-  c.fillStyle = '#9fb6c6';
-  c.font = 'bold 18px Arial';
-  GAME.districts.forEach((d, i) => {
-    c.fillText(d.toUpperCase(), 24 + (i % 3) * (W / 3), 44 + Math.floor(i / 3) * (H / 2.4));
-  });
-  // player
-  const [px, pz] = toMap(hero.position.x, hero.position.z);
-  c.fillStyle = '#ffffff';
-  c.beginPath(); c.arc(px, pz, 9, 0, 7); c.fill();
-  c.fillStyle = '#37e08b';
-  c.beginPath(); c.arc(px, pz, 5, 0, 7); c.fill();
+  if (show) drawBigMap(bigmapCtx, hero.position);
 }
 
 // saves (localStorage, 3 slots)
@@ -304,7 +255,7 @@ function updateDrive(dt) {
   const left = input.pressed('KeyA');
   const right = input.pressed('KeyD');
   const brake = input.pressed('Space');
-  if (fwd) state.speed += 9 * dt;
+  if (fwd) state.speed += 12 * dt;
   if (back) state.speed -= state.speed > 0.5 ? 14 * dt : 4 * dt;
   if (!fwd && !back) state.speed -= Math.sign(state.speed) * Math.min(Math.abs(state.speed), 4 * dt);
   if (brake) state.speed -= Math.sign(state.speed) * Math.min(Math.abs(state.speed), 22 * dt);
@@ -387,7 +338,7 @@ function updateCamera(dt) {
 function updatePolice(dt, t) {
   flashLights(cruisers, t);
   spinRotors(heli, dt);
-  heli.position.y = 26 + Math.sin(t * 0.7) * 0.8;
+  heli.position.y = 17 + Math.sin(t * 0.7) * 0.8;
   if (STAGED) return;
   // cruisers ease toward flanking offsets around the hero
   const offsets = [[-7.5, 4.6], [6.5, -5.2], [16, 3.4], [24, -3.0]];
@@ -402,7 +353,7 @@ function updatePolice(dt, t) {
   // heli follows the hero from above
   heli.position.x += (hero.position.x + 8 - heli.position.x) * Math.min(1, dt * 0.5);
   heli.position.z += (hero.position.z - 6 - heli.position.z) * Math.min(1, dt * 0.5);
-  beam.position.set(heli.position.x - 3, 13, heli.position.z + 3);
+  beam.position.set(heli.position.x - 3, 7.5, heli.position.z + 3);
   pool.position.set(hero.position.x + 3, 0.03, hero.position.z - 1);
 }
 
@@ -410,7 +361,7 @@ function updatePolice(dt, t) {
 let frames = 0;
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(), 0.15);
   const t = clock.elapsedTime;
   if (!STAGED) {
     if (state.mode === 'drive') updateDrive(dt);

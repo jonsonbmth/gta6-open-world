@@ -1,6 +1,8 @@
 // Ember Bay — the program that hands the game in (Node 22, stdlib only).
 // It copies game/ and screenshots/ from beside this file to /output and
 // writes /output/dossier.json with the kit's make.fun library.
+// The game itself is plain static files: game/index.html opens in desktop
+// Chrome and plays offline, three.js vendored under game/vendor/.
 // Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 

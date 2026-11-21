@@ -17,34 +17,41 @@ function mesh(geo, mat, x = 0, y = 0, z = 0) {
   return m;
 }
 
+// Small detail meshes (face features) don't cast shadows — saves draw calls.
+function detail(geo, mat, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  return m;
+}
+
 // A face built from small geometry on the front (+Z) of the head sphere.
 // Reads clearly at screenshot size and catches the light — never a flat
 // painted blob, never a dark silhouette.
 function buildFace(head, skinMat, hairColor, style) {
   const dark = std(0x1a1512, 0.4);
   const eyeGeo = new THREE.SphereGeometry(0.017, 10, 8);
-  const eyeL = mesh(eyeGeo, dark, -0.046, 0.028, 0.108);
-  const eyeR = mesh(eyeGeo, dark, 0.046, 0.028, 0.108);
+  const eyeL = detail(eyeGeo, dark, -0.046, 0.028, 0.108);
+  const eyeR = detail(eyeGeo, dark, 0.046, 0.028, 0.108);
   head.add(eyeL, eyeR);
   // eye shine
   const shineGeo = new THREE.SphereGeometry(0.006, 6, 6);
   const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  head.add(mesh(shineGeo, shineMat, -0.041, 0.034, 0.122));
-  head.add(mesh(shineGeo, shineMat, 0.051, 0.034, 0.122));
+  head.add(detail(shineGeo, shineMat, -0.041, 0.034, 0.122));
+  head.add(detail(shineGeo, shineMat, 0.051, 0.034, 0.122));
   // eyebrows
   const browGeo = new THREE.BoxGeometry(0.05, 0.009, 0.012);
   const browMat = std(hairColor, 0.8);
-  const browL = mesh(browGeo, browMat, -0.046, 0.062, 0.108);
+  const browL = detail(browGeo, browMat, -0.046, 0.062, 0.108);
   browL.rotation.z = 0.12;
-  const browR = mesh(browGeo, browMat, 0.046, 0.062, 0.108);
+  const browR = detail(browGeo, browMat, 0.046, 0.062, 0.108);
   browR.rotation.z = -0.12;
   head.add(browL, browR);
   // nose
-  const nose = mesh(new THREE.ConeGeometry(0.013, 0.035, 8), skinMat, 0, -0.005, 0.122);
+  const nose = detail(new THREE.ConeGeometry(0.013, 0.035, 8), skinMat, 0, -0.005, 0.122);
   nose.rotation.x = Math.PI / 2;
   head.add(nose);
   // smiling mouth: a torus arc opening upward
-  const mouth = mesh(
+  const mouth = detail(
     new THREE.TorusGeometry(0.03, 0.0075, 8, 16, Math.PI * 0.7),
     std(0x7a3b2e, 0.5),
     0, -0.048, 0.104,
@@ -53,24 +60,24 @@ function buildFace(head, skinMat, hairColor, style) {
   head.add(mouth);
   // ears
   const earGeo = new THREE.SphereGeometry(0.022, 8, 8);
-  head.add(mesh(earGeo, skinMat, -0.12, 0, 0));
-  head.add(mesh(earGeo, skinMat, 0.12, 0, 0));
+  head.add(detail(earGeo, skinMat, -0.12, 0, 0));
+  head.add(detail(earGeo, skinMat, 0.12, 0, 0));
   // hair
   const hairMat = std(hairColor, 0.85);
-  const cap = mesh(
+  const cap = detail(
     new THREE.SphereGeometry(0.136, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
     hairMat, 0, 0.012, -0.012,
   );
   head.add(cap);
   if (style === 'long') {
-    const back = mesh(new THREE.SphereGeometry(0.11, 12, 10), hairMat, 0, -0.1, -0.085);
+    const back = detail(new THREE.SphereGeometry(0.11, 12, 10), hairMat, 0, -0.1, -0.085);
     back.scale.set(1, 1.5, 0.55);
     head.add(back);
   } else if (style === 'bun') {
-    head.add(mesh(new THREE.SphereGeometry(0.05, 10, 8), hairMat, 0, 0.135, -0.03));
+    head.add(detail(new THREE.SphereGeometry(0.05, 10, 8), hairMat, 0, 0.135, -0.03));
   } else if (style === 'cap') {
-    const crown = mesh(new THREE.CylinderGeometry(0.125, 0.132, 0.055, 16), std(0x27408b, 0.7), 0, 0.1, 0);
-    const brim = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 16), std(0x27408b, 0.7), 0, 0.078, 0.07);
+    const crown = detail(new THREE.CylinderGeometry(0.125, 0.132, 0.055, 16), std(0x27408b, 0.7), 0, 0.1, 0);
+    const brim = detail(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 16), std(0x27408b, 0.7), 0, 0.078, 0.07);
     brim.scale.set(1, 1, 1.4);
     head.add(crown, brim);
   }

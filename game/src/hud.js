@@ -16,7 +16,7 @@ const WEAPONS = [
 ];
 
 const TACTIC_CLASS = {
-  RAMMING: 'red', PURSUIT: 'blue', FLANKING: 'amber',
+  RAMMING: 'red', PURSUIT: 'blue', PURSUE: 'blue', FLANKING: 'amber',
   SPOTLIGHT: 'cyan', ROADBLOCK: 'purple', FIRING: 'red', 'BOXING IN': 'amber',
 };
 
@@ -99,8 +99,60 @@ export function showPopup(html) {
 }
 export function hidePopup() { $('#popup').classList.remove('show'); }
 
-// Minimap: city grid, roads, water, the GPS route to the garage, the
-// player arrow and police dots. Redrawn every frame from live positions.
+// Big city map for the pause menu: districts, roads, water, the GPS route
+// to the garage, and the player marker.
+export function drawBigMap(ctx, heroPos) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  ctx.fillStyle = '#0e1a24';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#14506e';
+  ctx.fillRect(0, H * 0.7, W, H * 0.3);
+  ctx.fillStyle = '#1d2f3d';
+  for (let x = 0; x < 10; x++) {
+    for (let z = 0; z < 7; z++) {
+      if (z === 3) continue;
+      ctx.fillRect(20 + x * (W - 40) / 10 + 3, 20 + z * (H - 40) / 7 + 3, (W - 40) / 10 - 6, (H - 40) / 7 - 6);
+    }
+  }
+  ctx.strokeStyle = '#3a4a58';
+  ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(0, H * 0.5); ctx.lineTo(W, H * 0.5); ctx.stroke();
+  ctx.lineWidth = 6;
+  [0.15, 0.32, 0.5, 0.68, 0.85].forEach((fx) => {
+    ctx.beginPath(); ctx.moveTo(W * fx, 0); ctx.lineTo(W * fx, H); ctx.stroke();
+  });
+  // GPS route to the garage
+  const toMap = (x, z) => [W / 2 + (x / 160) * W, H / 2 + (z / 160) * H];
+  const ROUTE = [[heroPos.x, heroPos.z], [45, 0], [95, 0]];
+  ctx.strokeStyle = '#37e08b';
+  ctx.lineWidth = 5;
+  ctx.setLineDash([12, 8]);
+  ctx.beginPath();
+  ROUTE.forEach(([x, z], i) => {
+    const [mx, mz] = toMap(x, z);
+    i ? ctx.lineTo(mx, mz) : ctx.moveTo(mx, mz);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const [gx, gz] = toMap(95, 0);
+  ctx.fillStyle = '#37e08b';
+  ctx.beginPath(); ctx.arc(gx, gz, 10, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 20px Arial';
+  ctx.fillText('GARAGE', gx - 34, gz - 16);
+  // districts
+  ctx.fillStyle = '#9fb6c6';
+  ctx.font = 'bold 18px Arial';
+  GAME.districts.forEach((d, i) => {
+    ctx.fillText(d.toUpperCase(), 24 + (i % 3) * (W / 3), 44 + Math.floor(i / 3) * (H / 2.4));
+  });
+  // player
+  const [px, pz] = toMap(heroPos.x, heroPos.z);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(px, pz, 9, 0, 7); ctx.fill();
+  ctx.fillStyle = '#37e08b';
+  ctx.beginPath(); ctx.arc(px, pz, 5, 0, 7); ctx.fill();
+}
 export function drawMinimap(ctx, player, cruisers, route) {
   const W = ctx.canvas.width, H = ctx.canvas.height;
   const toMap = (x, z) => [W / 2 + (x / 160) * W, H / 2 + (z / 160) * H];

@@ -14,13 +14,14 @@ function mesh(geo, mat, x = 0, y = 0, z = 0) {
   return m;
 }
 
-// Four cruisers: two flanking close, two ahead. All in the chase frame.
-export function buildCruisers(scene) {
+// Four cruisers staged around the staged hero position (hx, hz): two
+// flanking close, two ahead. All in the chase frame.
+export function buildCruisers(scene, hx = -20, hz = 0) {
   const spots = [
-    { x: -7.5, z: 4.6, yaw: 0.35 },   // left rear, closing in
-    { x: 6.5, z: -5.2, yaw: -0.3 },   // right front, cutting across
-    { x: 16, z: 3.4, yaw: 0.12 },     // ahead right
-    { x: 24, z: -3.0, yaw: -0.08 },   // ahead left
+    { x: hx - 7.5, z: hz + 4.6, yaw: 0.35 },   // left rear, closing in
+    { x: hx + 6.5, z: hz - 5.2, yaw: -0.3 },   // right front, cutting across
+    { x: hx + 16, z: hz + 3.4, yaw: 0.12 },    // ahead right
+    { x: hx + 24, z: hz - 3.0, yaw: -0.08 },   // ahead left
   ];
   const cruisers = spots.map((s) => {
     const c = buildCar({ color: 0xf2f2ee, police: true, rimColor: 0x30343a });
@@ -48,7 +49,7 @@ export function flashLights(cruisers, t) {
 // Scaled 1.9 so it reads BIG in the chase frame.
 export function buildHeli(scene) {
   const heli = new THREE.Group();
-  const bodyMat = std(0x1c2733, 0.4, 0.5);
+  const bodyMat = std(0x35506b, 0.45, 0.25);
   const glassMat = new THREE.MeshStandardMaterial({
     color: 0x0d1622, roughness: 0.1, metalness: 0.9,
   });
@@ -93,36 +94,41 @@ export function buildHeli(scene) {
     new THREE.MeshStandardMaterial({ color: 0xfff6c9, emissive: 0xffe9a0, emissiveIntensity: 1.8 }), 0.4, -1.05, 0));
 
   heli.scale.setScalar(1.9);
-  heli.position.set(8, 26, -6);
+  heli.position.set(-1, 17, -12);
   heli.rotation.y = -0.5;
   scene.add(heli);
 
-  // spotlight beam: a cone from the heli down to the road, aimed at the hero
+  // spotlight beam: a cone from the heli's belly down to the road pool.
+  // Oriented with a quaternion so the apex sits at the heli and the base
+  // lands on the pool — no floating or mis-aimed cone.
+  const heliPos = new THREE.Vector3(-1, 17, -12);
+  const poolPos = new THREE.Vector3(-16, 0, -1);
+  const beamLen = heliPos.distanceTo(poolPos);
   const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xfff2b0, transparent: true, opacity: 0.14,
+    color: 0xfff2b0, transparent: true, opacity: 0.08,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
-  const beam = new THREE.Mesh(new THREE.ConeGeometry(5.5, 26, 24, 1, true), beamMat);
-  beam.position.set(5, 13, -3);
-  // tilt the cone so its apex sits at the heli and its base pools on the road
-  beam.rotation.z = 0.12;
-  beam.rotation.x = -0.1;
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(3.4, beamLen, 24, 1, true), beamMat);
+  beam.position.copy(heliPos).add(poolPos).multiplyScalar(0.5);
+  const up = new THREE.Vector3(0, 1, 0);
+  const dir = heliPos.clone().sub(poolPos).normalize();
+  beam.quaternion.setFromUnitVectors(up, dir);
   scene.add(beam);
 
   // light pool on the asphalt where the beam lands
   const poolMat = new THREE.MeshBasicMaterial({
-    color: 0xffe9a0, transparent: true, opacity: 0.28,
+    color: 0xffe9a0, transparent: true, opacity: 0.1,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(5.5, 28), poolMat);
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(4, 28), poolMat);
   pool.rotation.x = -Math.PI / 2;
-  pool.position.set(3, 0.03, -1);
+  pool.position.set(-16, 0.03, -1);
   scene.add(pool);
 
   // a real spotlight so the hero and road are lit where the beam lands
-  const spot = new THREE.SpotLight(0xffe9a0, 900, 60, 0.42, 0.5, 1.2);
-  spot.position.set(8, 26, -6);
-  spot.target.position.set(3, 0, -1);
+  const spot = new THREE.SpotLight(0xffe9a0, 400, 60, 0.32, 0.5, 1.2);
+  spot.position.set(-1, 17, -12);
+  spot.target.position.set(-16, 0, -1);
   scene.add(spot, spot.target);
 
   return { heli, beam, pool, spot };

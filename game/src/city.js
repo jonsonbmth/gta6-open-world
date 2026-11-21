@@ -66,7 +66,7 @@ export function buildSky(scene) {
 }
 
 export function buildGround(scene) {
-  const ground = mesh(new THREE.PlaneGeometry(320, 320), std(0x9a7a52, 1), 0, -0.02, 0);
+  const ground = mesh(new THREE.PlaneGeometry(320, 320), std(0x7a7268, 1), 0, -0.02, 0);
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
   // main street (along X) + cross streets
@@ -86,16 +86,20 @@ export function buildGround(scene) {
     s.rotation.x = -Math.PI / 2;
     scene.add(s);
   });
-  // center dashes
+  // center dashes (flat on the road — no shadow needed)
   const dashMat = std(0xf2c230, 0.8);
   for (let x = -135; x < 135; x += 8) {
-    scene.add(mesh(new THREE.BoxGeometry(3, 0.02, 0.25), dashMat, x, 0.02, 0));
+    const d = mesh(new THREE.BoxGeometry(3, 0.02, 0.25), dashMat, x, 0.02, 0);
+    d.castShadow = false;
+    scene.add(d);
   }
   // crosswalks at x = 0 and x = 45
   const white = std(0xe8e8e0, 0.8);
   [0, 45].forEach((x) => {
     for (let z = -6; z <= 6; z += 1.6) {
-      scene.add(mesh(new THREE.BoxGeometry(2.4, 0.02, 0.8), white, x, 0.02, z));
+      const s = mesh(new THREE.BoxGeometry(2.4, 0.02, 0.8), white, x, 0.02, z);
+      s.castShadow = false;
+      scene.add(s);
     }
   });
   // beach + water on the south side (x > 20)
@@ -116,8 +120,8 @@ export function buildBuildings(scene, rng) {
   const spots = [];
   for (let x = -120; x <= 120; x += 24) {
     if (Math.abs(x) < 8) continue;
-    spots.push([x + range(rng, -3, 3), 17 + range(rng, 0, 10), 1]);
-    if (x < 15) spots.push([x + range(rng, -3, 3), -17 - range(rng, 0, 10), -1]);
+    spots.push([x + range(rng, -3, 3), 13.5 + range(rng, 0, 8), 1]);
+    if (x < 15) spots.push([x + range(rng, -3, 3), -13.5 - range(rng, 0, 8), -1]);
   }
   spots.forEach(([x, z, side]) => {
     const w = range(rng, 16, 22), d = range(rng, 12, 16), h = range(rng, 9, 30);
@@ -161,6 +165,7 @@ export function buildPalm(x, z, rng) {
     frond.rotation.z = Math.PI / 2 + 0.55;
     frond.rotation.y = (i / 8) * Math.PI * 2;
     frond.translateY(1.4);
+    frond.castShadow = false;
     g.add(frond);
   }
   // coconuts
@@ -223,7 +228,7 @@ export function buildMarina(scene) {
   hullShape.quadraticCurveTo(0, -0.5, -2.2, 0);
   const hullGeo = new THREE.ExtrudeGeometry(hullShape, { depth: 1.2, bevelEnabled: false });
   hullGeo.translate(0, 0, -0.6);
-  [[36, -34, 0xffffff], [54, -36, 0xd94f30]].forEach(([x, z, color]) => {
+  [[40, -38, 0xffffff], [51, -38, 0xd94f30]].forEach(([x, z, color]) => {
     const boat = new THREE.Group();
     const hull = mesh(hullGeo, std(color, 0.5, 0.1), 0, 0.1, 0);
     hull.rotation.y = Math.PI / 2;
@@ -234,14 +239,14 @@ export function buildMarina(scene) {
   });
   scene.add(group);
   // crew anchor: where the four stand, facing +Z (toward the dock camera)
-  return { deck, crewSpots: [[41.5, -31], [44, -31.5], [46.5, -31], [48.5, -31.8]] };
+  return { deck, crewSpots: [[44.4, -31], [45.7, -31.5], [47.0, -31], [48.3, -31.8]] };
 }
 
 export function buildTraffic(scene, rng) {
   const colors = [0x3a6ea5, 0xd9d9d9, 0x2e7d32, 0xe8a020, 0x7b2fbf, 0x8a8a8a];
   const cars = [];
   const spots = [
-    [18, -3.2, 0.06], [30, 3.2, Math.PI + 0.04], [-25, -3.2, -0.03],
+    [18, -3.2, 0.06], [30, 3.2, Math.PI + 0.04], [-34, -3.2, -0.03],
     [-52, 3.2, Math.PI - 0.05], [62, -3.2, 0.02], [-80, -3.2, 0.0],
   ];
   spots.forEach(([x, z, yaw], i) => {
@@ -257,11 +262,11 @@ export function buildTraffic(scene, rng) {
 export function buildPeds(scene) {
   const peds = [];
   const defs = [
-    { x: 6, z: 9.2, skin: SKIN_TONES[1], shirt: 0xe8e4da, pants: 0x3a3a3a, hair: 0x1a1a1a, hairStyle: 'short', pose: 'panic', yaw: -0.6 },
-    { x: -4, z: -9.4, skin: SKIN_TONES[3], shirt: 'stripes', pants: 0x2b3a55, hair: 0x6b4423, hairStyle: 'long', pose: 'panic', yaw: 0.8 },
-    { x: 14, z: 9.4, skin: SKIN_TONES[2], shirt: 0x2e7d32, pants: 0x8a6a3a, hair: 0x111111, hairStyle: 'cap', pose: 'relaxed', yaw: 2.6 },
-    { x: -14, z: 9.2, skin: SKIN_TONES[0], shirt: 0xc94f7c, pants: 0x2b3a55, hair: 0x3b2314, hairStyle: 'bun', pose: 'relaxed', yaw: -2.2 },
-    { x: 26, z: -9.4, skin: SKIN_TONES[4], shirt: 0xd97b29, pants: 0x222222, hair: 0x1a1a1a, hairStyle: 'short', pose: 'wave', yaw: 1.2 },
+    { x: -14, z: 9.2, skin: SKIN_TONES[1], shirt: 0xe8e4da, pants: 0x3a3a3a, hair: 0x1a1a1a, hairStyle: 'short', pose: 'panic', yaw: -0.6 },
+    { x: -24, z: -8.5, skin: SKIN_TONES[3], shirt: 'stripes', pants: 0x2b3a55, hair: 0x6b4423, hairStyle: 'long', pose: 'panic', yaw: 0.8 },
+    { x: -8, z: 9.4, skin: SKIN_TONES[2], shirt: 0x2e7d32, pants: 0x8a6a3a, hair: 0x111111, hairStyle: 'cap', pose: 'relaxed', yaw: 2.6 },
+    { x: -10, z: -9.2, skin: SKIN_TONES[0], shirt: 0xc94f7c, pants: 0x2b3a55, hair: 0x3b2314, hairStyle: 'bun', pose: 'relaxed', yaw: -2.2 },
+    { x: -18, z: -9.2, skin: SKIN_TONES[4], shirt: 0xd97b29, pants: 0x222222, hair: 0x1a1a1a, hairStyle: 'short', pose: 'wave', yaw: 1.2 },
   ];
   defs.forEach((d) => {
     const p = buildPerson(d);
