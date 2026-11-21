@@ -186,7 +186,7 @@
 
     loop() {
       requestAnimationFrame(() => this.loop());
-      const dt = Math.min(this.clock.getDelta(), 0.05);
+      const dt = Math.min(this.clock.getDelta(), 0.1); // clamped: stays stable on slow machines
       const t = this.elapsed += dt;
       this.frame++;
       const M = VB.missions.state;
