@@ -1,98 +1,80 @@
-// Sirena Bay — small shared helpers: a seeded random stream so the city is
-// the same every run, a few math helpers, and canvas-texture makers. Every
-// texture in the game is painted on a canvas at load time: no image files,
-// no network request, nothing downloaded.
+// Small shared helpers: a seeded RNG (deterministic world layout), math
+// helpers and canvas-texture builders. No network, no Date usage in layout.
 
-(function () {
-  'use strict';
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-  // mulberry32 — tiny deterministic PRNG. One stream per purpose keeps the
-  // city, the traffic and the pedestrians independent of load order.
-  function makeRng(seed) {
-    let a = seed >>> 0;
-    return function () {
-      a |= 0;
-      a = (a + 0x6d2b79f5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
+export function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
 
-  function pick(rng, list) {
-    return list[Math.floor(rng() * list.length) % list.length];
-  }
+export function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
 
-  function range(rng, lo, hi) {
-    return lo + rng() * (hi - lo);
-  }
+export function rand(rng, lo, hi) {
+  return lo + rng() * (hi - lo);
+}
 
-  function clamp(v, lo, hi) {
-    return v < lo ? lo : v > hi ? hi : v;
-  }
+export function pick(rng, arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
 
-  function lerp(a, b, t) {
-    return a + (b - a) * t;
-  }
+// Make a CanvasTexture from a painter function. The canvas is drawn once,
+// deterministically, and reused as a texture (buildings, signs, sky).
+export function canvasTexture(w, h, paint) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  paint(ctx, w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
 
-  // A canvas of the given size with a 2D context, ready to paint on.
-  function makeCanvas(w, h) {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return { canvas: c, ctx: c.getContext('2d') };
-  }
+export function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
-  // Paint with a callback, then wrap the canvas in a three.js texture with
-  // correct colour space. Repeat wrapping is optional for tiled surfaces.
-  function makeTexture(w, h, painter, repeat) {
-    const { canvas, ctx } = makeCanvas(w, h);
-    painter(ctx, w, h);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
-    if (repeat) {
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-    }
-    return tex;
-  }
-
-  // A soft ellipse (radial gradient fading to transparent) — the workhorse
-  // for cheeks, shading, glows and soft shadows on painted textures.
-  function softEllipse(ctx, x, y, rx, ry, color, alpha) {
-    const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
-    g.addColorStop(0, colorWithAlpha(color, alpha));
-    g.addColorStop(1, colorWithAlpha(color, 0));
+// A soft radial glow sprite (sun glare, streetlight halos, police light
+// pools). Color and size are baked into the canvas; the material is additive.
+export function glowTexture(inner, outer) {
+  return canvasTexture(128, 128, (ctx) => {
+    const g = ctx.createRadialGradient(64, 64, 2, 64, 64, 64);
+    g.addColorStop(0, inner);
+    g.addColorStop(0.35, outer);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry));
-    ctx.beginPath();
-    ctx.arc(0, 0, Math.max(rx, ry), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
+    ctx.fillRect(0, 0, 128, 128);
+  });
+}
 
-  function colorWithAlpha(hex, alpha) {
-    const n = parseInt(hex.slice(1), 16);
-    const r = (n >> 16) & 255;
-    const g = (n >> 8) & 255;
-    const b = n & 255;
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-  }
-
-  // A rounded rectangle path, for signs, cards and face features.
-  function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  window.SB = window.SB || {};
-  window.SB.util = { makeRng, pick, range, clamp, lerp, makeCanvas, makeTexture, softEllipse, colorWithAlpha, roundRect };
-})();
+export function glowSprite(color, scale, opacity) {
+  const mat = new THREE.SpriteMaterial({
+    map: glowTexture('rgba(255,255,255,0.95)', color),
+    color: 0xffffff,
+    transparent: true,
+    opacity: opacity == null ? 0.85 : opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const s = new THREE.Sprite(mat);
+  s.scale.set(scale, scale, 1);
+  return s;
+}

@@ -4,262 +4,296 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>SIRENA BAY — an open-world crime game</title>
+<title>AURELIA BAY — an open-world crime game</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #10141c; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #f2f2f2; }
-  #game-canvas-holder, #game-canvas-holder canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0f1e; }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #fff; }
+  canvas.webgl { display: block; width: 100%; height: 100%; }
+  #app { position: fixed; inset: 0; }
   .panel {
-    background: rgba(12, 16, 26, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: linear-gradient(160deg, rgba(16, 12, 24, 0.82), rgba(16, 12, 24, 0.66));
+    border: 1px solid rgba(255, 179, 64, 0.28);
     border-radius: 10px;
-    backdrop-filter: blur(3px);
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
   }
-  #hud { position: absolute; inset: 0; pointer-events: none; display: none; }
+  .gold { color: #ffb340; }
+  .teal { color: #39d0c0; }
+  .pink { color: #ff5d8f; }
 
-  /* Mission, top left */
-  #hud-mission { position: absolute; top: 14px; left: 14px; width: 330px; padding: 12px 14px; }
-  #hud-mission-title { color: #ffd94a; font-weight: bold; font-size: 15px; letter-spacing: 0.5px; }
-  #hud-mission-objective { font-size: 13px; line-height: 1.45; margin-top: 5px; color: #e8e8e8; }
-  .mission-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
-  #hud-mission-stage { color: #39ff88; font-weight: bold; }
-  .stage-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.18); border-radius: 3px; overflow: hidden; }
-  .stage-bar i { display: block; height: 100%; width: 75%; background: linear-gradient(90deg, #39ff88, #ffd94a); }
-  #hud-mission-time { background: #e8362d; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
-  #hud-mission-next { margin-top: 7px; font-size: 12px; color: #ffd94a; }
+  /* ---------- vignette + grade ---------- */
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background:
+      radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(20, 6, 18, 0.42) 100%),
+      linear-gradient(to top, rgba(255, 110, 40, 0.10), transparent 30%);
+  }
 
-  /* Dispatch, left */
-  #hud-dispatch { position: absolute; top: 168px; left: 14px; width: 300px; padding: 10px 12px; }
-  .dispatch-head { font-size: 13px; font-weight: bold; color: #ffa502; letter-spacing: 0.5px; }
-  .dispatch-sub { font-size: 11px; color: #ddd; margin-top: 2px; }
-  .dispatch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.07); }
-  .dispatch-row:first-of-type { border-top: none; }
-  .dispatch-name { flex: 1; font-weight: bold; white-space: nowrap; }
-  .dispatch-tactic { font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; white-space: nowrap; }
-  .dispatch-dist { color: #ffd94a; min-width: 40px; text-align: right; }
-  .dispatch-foot { font-size: 11px; color: #aaa; margin-top: 4px; }
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; z-index: 10; display: none; pointer-events: none; }
+  #hud .hud-corner { position: absolute; }
 
-  /* Minimap + vitals, bottom left */
-  #hud-minimap-box { position: absolute; left: 14px; bottom: 14px; width: 208px; padding: 10px; }
-  #minimap { width: 186px; height: 186px; border-radius: 6px; display: block; }
-  #hud-district { color: #ffd94a; font-weight: bold; font-size: 14px; margin-top: 8px; }
-  #hud-street { font-size: 12px; color: #ccc; }
-  .vital { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
-  .vital label { width: 52px; color: #bbb; }
-  .vital .bar { flex: 1; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
-  .vital .bar i { display: block; height: 100%; }
-  #hud-health-fill { width: 100%; background: #39ff88; }
-  #hud-armor-fill { width: 65%; background: #4aa8ff; }
-  .rep-line { font-size: 11px; margin-top: 6px; color: #ffd94a; }
+  #hud-mission { top: 12px; left: 14px; width: 320px; padding: 11px 13px 10px; }
+  #hud-mission .job { font-size: 11px; letter-spacing: 2px; color: #ffb340; font-weight: 700; }
+  #hud-mission-title { font-size: 22px; font-weight: 900; letter-spacing: 1px; margin: 2px 0 3px; }
+  #hud-mission-sub { font-size: 13px; color: #e8dff2; line-height: 1.35; }
+  #hud-mission-stage { font-size: 12px; margin-top: 7px; color: #ffd9a0; font-weight: 700; }
+  #hud-mission-stage .bar { height: 6px; background: rgba(255,255,255,0.14); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  #hud-mission-stage .bar i { display: block; height: 100%; width: 75%; background: linear-gradient(90deg, #ffb340, #ff5d8f); }
+  #hud-mission-timer { font-size: 12px; color: #ff8d8d; font-weight: 700; margin-top: 5px; }
+  #hud-mission-next { font-size: 12px; margin-top: 3px; color: #bfe8ff; }
+  #hud-mission-next b { color: #39d0c0; }
 
-  /* Cash + stars, top right */
-  #hud-money { position: absolute; top: 14px; right: 14px; padding: 10px 16px; text-align: right; min-width: 190px; }
-  #hud-clock { font-size: 11px; color: #aaa; }
-  #hud-cash { font-size: 26px; font-weight: bold; color: #39ff88; }
-  #hud-stars { font-size: 19px; color: #ffd94a; letter-spacing: 3px; }
-  #hud-insight { display: none; margin-top: 5px; background: #e8362d; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
+  #hud-dispatch { top: 155px; left: 14px; width: 320px; padding: 10px 12px; }
+  #hud-dispatch .dhead { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 1.5px; font-weight: 800; color: #ffb340; margin-bottom: 6px; }
+  .dispatch-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 3px 0; border-top: 1px solid rgba(255,255,255,0.07); }
+  .dispatch-row .unit { font-weight: 800; letter-spacing: 0.5px; }
+  .dispatch-row .tactic { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 4px; }
+  .tac-ram { background: #ff3b4e; } .tac-pursue { background: #2f7bff; }
+  .tac-flank { background: #ff8a00; } .tac-spot { background: #7b4dff; }
+  .tac-road { background: #00a88f; } .tac-box { background: #c22fd6; }
+  .dispatch-row .dist { color: #cfc6dd; font-variant-numeric: tabular-nums; }
+  #hud-dispatch .dfoot { font-size: 11px; color: #9b93a8; margin-top: 6px; }
 
-  /* Weapons, right */
-  #hud-weapons { position: absolute; top: 128px; right: 14px; display: flex; gap: 6px; }
+  #hud-moneybox { top: 14px; right: 14px; width: 250px; padding: 10px 14px; text-align: right; }
+  #hud-clock { font-size: 12px; color: #cfc6dd; letter-spacing: 1px; }
+  #hud-money { font-size: 30px; font-weight: 900; color: #7dff9a; letter-spacing: 0.5px; }
+  #hud-stars { font-size: 22px; letter-spacing: 4px; color: #ffc93b; text-shadow: 0 0 12px rgba(255, 201, 59, 0.7); }
+  #hud-sight { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #ff5d5d; margin-top: 2px; }
+
+  #hud-weapons { top: 148px; right: 14px; display: flex; gap: 6px; }
   .weapon-slot {
-    width: 62px; padding: 7px 4px 6px; text-align: center; position: relative;
-    background: rgba(12, 16, 26, 0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+    width: 62px; padding: 7px 4px 6px; text-align: center; border-radius: 8px;
+    background: rgba(16, 12, 24, 0.78); border: 1px solid rgba(255,255,255,0.16);
   }
-  .weapon-slot.active { border-color: #ffd94a; box-shadow: 0 0 0 1px #ffd94a; }
-  .weapon-slot.locked { opacity: 0.55; }
-  .weapon-key { position: absolute; top: 3px; left: 5px; font-size: 10px; color: #aaa; }
-  .weapon-icon { display: block; height: 22px; color: #fff; }
-  .weapon-icon svg { width: 30px; height: 22px; }
-  .weapon-name { display: block; font-size: 9px; font-weight: bold; margin-top: 2px; }
-  .weapon-ammo { display: block; font-size: 11px; color: #ffd94a; font-weight: bold; }
+  .weapon-slot.active { border-color: #ffb340; box-shadow: 0 0 14px rgba(255, 179, 64, 0.45); }
+  .weapon-slot.locked { opacity: 0.45; }
+  .weapon-slot .wicon { font-size: 20px; line-height: 1; }
+  .weapon-slot .wname { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; margin-top: 3px; }
+  .weapon-slot .wammo { font-size: 10px; color: #ffd9a0; font-variant-numeric: tabular-nums; }
+  .weapon-slot .wkey { font-size: 9px; color: #9b93a8; }
 
-  /* Crew cards, right */
-  #hud-crew { position: absolute; top: 208px; right: 14px; width: 220px; display: flex; flex-direction: column; gap: 7px; }
-  .crew-card { display: flex; gap: 9px; align-items: center; padding: 8px 10px; background: rgba(12,16,26,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; }
-  .crew-portrait { width: 42px; height: 42px; border-radius: 6px; }
-  .crew-ability { display: block; font-size: 11px; font-weight: bold; color: #ffd94a; }
-  .crew-name { display: block; font-size: 11px; color: #ddd; }
+  #hud-crew { top: 232px; right: 14px; width: 220px; display: flex; flex-direction: column; gap: 7px; }
+  .crew-card { display: flex; gap: 9px; align-items: center; padding: 7px 9px; border-radius: 9px;
+    background: rgba(16, 12, 24, 0.78); border: 1px solid rgba(255,255,255,0.14); }
+  .crew-card img { width: 38px; height: 38px; border-radius: 6px; object-fit: cover; }
+  .crew-card .cname { font-size: 12px; font-weight: 800; }
+  .crew-card .crole { font-size: 10px; color: #9b93a8; }
+  .crew-card .ckey { margin-left: auto; font-size: 11px; font-weight: 900; color: #ffb340;
+    border: 1px solid rgba(255,179,64,0.5); border-radius: 5px; padding: 2px 7px; }
 
-  /* Dialog, bottom centre */
-  #hud-dialog { position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%); width: 560px; display: flex; gap: 12px; padding: 12px 14px; align-items: center; }
-  #hud-dialog-portrait { width: 58px; height: 58px; border-radius: 8px; flex-shrink: 0; }
-  #hud-dialog-name { font-size: 12px; font-weight: bold; color: #ffd94a; }
-  #hud-dialog-line { font-size: 14px; line-height: 1.4; margin-top: 3px; }
+  #hud-district-block { top: 12px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #hud-district { font-size: 20px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  #hud-street { font-size: 13px; color: #ffd9a0; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+  #hud-left-bottom { left: 14px; bottom: 14px; width: 300px; }
+  #minimap { width: 160px; height: 160px; border-radius: 50%; border: 3px solid rgba(255, 179, 64, 0.55);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5); background: #241a2e; }
+  .meter { margin-top: 7px; }
+  .meter .mlabel { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+  .meter .mbar { height: 8px; background: rgba(255,255,255,0.14); border-radius: 4px; overflow: hidden; margin-top: 2px; }
+  .meter .mbar i { display: block; height: 100%; border-radius: 4px; }
+  #hud-health-fill { background: linear-gradient(90deg, #37e07a, #9dff57); }
+  #hud-armour-fill { background: linear-gradient(90deg, #3fa9ff, #7fd4ff); }
+  #hud-rep-fill { background: linear-gradient(90deg, #ffb340, #ff5d8f); }
+  #hud-rank { font-size: 12px; font-weight: 800; margin-top: 6px; color: #ffd9a0; }
 
-  /* Speed + car, bottom right */
-  #hud-drive { position: absolute; right: 14px; bottom: 14px; text-align: right; }
-  #hud-speed { font-size: 46px; font-weight: bold; line-height: 1; }
-  #hud-speed-unit { font-size: 14px; color: #ccc; }
-  #hud-car-name { color: #4aa8ff; font-weight: bold; font-size: 14px; }
-  .condition-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 4px; font-size: 11px; color: #bbb; }
-  .condition-row .bar { width: 110px; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
-  #hud-condition-fill { display: block; height: 100%; width: 82%; background: linear-gradient(90deg, #39ff88, #ffd94a); }
-  #hud-radio { position: absolute; right: 14px; bottom: 118px; font-size: 12px; color: #ddd; background: rgba(12,16,26,0.7); padding: 5px 10px; border-radius: 6px; }
+  #hud-dialog { left: 14px; top: 361px; width: 320px; padding: 10px 12px;
+    display: flex; gap: 10px; align-items: center; }
+  #hud-dialog-portrait { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none;
+    border: 2px solid rgba(255, 179, 64, 0.6); }
+  #hud-dialog-name { font-size: 11px; font-weight: 900; letter-spacing: 1px; color: #ffb340; }
+  #hud-dialog-text { font-size: 13px; line-height: 1.35; color: #f2ecfa; }
 
-  /* Centre popups */
-  .hud-popup {
-    position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
-    font-size: 52px; font-weight: bold; color: #ffd94a; text-shadow: 0 3px 0 #7a5a00, 0 6px 24px rgba(0,0,0,0.6);
-    opacity: 0; transition: opacity 0.15s; text-align: center; letter-spacing: 1px;
-  }
-  .hud-popup.show { opacity: 1; }
-  .hud-popup.nearmiss, #hud-popup2 { font-size: 22px; color: #39ff88; top: 41%; }
-  .hud-popup.crew, .hud-popup.radio, .hud-popup.hit { font-size: 20px; color: #fff; top: 27%; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  #hud-right-bottom { right: 14px; bottom: 14px; width: 250px; text-align: right; }
+  #hud-speed { font-size: 52px; font-weight: 900; line-height: 0.95; text-shadow: 0 3px 14px rgba(0,0,0,0.7); }
+  #hud-speed small { font-size: 15px; font-weight: 700; color: #cfc6dd; }
+  #hud-car-name { font-size: 16px; font-weight: 900; letter-spacing: 1px; color: #ffb340; margin-top: 2px; }
+  #hud-car-cond { height: 7px; background: rgba(255,255,255,0.16); border-radius: 4px; overflow: hidden; margin: 5px 0 4px 30px; }
+  #hud-car-cond i { display: block; height: 100%; width: 71%; background: linear-gradient(90deg, #37e07a, #ffb340); }
+  #hud-cond-label { font-size: 11px; color: #cfc6dd; }
+  #hud-radio { font-size: 12px; color: #7fd4ff; margin-top: 5px; font-weight: 700; }
 
-  #hud-hint {
-    position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-    font-size: 11px; color: rgba(255,255,255,0.65); white-space: nowrap;
-  }
+  #hud-popup { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); text-align: center;
+    font-size: 44px; font-weight: 900; letter-spacing: 2px; color: #ffd94d;
+    text-shadow: 0 0 22px rgba(255, 150, 30, 0.9), 0 3px 8px rgba(0,0,0,0.8); display: none; }
+  #hud-popup small { display: block; font-size: 22px; color: #7dff9a; }
+  #hud-hint { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+    font-size: 11px; color: rgba(255,255,255,0.55); white-space: nowrap; }
 
-  /* Title screen */
-  #title-screen {
-    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: linear-gradient(180deg, rgba(10,14,24,0.55) 0%, rgba(10,14,24,0.25) 45%, rgba(10,14,24,0.75) 100%);
-    text-align: center; z-index: 5;
-  }
+  /* ---------- title screen ---------- */
+  #title-screen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(to bottom, rgba(26, 8, 24, 0.25), rgba(26, 8, 24, 0.62)); }
   #title-screen h1 {
-    font-size: 84px; letter-spacing: 6px; font-weight: bold;
-    background: linear-gradient(180deg, #fff6c0 20%, #ffb03a 60%, #ff5a3a 100%);
+    font-size: 84px; font-weight: 900; letter-spacing: 6px; line-height: 0.95;
+    background: linear-gradient(180deg, #fff3c4 10%, #ffb340 45%, #ff5d3b 90%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
-    text-shadow: none; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.7));
+    text-shadow: 0 10px 40px rgba(255, 120, 40, 0.35); filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6));
   }
-  #title-screen .subtitle { font-size: 17px; letter-spacing: 4px; color: #ffd94a; margin-top: -6px; }
-  #title-hero { display: flex; gap: 18px; align-items: center; margin-top: 26px; background: rgba(12,16,26,0.8); border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 14px 20px; }
-  #title-portrait { width: 92px; height: 92px; border-radius: 10px; }
-  #title-hero .who { text-align: left; }
-  #title-hero .who b { font-size: 19px; }
-  #title-hero .who span { display: block; font-size: 13px; color: #ccc; margin-top: 3px; line-height: 1.45; }
-  .title-buttons { display: flex; gap: 12px; margin-top: 26px; }
-  .title-buttons button {
-    pointer-events: auto; cursor: pointer; font-size: 16px; font-weight: bold; padding: 13px 30px;
-    border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); color: #fff; background: rgba(20,26,40,0.9);
-  }
-  .title-buttons button.primary { background: linear-gradient(180deg, #ffb03a, #ff5a3a); border: none; }
-  .title-foot { margin-top: 22px; font-size: 12px; color: rgba(255,255,255,0.7); }
+  #title-screen .tagline { font-size: 15px; letter-spacing: 6px; color: #ffe9b0; margin-top: 8px; font-weight: 700; }
+  #title-card { display: flex; gap: 14px; align-items: center; text-align: left; margin-top: 26px;
+    padding: 13px 18px 13px 13px; max-width: 560px; }
+  #title-portrait { width: 86px; height: 86px; border-radius: 10px; object-fit: cover; flex: none;
+    border: 2px solid rgba(255, 179, 64, 0.7); }
+  #title-card .tname { font-size: 19px; font-weight: 900; }
+  #title-card .tdesc { font-size: 13px; color: #e8dff2; line-height: 1.45; margin-top: 3px; }
+  #title-buttons { display: flex; gap: 12px; margin-top: 24px; }
+  .tbtn { pointer-events: auto; cursor: pointer; font-family: inherit; font-size: 15px; font-weight: 900;
+    letter-spacing: 1.5px; padding: 13px 30px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(20, 14, 28, 0.85); color: #fff; }
+  .tbtn.primary { background: linear-gradient(180deg, #ffb340, #ff7a2f); color: #2a1200; border-color: #ffd9a0; }
+  .tbtn:hover { transform: translateY(-1px); }
+  #title-foot { margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.65); }
 
-  /* Pause map + help overlays */
-  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8,10,18,0.82); z-index: 6; flex-direction: column; }
-  .overlay h2 { color: #ffd94a; letter-spacing: 3px; margin-bottom: 12px; }
-  #big-map { border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); }
-  .overlay .close-hint { margin-top: 12px; font-size: 13px; color: #ccc; }
-  .help-grid { display: grid; grid-template-columns: auto auto; gap: 8px 22px; font-size: 14px; text-align: left; background: rgba(12,16,26,0.9); padding: 20px 26px; border-radius: 10px; }
-  .help-grid b { color: #ffd94a; }
-  #btn-help-close { pointer-events: auto; cursor: pointer; margin-top: 16px; font-size: 14px; font-weight: bold; padding: 10px 26px; border-radius: 8px; border: none; background: #ffb03a; color: #201404; }
+  /* ---------- map overlay ---------- */
+  #map-overlay { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
+    background: rgba(12, 6, 18, 0.78); }
+  #map-box { width: 860px; max-width: 94vw; }
+  #map-box h2 { font-size: 26px; letter-spacing: 3px; margin-bottom: 4px; text-align: center; }
+  #map-box .msub { font-size: 13px; color: #ffd9a0; margin-bottom: 10px; text-align: center; }
+  #big-map { width: 100%; height: 560px; border-radius: 12px; border: 2px solid rgba(255, 179, 64, 0.5); background: #241a2e; }
+  #map-legend { display: flex; gap: 18px; font-size: 12px; color: #e8dff2; margin-top: 9px; flex-wrap: wrap; }
+  #map-legend b { color: #ffb340; }
+
+  /* ---------- how to play ---------- */
+  #how-overlay { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center;
+    background: rgba(12, 6, 18, 0.82); }
+  #how-box { width: 560px; padding: 26px 30px; }
+  #how-box h2 { font-size: 24px; letter-spacing: 2px; margin-bottom: 12px; }
+  #how-box li { font-size: 14px; line-height: 1.9; color: #e8dff2; margin-left: 18px; }
+  #how-box li b { color: #ffb340; }
+  #btn-how-close { margin-top: 16px; }
 </style>
 </head>
 <body>
-<div id="game-canvas-holder"></div>
+<div id="app"></div>
+<div id="vignette"></div>
 
 <div id="hud">
-  <div id="hud-mission" class="panel">
-    <div id="hud-mission-title">JOB 8/8 · THE SIRENA SCORE</div>
-    <div id="hud-mission-objective">Lose the heat, then bring the car to the garage on Mermaid Mile.</div>
-    <div class="mission-row">
-      <span id="hud-mission-stage">STAGE 3/4</span>
-      <span class="stage-bar"><i></i></span>
-      <span id="hud-mission-time">03:12</span>
-    </div>
-    <div id="hud-mission-next">NEXT · Reach the garage on Mermaid Mile</div>
+  <div id="hud-mission" class="panel hud-corner">
+    <div class="job">JOB 7/8 &middot; THE EMBER RUN</div>
+    <div id="hud-mission-title">LOSE THE HEAT</div>
+    <div id="hud-mission-sub">Shake the ABPD, then reach the garage.</div>
+    <div id="hud-mission-stage">STAGE 3/4 <div class="bar"><i></i></div></div>
+    <div id="hud-mission-timer">&#9202; 03:12 — reach the garage in time</div>
+    <div id="hud-mission-next"><b>NEXT</b> &nbsp;Deliver the car to Vera at the Gilded Quay</div>
   </div>
 
-  <div id="hud-dispatch" class="panel">
-    <div class="dispatch-head">SIRENA BAY PD DISPATCH</div>
-    <div class="dispatch-sub">6 UNITS · CODE 4</div>
-    <div id="hud-dispatch-list"></div>
-    <div class="dispatch-foot">+2 more units · roadblock ahead</div>
+  <div id="hud-dispatch" class="panel hud-corner">
+    <div class="dhead"><span>ABPD DISPATCH</span><span>6 UNITS &middot; CODE 4</span></div>
+    <div class="dispatch-row"><span class="unit">FALCON-2</span><span class="tactic tac-ram">RAMMING</span><span class="dist">18 m</span></div>
+    <div class="dispatch-row"><span class="unit">OSPREY-7</span><span class="tactic tac-ram">RAMMING</span><span class="dist">11 m</span></div>
+    <div class="dispatch-row"><span class="unit">HERON-4</span><span class="tactic tac-flank">FLANKING</span><span class="dist">27 m</span></div>
+    <div class="dispatch-row"><span class="unit">KITE-9</span><span class="tactic tac-pursue">PURSUE</span><span class="dist">34 m</span></div>
+    <div class="dispatch-row"><span class="unit">AIR-3</span><span class="tactic tac-spot">SPOTLIGHT</span><span class="dist">46 m</span></div>
+    <div class="dispatch-row"><span class="unit">BARRICADE-1</span><span class="tactic tac-road">ROADBLOCK</span><span class="dist">98 m</span></div>
+    <div class="dfoot">+2 more units &middot; roadblock ahead on Sunset Mile</div>
   </div>
 
-  <div id="hud-minimap-box" class="panel">
-    <canvas id="minimap" width="186" height="186"></canvas>
-    <div id="hud-district">SUNSET QUAY</div>
-    <div id="hud-street">Mermaid Mile</div>
-    <div class="vital"><label>HEALTH</label><span class="bar"><i id="hud-health-fill"></i></span></div>
-    <div class="vital"><label>ARMOUR</label><span class="bar"><i id="hud-armor-fill"></i></span></div>
-    <div class="rep-line">REP 6 · WHEELMAN — 2140 / 2600 XP</div>
+  <div id="hud-moneybox" class="panel hud-corner">
+    <div id="hud-clock">FRI 18:42</div>
+    <div id="hud-money">$27,850</div>
+    <div id="hud-stars">&#9733;&#9733;&#9733;&#9733;&#9734;</div>
+    <div id="hud-sight">IN SIGHT &middot; AIR-3</div>
   </div>
 
-  <div id="hud-money" class="panel">
-    <div id="hud-clock">FRI 17:58</div>
-    <div id="hud-cash">$31,240</div>
-    <div id="hud-stars">★★★★☆</div>
-    <div id="hud-insight">IN SIGHT · AIR-9</div>
+  <div id="hud-weapons" class="hud-corner">
+    <div class="weapon-slot"><div class="wkey">1</div><div class="wicon">&#9994;</div><div class="wname">FISTS</div><div class="wammo">&infin;</div></div>
+    <div class="weapon-slot"><div class="wkey">2</div><div class="wicon">&#128299;</div><div class="wname">P9</div><div class="wammo">96</div></div>
+    <div class="weapon-slot active"><div class="wkey">3</div><div class="wicon">&#128299;</div><div class="wname">VIPER SMG</div><div class="wammo">140</div></div>
+    <div class="weapon-slot"><div class="wkey">4</div><div class="wicon">&#128299;</div><div class="wname">12G SHOTGUN</div><div class="wammo">24</div></div>
+    <div class="weapon-slot locked"><div class="wkey">5</div><div class="wicon">&#128299;</div><div class="wname">AR-8</div><div class="wammo">LOCKED</div></div>
+    <div class="weapon-slot locked"><div class="wkey">6</div><div class="wicon">&#128299;</div><div class="wname">RPG</div><div class="wammo">LOCKED</div></div>
   </div>
 
-  <div id="hud-weapons"></div>
-  <div id="hud-crew"></div>
+  <div id="hud-crew" class="hud-corner">
+    <div class="crew-card"><img id="crew-img-0" alt="Lena"><div><div class="cname">SWAP PLATES</div><div class="crole">Lena &ldquo;Luz&rdquo; Mora &middot; Driver</div></div><div class="ckey">Z</div></div>
+    <div class="crew-card"><img id="crew-img-1" alt="Hugo"><div><div class="cname">QUICK FIX</div><div class="crole">Hugo &ldquo;Wrench&rdquo; Salas &middot; Mechanic</div></div><div class="ckey">X</div></div>
+    <div class="crew-card"><img id="crew-img-2" alt="Nina"><div><div class="cname">EYES OUT</div><div class="crole">Nina &ldquo;Hawk&rdquo; Duarte &middot; Lookout</div></div><div class="ckey">C</div></div>
+  </div>
 
-  <div id="hud-dialog" class="panel">
-    <img id="hud-dialog-portrait" alt="">
+  <div id="hud-district-block" class="hud-corner">
+    <div id="hud-district">EMBER STRAND</div>
+    <div id="hud-street">Sunset Mile</div>
+  </div>
+
+  <div id="hud-left-bottom" class="hud-corner">
+    <canvas id="minimap" width="208" height="208"></canvas>
+    <div class="meter"><div class="mlabel"><span>HEALTH</span><span id="hud-health-num">78</span></div><div class="mbar"><i id="hud-health-fill" style="width:78%"></i></div></div>
+    <div class="meter"><div class="mlabel"><span>ARMOUR</span><span id="hud-armour-num">61</span></div><div class="mbar"><i id="hud-armour-fill" style="width:61%"></i></div></div>
+    <div class="meter"><div class="mlabel"><span>REP</span><span>2310 / 2800</span></div><div class="mbar"><i id="hud-rep-fill" style="width:82%"></i></div></div>
+    <div id="hud-rank">REP 7 &middot; SUNSET RUNNER</div>
+  </div>
+
+  <div id="hud-dialog" class="panel hud-corner">
+    <img id="hud-dialog-portrait" alt="Vera">
     <div>
-      <div id="hud-dialog-name">Iris "The Broker" Santos · FIXER · SUNSET QUAY</div>
-      <div id="hud-dialog-line">Six units and a chopper, Mako — lose the blue lights or lose the car. Your call, make it fast.</div>
+      <div id="hud-dialog-name">VERA &ldquo;THE VELVET&rdquo; CASTILLO &middot; FIXER</div>
+      <div id="hud-dialog-text">Six units and a chopper, Dante — lose the lights or lose the car.</div>
     </div>
   </div>
 
-  <div id="hud-radio">♪ SIRENA FM 99.7 — "Night Drive" — The Shorelines</div>
-  <div id="hud-drive">
-    <div><span id="hud-speed">112</span> <span id="hud-speed-unit">KM/H</span></div>
-    <div id="hud-car-name">MANTA GT</div>
-    <div class="condition-row">CONDITION <span class="bar"><i id="hud-condition-fill"></i></span> 82%</div>
+  <div id="hud-right-bottom" class="hud-corner">
+    <div id="hud-speed">118<small> KM/H</small></div>
+    <div id="hud-car-name">DORADO GT</div>
+    <div id="hud-car-cond"><i></i></div>
+    <div id="hud-cond-label">CONDITION 71% &middot; SPORTS &middot; TUNE 2</div>
+    <div id="hud-radio">&#9834; SOL FM 101.3 &mdash; &ldquo;Golden Hour&rdquo; &mdash; The Marigolds</div>
   </div>
 
-  <div id="hud-popup" class="hud-popup"></div>
-  <div id="hud-popup2" class="hud-popup"></div>
-  <div id="hud-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute · drag mouse to look</div>
+  <div id="hud-popup">DRIFT x3<small>NEAR MISS +$250</small></div>
+  <div id="hud-hint">WASD drive / walk &middot; E enter &amp; exit car &middot; SPACE handbrake &middot; SHIFT run &middot; M city map &middot; R radio &middot; F action &middot; N mute &middot; drag mouse to look</div>
 </div>
 
 <div id="title-screen">
-  <h1>SIRENA BAY</h1>
-  <div class="subtitle">AN OPEN-WORLD CRIME GAME</div>
-  <div id="title-hero">
-    <img id="title-portrait" alt="Marco Delgado">
-    <div class="who">
-      <b>Marco "Mako" Delgado</b>
-      <span>Wheelman for Iris "The Broker" Santos.<br>JOB 8/8 · THE SIRENA SCORE — lose the heat,<br>bring the MANTA GT home.</span>
+  <h1>AURELIA BAY</h1>
+  <div class="tagline">AN OPEN-WORLD CRIME GAME</div>
+  <div id="title-card" class="panel">
+    <img id="title-portrait" alt="Dante Reyes">
+    <div>
+      <div class="tname">Dante &ldquo;Dusk&rdquo; Reyes</div>
+      <div class="tdesc">Wheelman for Vera &ldquo;The Velvet&rdquo; Castillo. JOB 7/8 &middot; THE EMBER RUN &mdash; lose the heat, bring the DORADO GT home before the sun goes down on Aurelia Bay.</div>
     </div>
   </div>
-  <div class="title-buttons">
-    <button id="btn-continue">CONTINUE</button>
-    <button id="btn-new" class="primary">NEW GAME</button>
-    <button id="btn-help">HOW TO PLAY</button>
+  <div id="title-buttons">
+    <button class="tbtn" id="btn-continue">CONTINUE</button>
+    <button class="tbtn primary" id="btn-new">NEW GAME</button>
+    <button class="tbtn" id="btn-how">HOW TO PLAY</button>
   </div>
-  <div class="title-foot">WASD drive &amp; walk · E enter / exit car · M map · R radio · drag mouse to look · an original game, nothing from Rockstar Games</div>
+  <div id="title-foot">WASD drive &amp; walk &middot; E enter / exit car &middot; M map &middot; R radio &middot; drag mouse to look &middot; an original game, nothing from Rockstar Games</div>
 </div>
 
-<div id="map-overlay" class="overlay">
-  <h2>SIRENA BAY — CITY MAP</h2>
-  <canvas id="big-map" width="760" height="560"></canvas>
-  <div class="close-hint">M or ESC to close · green line: GPS route to the garage · red dots: police</div>
+<div id="map-overlay">
+  <div id="map-box">
+    <h2>AURELIA BAY</h2>
+    <div class="msub">City map &middot; FRI 18:42 &middot; golden hour &mdash; press M or Esc to close</div>
+    <canvas id="big-map" width="860" height="560"></canvas>
+    <div id="map-legend">
+      <span><b>&#9679;</b> You</span><span><b>&#9733;</b> Mission — The Ember Run</span>
+      <span><b>G</b> Garage</span><span><b>H</b> Safehouse</span><span><b>$</b> Shop</span>
+      <span><b>P</b> Police</span><span><b>&#9873;</b> Marina</span><span><b>&#9992;</b> Airfield</span>
+    </div>
+  </div>
 </div>
 
-<div id="help-overlay" class="overlay">
-  <h2>HOW TO PLAY</h2>
-  <div class="help-grid">
-    <b>WASD / arrows</b><span>Drive / walk</span>
-    <b>E</b><span>Enter / exit the car</span>
-    <b>SPACE</b><span>Handbrake — drift for cash</span>
-    <b>SHIFT</b><span>Run on foot</span>
-    <b>Mouse drag</b><span>Look around</span>
-    <b>Click</b><span>Fire the equipped weapon</span>
-    <b>Z / X / C</b><span>Crew: swap plates / quick fix / eyes out</span>
-    <b>M</b><span>City map</span>
-    <b>R</b><span>Radio</span>
-    <b>N</b><span>Mute</span>
+<div id="how-overlay">
+  <div id="how-box" class="panel">
+    <h2>HOW TO PLAY</h2>
+    <ul>
+      <li><b>W A S D</b> — drive the car / walk on foot</li>
+      <li><b>E</b> — enter or exit the car (walk up to any car to steal it)</li>
+      <li><b>SPACE</b> — handbrake &middot; drift for style points</li>
+      <li><b>SHIFT</b> — run on foot &middot; <b>Mouse drag</b> — look around</li>
+      <li><b>M</b> — city map &middot; <b>R</b> — change radio &middot; <b>F</b> — action &middot; <b>N</b> — mute</li>
+      <li><b>1–6</b> — weapons &middot; <b>Z / X / C</b> — call your crew</li>
+      <li>Lose the cops, finish the job, grow your rep. Progress saves automatically.</li>
+    </ul>
+    <button class="tbtn primary" id="btn-how-close">GOT IT</button>
   </div>
-  <button id="btn-help-close">GOT IT</button>
 </div>
 
 <script src="vendor/three.min.js"></script>
-<script src="src/util.js"></script>
-<script src="src/faces.js"></script>
-<script src="src/people.js"></script>
-<script src="src/vehicles.js"></script>
-<script src="src/city.js"></script>
-<script src="src/hud.js"></script>
-<script src="src/shots.js"></script>
-<script src="src/main.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

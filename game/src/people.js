@@ -1,293 +1,312 @@
-// Sirena Bay — people. Every figure is built from ROUNDED geometry only:
-// spheres, capsules and tapered cylinders. No box torsos, no cube heads, no
-// slab feet — that is what read as Minecraft. Heads are deliberately large
-// (about a fifth of the height, a stylised proportion) so the painted face
-// stays readable at the camera's distance.
-//
-// A person is a hierarchy of pivot groups: hips -> torso -> neck -> head,
-// shoulder pivots -> upper arm -> elbow -> forearm -> hand, hip pivots ->
-// thigh -> knee -> shin -> foot. Poses set the pivots; the walk cycle swings
-// them with a sine phase. buildPerson returns the group plus every pivot so
-// the game loop and the staged shots can pose the figure.
+// People: rounded figures only — sphere heads, capsule limbs, no boxy
+// bodies. Every face carries BIG high-contrast features (white eyes with
+// black pupils, brows, nose, mouth) so it reads at shot distance. Each
+// person has an activity pose: carrying, waving, crouching at an engine,
+// talking, walking with a bag, fishing, or panicking.
 
-(function () {
-  'use strict';
+import { mulberry32, pick } from './util.js';
 
-  function mat(color, rough) {
-    return new THREE.MeshStandardMaterial({ color: color, roughness: rough === undefined ? 0.75 : rough, metalness: 0.02 });
-  }
+// Seeded fallback RNG so unspecified colours are deterministic per load.
+const fallbackRng = mulberry32(777);
 
-  function capsule(r, len, material) {
-    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 14), material);
-    m.castShadow = true;
-    return m;
-  }
+const SKINS = ['#c98d5f', '#8a5a34', '#e8b88a', '#a06a42', '#6e4423', '#d9a06a'];
+const SHIRTS = ['#d94f30', '#39a8c0', '#e8b93b', '#7a4fd0', '#e86a8a', '#3fae6a', '#e87a2e', '#4a7fd0'];
+const PANTS = ['#2c3a4a', '#3a2c22', '#4a4a55', '#22402e', '#5a3a4a'];
+const HAIRS = ['#1c1210', '#2a1a10', '#4a2c14', '#6e4423', '#8a8a8a', '#3a1a0e'];
 
-  function ball(r, material, sx, sy, sz) {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), material);
-    m.scale.set(sx || 1, sy || 1, sz || 1);
-    m.castShadow = true;
-    return m;
-  }
+function limb(r, len, mat) {
+  // A capsule pivoted at its top joint: the mesh hangs below the pivot so
+  // rotating the group swings the limb naturally.
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat);
+  m.position.y = -(len / 2 + r * 0.4);
+  m.castShadow = true;
+  g.add(m);
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(r * 1.15, 8, 8), mat);
+  hand.position.y = -(len + r * 1.2);
+  g.add(hand);
+  return g;
+}
 
-  function tube(rTop, rBottom, len, material) {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, len, 14), material);
-    m.castShadow = true;
-    return m;
-  }
-
-  // opts: skin, shirt, pants, shoes, hair (color), hairStyle, face (opts for
-  // paintFaceTexture), height (scale, default 1). The figure faces +Z.
-  function buildPerson(opts) {
-    opts = opts || {};
-    const skin = mat(opts.skin || '#e8b07e', 0.6);
-    const shirt = mat(opts.shirt || '#2b6cb0');
-    const pants = mat(opts.pants || '#2d3748');
-    const shoes = mat(opts.shoes || '#1a202c', 0.5);
-    const hairMat = mat(opts.hair || '#1c1410', 0.9);
-
-    const root = new THREE.Group();
-    const P = {}; // pivots
-
-    // Hips — a flattened sphere, the body's centre.
-    const hips = ball(0.155, pants, 1.15, 0.8, 0.85);
-    hips.position.y = 0.88;
-    root.add(hips);
-
-    // Torso — a capsule, wider than deep. Chest and belly in one rounded
-    // piece, with a belt line painted by a thin torus.
-    const torsoPivot = new THREE.Group();
-    torsoPivot.position.y = 0.92;
-    root.add(torsoPivot);
-    const torso = capsule(0.16, 0.30, shirt);
-    torso.scale.set(1.15, 1, 0.78);
-    torso.position.y = 0.30;
-    torsoPivot.add(torso);
-    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.018, 8, 24), mat('#14100c', 0.5));
-    belt.rotation.x = Math.PI / 2;
-    belt.scale.set(1.12, 0.8, 1);
-    belt.position.y = 0.10;
-    torsoPivot.add(belt);
-    // Shoulder balls round the top of the torso off.
-    const shL = ball(0.085, shirt);
-    shL.position.set(-0.185, 0.52, 0);
-    torsoPivot.add(shL);
-    const shR = ball(0.085, shirt);
-    shR.position.set(0.185, 0.52, 0);
-    torsoPivot.add(shR);
-    // A collar ring where the neck meets the shirt.
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.022, 8, 20), shirt);
-    collar.rotation.x = Math.PI / 2;
-    collar.position.y = 0.60;
-    torsoPivot.add(collar);
-    P.torso = torsoPivot;
-
-    // Neck + head. The head is a sphere with the painted face texture; the
-    // face is centred on +Z (u = 0.25 on the texture).
-    const neck = tube(0.055, 0.065, 0.10, skin);
-    neck.position.y = 1.56;
-    root.add(neck);
-    const headPivot = new THREE.Group();
-    headPivot.position.y = 1.70;
-    root.add(headPivot);
-    const faceTex = window.SB.faces.paintFaceTexture(opts.face || { skin: opts.skin || '#e8b07e' });
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.185, 28, 22),
-      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6, metalness: 0.0 })
+function buildFace(head, skin, spec) {
+  // Eyes: BIG white spheres with black pupils, set proud of the face.
+  const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.25 });
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), eyeWhite);
+    eye.scale.set(1, 1.15, 0.55);
+    eye.position.set(s * 0.085, 0.03, 0.185);
+    head.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), pupilMat);
+    pupil.position.set(s * 0.085, 0.03, 0.225);
+    head.add(pupil);
+    // Brows: thick dark capsules above each eye.
+    const brow = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.016, 0.07, 3, 6),
+      new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.8 }),
     );
-    head.castShadow = true;
-    headPivot.add(head);
-    // Hair: a 3D cap over the top of the skull, ending above the brows so it
-    // can never cover the eyes. thetaLength 1.0 rad from the north pole.
-    const hairCap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.192, 24, 12, 0, Math.PI * 2, 0, 1.0),
-      hairMat
+    brow.rotation.z = Math.PI / 2 + s * 0.12;
+    brow.position.set(s * 0.085, 0.115, 0.195);
+    head.add(brow);
+  }
+  // Nose: a small rounded wedge.
+  const nose = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 8, 8),
+    new THREE.MeshStandardMaterial({ color: spec.skinShade, roughness: 0.7 }),
+  );
+  nose.scale.set(0.8, 1.1, 0.8);
+  nose.position.set(0, -0.03, 0.21);
+  head.add(nose);
+  // Mouth: a dark smile arc (torus segment) — reads as a mouth at distance.
+  const mouth = new THREE.Mesh(
+    new THREE.TorusGeometry(0.055, 0.014, 6, 14, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0x6e2230, roughness: 0.6 }),
+  );
+  mouth.position.set(0, -0.085, 0.185);
+  mouth.rotation.x = 0.15;
+  mouth.rotation.z = Math.PI;
+  head.add(mouth);
+  if (spec.panic) {
+    mouth.scale.set(1.3, 1.6, 1);
+    mouth.position.y = -0.1;
+  }
+}
+
+function buildHair(head, spec) {
+  const hairMat = new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.9 });
+  const style = spec.hairStyle || 'short';
+  if (style === 'cap') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.235, 12, 10), new THREE.MeshStandardMaterial({ color: spec.capColor || '#1f6fb2', roughness: 0.7 }));
+    cap.scale.set(1, 0.62, 1);
+    cap.position.y = 0.085;
+    head.add(cap);
+    const brim = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), cap.material);
+    brim.scale.set(1.4, 0.18, 1);
+    brim.position.set(0, 0.1, 0.2);
+    head.add(brim);
+    return;
+  }
+  if (style === 'beanie') {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: spec.capColor || '#c23b4e', roughness: 0.95 }));
+    b.scale.set(1, 0.7, 1);
+    b.position.y = 0.075;
+    head.add(b);
+    return;
+  }
+  // Hair cap: a slightly larger sphere, offset up and back.
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.232, 12, 10), hairMat);
+  cap.scale.set(1, 0.95, 1);
+  cap.position.set(0, 0.045, -0.03);
+  head.add(cap);
+  if (style === 'long') {
+    const back = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), hairMat);
+    back.scale.set(0.9, 1.3, 0.55);
+    back.position.set(0, -0.08, -0.16);
+    head.add(back);
+  } else if (style === 'ponytail') {
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), hairMat);
+    tail.scale.set(0.8, 1.9, 0.8);
+    tail.position.set(0.1, -0.05, -0.22);
+    tail.rotation.z = -0.2;
+    head.add(tail);
+  } else if (style === 'bun') {
+    const bun = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), hairMat);
+    bun.position.set(0, 0.2, -0.08);
+    head.add(bun);
+  }
+}
+
+export function makePerson(spec) {
+  const s = spec || {};
+  const skin = s.skin || pick(fallbackRng, SKINS);
+  const skinShade = new THREE.Color(skin).multiplyScalar(0.82).getHex();
+  const shirt = s.shirt || pick(fallbackRng, SHIRTS);
+  const pants = s.pants || pick(fallbackRng, PANTS);
+  const hair = s.hair || pick(fallbackRng, HAIRS);
+  const g = new THREE.Group();
+
+  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.65 });
+  const shirtMat = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.8 });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.85 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1c1815, roughness: 0.9 });
+
+  // Legs (pivots at the hips).
+  const legL = limb(0.09, 0.62, pantsMat);
+  legL.position.set(-0.13, 0.86, 0);
+  const legR = limb(0.09, 0.62, pantsMat);
+  legR.position.set(0.13, 0.86, 0);
+  g.add(legL, legR);
+  // Shoes.
+  for (const leg of [legL, legR]) {
+    const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), shoeMat);
+    shoe.scale.set(0.9, 0.55, 1.5);
+    shoe.position.set(0, -0.78, 0.05);
+    leg.add(shoe);
+  }
+
+  // Torso: a capsule, slightly tapered by a second smaller capsule.
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.5, 6, 12), shirtMat);
+  torso.position.y = 1.18;
+  torso.castShadow = true;
+  g.add(torso);
+
+  // Arms (pivots at the shoulders).
+  const armL = limb(0.07, 0.52, s.sleeves === false ? skinMat : shirtMat);
+  armL.position.set(-0.32, 1.44, 0);
+  const armR = limb(0.07, 0.52, s.sleeves === false ? skinMat : shirtMat);
+  armR.position.set(0.32, 1.44, 0);
+  g.add(armL, armR);
+
+  // Head group (so the head can tilt/turn independently).
+  const headGroup = new THREE.Group();
+  headGroup.position.y = 1.66;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 18, 14), skinMat);
+  head.castShadow = true;
+  headGroup.add(head);
+  buildFace(headGroup, skin, { hair, skinShade, panic: s.activity === 'panic' });
+  buildHair(headGroup, { hair, hairStyle: s.hairStyle, capColor: s.capColor });
+  g.add(headGroup);
+
+  // Props + pose per activity.
+  const activity = s.activity || 'idle';
+  let prop = null;
+  if (activity === 'carry') {
+    armL.rotation.x = -1.15;
+    armR.rotation.x = -1.15;
+    armL.rotation.z = 0.25;
+    armR.rotation.z = -0.25;
+    legL.rotation.x = 0.35;
+    legR.rotation.x = -0.3;
+    prop = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.32, 0.32),
+      new THREE.MeshStandardMaterial({ color: 0xa8763e, roughness: 0.9 }),
     );
-    hairCap.position.y = 0.012;
-    hairCap.castShadow = true;
-    headPivot.add(hairCap);
-    if (opts.hairStyle === 'long') {
-      const back = ball(0.13, hairMat, 0.9, 1.5, 0.6);
-      back.position.set(0, -0.10, -0.10);
-      headPivot.add(back);
-    }
-    if (opts.hairStyle === 'ponytail') {
-      const tail = capsule(0.05, 0.18, hairMat);
-      tail.position.set(0, -0.05, -0.19);
-      tail.rotation.x = 0.5;
-      headPivot.add(tail);
-    }
-    // A small 3D nose tip adds depth to the painted nose.
-    const nose = ball(0.028, skin, 0.8, 1.1, 0.9);
-    nose.position.set(0, -0.015, 0.178);
-    headPivot.add(nose);
-    // Ears.
-    const earL = ball(0.035, skin, 0.5, 0.9, 0.8);
-    earL.position.set(-0.182, 0, 0);
-    headPivot.add(earL);
-    const earR = ball(0.035, skin, 0.5, 0.9, 0.8);
-    earR.position.set(0.182, 0, 0);
-    headPivot.add(earR);
-    P.head = headPivot;
-
-    // Arms. Shoulder pivot at the shoulder ball, upper arm capsule hanging
-    // down from it, elbow pivot, forearm capsule, sphere hand.
-    function buildArm(side) {
-      const shoulder = new THREE.Group();
-      shoulder.position.set(0.21 * side, 1.44, 0);
-      root.add(shoulder);
-      const upper = capsule(0.058, 0.20, shirt);
-      upper.position.y = -0.15;
-      shoulder.add(upper);
-      const elbow = new THREE.Group();
-      elbow.position.y = -0.31;
-      shoulder.add(elbow);
-      const fore = capsule(0.05, 0.18, skin);
-      fore.position.y = -0.14;
-      elbow.add(fore);
-      const hand = ball(0.062, skin, 0.9, 1.15, 0.9);
-      hand.position.y = -0.30;
-      elbow.add(hand);
-      return { shoulder: shoulder, elbow: elbow };
-    }
-    const armL = buildArm(-1);
-    const armR = buildArm(1);
-    P.armL = armL.shoulder; P.elbowL = armL.elbow;
-    P.armR = armR.shoulder; P.elbowR = armR.elbow;
-
-    // Legs. Hip pivot, thigh capsule, knee pivot, shin capsule, rounded foot
-    // (a squashed sphere pointing forward — never a box).
-    function buildLeg(side) {
-      const hip = new THREE.Group();
-      hip.position.set(0.095 * side, 0.86, 0);
-      root.add(hip);
-      const thigh = capsule(0.078, 0.26, pants);
-      thigh.position.y = -0.20;
-      hip.add(thigh);
-      const knee = new THREE.Group();
-      knee.position.y = -0.42;
-      hip.add(knee);
-      const shin = capsule(0.064, 0.26, pants);
-      shin.position.y = -0.20;
-      knee.add(shin);
-      const foot = ball(0.075, shoes, 0.95, 0.6, 1.7);
-      foot.position.set(0, -0.42, 0.05);
-      knee.add(foot);
-      return { hip: hip, knee: knee };
-    }
-    const legL = buildLeg(-1);
-    const legR = buildLeg(1);
-    P.legL = legL.hip; P.kneeL = legL.knee;
-    P.legR = legR.hip; P.kneeR = legR.knee;
-
-    root.scale.setScalar(opts.height || 1);
-    root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    return { group: root, pivots: P };
+    prop.position.set(0, 1.12, 0.42);
+    prop.castShadow = true;
+    g.add(prop);
+  } else if (activity === 'wave') {
+    armR.rotation.z = Math.PI - 0.25; // arm straight up
+    armR.rotation.x = -0.15;
+    armL.rotation.x = 0.15;
+    headGroup.rotation.z = 0.06;
+  } else if (activity === 'crouch') {
+    legL.rotation.x = -1.5;
+    legR.rotation.x = -0.5;
+    legL.position.y = 0.62;
+    legR.position.y = 0.72;
+    torso.position.y = 0.98;
+    torso.rotation.x = 0.55;
+    armL.position.y = 1.2;
+    armR.position.y = 1.2;
+    armL.rotation.x = -0.9;
+    armR.rotation.x = -0.9;
+    headGroup.position.y = 1.42;
+    // Head glances UP from the work: with the torso leaning 0.55 forward,
+    // a level head would hide the face from a camera above. -0.25 keeps
+    // the "working" read while the eyes, nose and mouth stay visible.
+    headGroup.rotation.x = -0.25;
+    g.position.y = -0.12;
+    // The engine block being worked on.
+    prop = new THREE.Group();
+    const block = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.5, metalness: 0.6 }),
+    );
+    block.scale.set(1, 0.7, 1.2);
+    block.position.y = 0.3;
+    const pipe = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x8a8a92, roughness: 0.4, metalness: 0.7 }),
+    );
+    pipe.position.set(0.2, 0.7, 0);
+    prop.add(block, pipe);
+    prop.position.set(0, 0, 0.85);
+    g.add(prop);
+  } else if (activity === 'talk') {
+    armR.rotation.x = -1.0;
+    armR.rotation.z = -0.3;
+    armL.rotation.x = 0.2;
+    headGroup.rotation.y = s.look || 0;
+    headGroup.rotation.x = -0.05;
+  } else if (activity === 'walk') {
+    legL.rotation.x = 0.55;
+    legR.rotation.x = -0.5;
+    armL.rotation.x = -0.4;
+    armR.rotation.x = 0.35;
+    // Bag in the right hand.
+    prop = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0x7a4a22, roughness: 0.85 }),
+    );
+    prop.scale.set(1, 1.25, 0.55);
+    prop.position.set(0.38, 0.78, 0.18);
+    prop.castShadow = true;
+    g.add(prop);
+  } else if (activity === 'fish') {
+    armL.rotation.x = -0.9;
+    armR.rotation.x = -0.9;
+    armL.rotation.z = 0.2;
+    armR.rotation.z = -0.2;
+    prop = new THREE.Group();
+    const rod = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.035, 2.6, 6),
+      new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.8 }),
+    );
+    rod.rotation.x = -1.1;
+    rod.position.set(0, 0.6, 0.9);
+    prop.add(rod);
+    g.add(prop);
+  } else if (activity === 'panic') {
+    armL.rotation.z = 2.6;
+    armR.rotation.z = -2.6;
+    legL.rotation.x = 0.7;
+    legR.rotation.x = -0.6;
+    torso.rotation.x = 0.12;
+  } else {
+    armL.rotation.x = 0.06;
+    armR.rotation.x = -0.06;
   }
 
-  // --- Poses. Each sets pivot rotations; angles are radians. ---------
-
-  function resetPose(P) {
-    P.torso.rotation.set(0, 0, 0);
-    P.head.rotation.set(0, 0, 0);
-    P.armL.rotation.set(0, 0, 0.10);
-    P.armR.rotation.set(0, 0, -0.10);
-    P.elbowL.rotation.set(-0.15, 0, 0);
-    P.elbowR.rotation.set(-0.15, 0, 0);
-    P.legL.rotation.set(0, 0, 0);
-    P.legR.rotation.set(0, 0, 0);
-    P.kneeL.rotation.set(0, 0, 0);
-    P.kneeR.rotation.set(0, 0, 0);
-  }
-
-  // Mid-stride walk, phase 0..2PI. Arms and legs swing opposite.
-  function poseWalk(P, phase) {
-    const s = Math.sin(phase);
-    const c = Math.sin(phase + Math.PI);
-    resetPose(P);
-    P.legL.rotation.x = s * 0.55;
-    P.legR.rotation.x = c * 0.55;
-    P.kneeL.rotation.x = Math.max(0, -s) * 0.8;
-    P.kneeR.rotation.x = Math.max(0, -c) * 0.8;
-    P.armL.rotation.x = c * 0.45;
-    P.armR.rotation.x = s * 0.45;
-    P.elbowL.rotation.x = -0.3;
-    P.elbowR.rotation.x = -0.3;
-  }
-
-  // Carrying a crate with both hands: arms forward and bent, slight lean.
-  function poseCarry(P) {
-    resetPose(P);
-    P.armL.rotation.set(-1.05, 0, 0.35);
-    P.armR.rotation.set(-1.05, 0, -0.35);
-    P.elbowL.rotation.x = -0.9;
-    P.elbowR.rotation.x = -0.9;
-    P.torso.rotation.x = 0.08;
-    P.legL.rotation.x = 0.35;
-    P.legR.rotation.x = -0.3;
-    P.kneeR.rotation.x = 0.5;
-  }
-
-  // Waving: right arm high, open hand, head tilted toward the wave.
-  function poseWave(P) {
-    resetPose(P);
-    P.armR.rotation.set(-2.6, 0, -0.5);
-    P.elbowR.rotation.x = -0.25;
-    P.armL.rotation.set(-0.2, 0, 0.35);
-    P.head.rotation.z = 0.10;
-    P.head.rotation.y = -0.15;
-  }
-
-  // Kneeling by an engine: one knee on the ground, torso leaning in, both
-  // hands forward on the work, head glancing up.
-  function poseKneel(P) {
-    resetPose(P);
-    P.legL.rotation.x = -1.45;
-    P.kneeL.rotation.x = 1.9;
-    P.legR.rotation.x = 0.35;
-    P.kneeR.rotation.x = 1.35;
-    P.torso.rotation.x = 0.35;
-    P.armL.rotation.set(-0.9, 0, 0.25);
-    P.armR.rotation.set(-0.9, 0, -0.25);
-    P.elbowL.rotation.x = -0.5;
-    P.elbowR.rotation.x = -0.5;
-    P.head.rotation.x = -0.35;
-  }
-
-  // Mid-conversation: one arm raised mid-gesture, other hand on hip, body
-  // turned slightly toward the other speaker — but only slightly, so both
-  // faces stay visible to the camera.
-  function poseTalk(P, mirror) {
-    resetPose(P);
-    const m = mirror ? -1 : 1;
-    P.armR.rotation.set(-0.9 * m * m, 0, -0.4);
-    P.elbowR.rotation.x = -0.9;
-    P.armL.rotation.set(-0.15, 0, 0.55);
-    P.elbowL.rotation.x = -1.5;
-    P.torso.rotation.y = 0.25 * m;
-    P.head.rotation.y = 0.30 * m;
-    P.legL.rotation.x = 0.08;
-    P.legR.rotation.x = -0.08;
-  }
-
-  // Pointing at something in the distance.
-  function posePoint(P) {
-    resetPose(P);
-    P.armR.rotation.set(-1.35, 0, -0.15);
-    P.elbowR.rotation.x = -0.1;
-    P.head.rotation.x = -0.08;
-  }
-
-  // Panic: both hands up, leaning back.
-  function posePanic(P) {
-    resetPose(P);
-    P.armL.rotation.set(-2.7, 0, 0.5);
-    P.armR.rotation.set(-2.7, 0, -0.5);
-    P.torso.rotation.x = -0.12;
-    P.head.rotation.x = -0.15;
-  }
-
-  window.SB.people = {
-    buildPerson, resetPose, poseWalk, poseCarry, poseWave, poseKneel, poseTalk, posePoint, posePanic,
+  g.userData = {
+    head: headGroup, armL, armR, legL, legR, torso,
+    activity, name: s.name || 'ped',
   };
-})();
+  return g;
+}
+
+// The six marina crew, each with a distinct look and activity.
+export function makeMarinaCrew() {
+  return [
+    makePerson({ name: 'Mara', activity: 'carry', skin: '#c98d5f', shirt: '#d94f30', hairStyle: 'ponytail', hair: '#1c1210' }),
+    makePerson({ name: 'Tomas', activity: 'wave', skin: '#8a5a34', shirt: '#39a8c0', hairStyle: 'cap', capColor: '#e8b93b' }),
+    makePerson({ name: 'Rosa', activity: 'crouch', skin: '#e8b88a', shirt: '#e8b93b', hairStyle: 'bun', hair: '#6e4423' }),
+    makePerson({ name: 'Dario', activity: 'talk', skin: '#a06a42', shirt: '#f2f0ea', hairStyle: 'short', hair: '#2a1a10', look: 0.5 }),
+    makePerson({ name: 'Luz', activity: 'talk', skin: '#c98d5f', shirt: '#7a4fd0', hairStyle: 'long', hair: '#241016', look: -0.5 }),
+    makePerson({ name: 'Paco', activity: 'walk', skin: '#6e4423', shirt: '#e87a2e', hairStyle: 'beanie', capColor: '#39a8c0' }),
+  ];
+}
+
+// Background pedestrians for streets and beach (varied, deterministic).
+export function makePedestrians(count, seed) {
+  let a = seed >>> 0;
+  const rnd = () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [];
+  const acts = ['walk', 'walk', 'idle', 'walk', 'talk'];
+  for (let i = 0; i < count; i++) {
+    out.push(makePerson({
+      name: 'ped' + i,
+      activity: acts[Math.floor(rnd() * acts.length)],
+      skin: SKINS[Math.floor(rnd() * SKINS.length)],
+      shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)],
+      pants: PANTS[Math.floor(rnd() * PANTS.length)],
+      hair: HAIRS[Math.floor(rnd() * HAIRS.length)],
+      hairStyle: ['short', 'long', 'ponytail', 'cap', 'beanie'][Math.floor(rnd() * 5)],
+    }));
+  }
+  return out;
+}

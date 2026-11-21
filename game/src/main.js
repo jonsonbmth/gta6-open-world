@@ -1,942 +1,788 @@
-// Sirena Bay — the game itself: bootstrap, the fixed-timestep loop, driving
-// and walking, the wanted system with pursuing police and a helicopter,
-// traffic, pedestrians, the marina crew, missions, the save, and a small
-// procedural WebAudio soundtrack. Playable with keyboard and mouse; the
-// ?shot= parameter freezes the game in a staged pose for screenshots.
+// AURELIA BAY — main entry. Builds the golden-hour world, runs the game
+// loop (driving, walking, police pursuit, missions, traffic, pedestrians),
+// wires the HUD and the staged shots (?shot=chase|title|map|marina).
+// Playable with keyboard + mouse; progress saves to localStorage.
 
-(function () {
-  'use strict';
+import { buildSky } from './sky.js';
+import { buildCity } from './city.js';
+import { makeCar, makeHelicopter, aimSpotlight } from './vehicles.js';
+import { makePerson, makeMarinaCrew, makePedestrians } from './people.js';
+import {
+  initPortraits, drawMinimap, drawBigMap, showPopup, updateHud, setDialog,
+} from './hud.js';
+import { setupShot } from './shots.js';
+import { clamp } from './util.js';
 
-  const U = window.SB.util;
-  const STEP = 1 / 60;
+const SAVE_KEY = 'aurelia-bay-save-v1';
 
-  const SAVE_KEY = 'sirena-bay-save-v1';
+const JOBS = [
+  { name: 'FIRST LIGHT', desc: 'Pick up the Dorado GT from the docks.' },
+  { name: 'SALT AIR', desc: 'Outrun the harbour patrol on Ember Strand.' },
+  { name: 'VELVET ROPE', desc: 'Drive Vera to the Coral Market meet.' },
+  { name: 'HIGH TIDE', desc: 'Lose the ABPD after the warehouse job.' },
+  { name: 'PALM READER', desc: 'Swap plates at the Neon Palm Motel.' },
+  { name: 'GOLD RUSH', desc: 'Escort the convoy down Sunset Mile.' },
+  { name: 'THE EMBER RUN', desc: 'Lose the heat, then bring the car to the garage on Ember Strand.' },
+  { name: 'THE VELVET HANDOVER', desc: 'Deliver the car to Vera at the Gilded Quay.' },
+];
 
-  const game = {
-    state: {
-      cash: 31240, stars: 4, health: 100, armor: 65, speed: 0,
-      condition: 82, district: 'SUNSET QUAY', street: 'Mermaid Mile',
-      stage: 3, stages: 4, respect: 2140, respectMax: 2600, rank: 'WHEELMAN',
-    },
-    driving: true,
-    paused: false,
-    mode: 'title',
-    shotName: null,
-    keys: {},
-    camYaw: 0,
-    camPitch: 0,
-    playerSpeed: 0,
-    playerHeading: Math.PI,
-    wantedCooldown: 0,
-    hiddenTimer: 0,
-    time: 0,
-  };
+// ---------- renderer / scene ----------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.domElement.classList.add('webgl');
+app.appendChild(renderer.domElement);
 
-  // ------------------------------------------------------------------
-  // Audio: everything synthesized, no files. Engine hum, police siren,
-  // and a soft radio arpeggio. Starts on the first key or click.
-  // ------------------------------------------------------------------
-  const AudioSys = {
-    ctx: null, master: null, engineOsc: null, engineGain: null,
-    sirenOsc: null, sirenGain: null, radioTimer: 0, muted: false,
-    init() {
-      if (this.ctx) return;
-      try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        this.ctx = new AC();
-        this.master = this.ctx.createGain();
-        this.master.gain.value = 0.35;
-        this.master.connect(this.ctx.destination);
-        this.engineOsc = this.ctx.createOscillator();
-        this.engineOsc.type = 'sawtooth';
-        this.engineOsc.frequency.value = 55;
-        this.engineGain = this.ctx.createGain();
-        this.engineGain.gain.value = 0;
-        this.engineOsc.connect(this.engineGain);
-        this.engineGain.connect(this.master);
-        this.engineOsc.start();
-        this.sirenOsc = this.ctx.createOscillator();
-        this.sirenOsc.type = 'square';
-        this.sirenOsc.frequency.value = 720;
-        this.sirenGain = this.ctx.createGain();
-        this.sirenGain.gain.value = 0;
-        this.sirenOsc.connect(this.sirenGain);
-        this.sirenGain.connect(this.master);
-        this.sirenOsc.start();
-      } catch (e) { /* audio is a garnish; the game plays without it */ }
-    },
-    update(dt) {
-      if (!this.ctx || this.muted) return;
-      const t = this.ctx.currentTime;
-      if (this.engineOsc) {
-        const target = game.driving ? 0.05 + Math.min(0.10, Math.abs(game.playerSpeed) * 0.0016) : 0.0;
-        this.engineGain.gain.setTargetAtTime(target, t, 0.1);
-        this.engineOsc.frequency.setTargetAtTime(50 + Math.abs(game.playerSpeed) * 2.1, t, 0.1);
-      }
-      if (this.sirenOsc) {
-        const on = game.state.stars >= 1 && game.mode === 'play';
-        this.sirenGain.gain.setTargetAtTime(on ? 0.018 : 0, t, 0.2);
-        if (on) this.sirenOsc.frequency.setTargetAtTime(Math.sin(this.ctx.currentTime * 4) > 0 ? 950 : 720, t, 0.05);
-      }
-    },
-    blip(freq) {
-      if (!this.ctx || this.muted) return;
-      const o = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      o.type = 'triangle';
-      o.frequency.value = freq || 660;
-      g.gain.setValueAtTime(0.12, this.ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
-      o.connect(g);
-      g.connect(this.master);
-      o.start();
-      o.stop(this.ctx.currentTime + 0.3);
-    },
-  };
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 2000);
+camera.position.set(-6, 3.4, 28);
 
-  // ------------------------------------------------------------------
-  // Setup
-  // ------------------------------------------------------------------
-  function init() {
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(1);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    document.getElementById('game-canvas-holder').appendChild(renderer.domElement);
-    game.renderer = renderer;
+buildSky(scene, renderer);
+const city = buildCity(scene);
 
-    const scene = new THREE.Scene();
-    game.scene = scene;
-    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 900);
-    camera.position.set(8, 5, 14);
-    game.camera = camera;
+// ---------- actors ----------
+const hero = { group: makeCar({ color: 0xe07b26, hero: true }), speed: 0, heading: 0 };
+hero.group.position.set(-1.0, 0, 14);
+scene.add(hero.group);
 
-    const city = window.SB.city.buildCity(scene, 20261121);
-    game.city = city;
-    game.buildings = city.buildings || [];
+const cruisers = [];
+for (let i = 0; i < 4; i++) {
+  const c = { group: makeCar({ police: true }), speed: 0, heading: 0, phase: i * 1.7 };
+  scene.add(c.group);
+  cruisers.push(c);
+}
 
-    // The hero car — a red MANTA GT.
-    game.playerCar = window.SB.vehicles.buildCar({ color: '#c0392b' });
-    game.playerCar.group.position.set(0.5, 0, -2);
-    game.playerCar.group.rotation.y = Math.PI;
-    scene.add(game.playerCar.group);
+const heli = { group: makeHelicopter(), angle: 0.6 };
+heli.group.position.set(16, 36, -2);
+scene.add(heli.group);
 
-    // The walker — Marco on foot, hidden while driving.
-    game.walker = window.SB.people.buildPerson({
-      skin: '#c98d5a', shirt: '#c0392b', pants: '#2d3748', hair: '#1c1410',
-      face: { skin: '#c98d5a', smile: 0.6 },
-    });
-    game.walker.group.visible = false;
-    scene.add(game.walker.group);
-    game.walkPhase = 0;
+const crew = makeMarinaCrew();
+const crewHome = [
+  { x: -57, z: 82.5, ry: Math.PI + 0.2 }, { x: -54, z: 82.0, ry: Math.PI - 0.1 },
+  { x: -52.5, z: 84.0, ry: Math.PI + 0.35 }, { x: -59, z: 84.0, ry: Math.PI - 0.35 },
+  { x: -56.5, z: 85.0, ry: Math.PI + 0.35 }, { x: -55, z: 84.5, ry: Math.PI + 0.5 },
+];
+crew.forEach((p, i) => {
+  p.position.set(crewHome[i].x, 0, crewHome[i].z);
+  p.rotation.y = crewHome[i].ry;
+  scene.add(p);
+});
 
-    // Police cruisers — white with navy, five of them.
-    game.cruisers = [];
-    const cruiserCols = ['#e8ecf0', '#e8ecf0', '#e8ecf0', '#dfe6ee', '#e8ecf0'];
-    for (let i = 0; i < 5; i++) {
-      const c = window.SB.vehicles.buildCar({ color: cruiserCols[i], police: true });
-      c.group.position.set(-20 - i * 8, 0, 60 + i * 6);
-      c.group.rotation.y = Math.PI;
-      scene.add(c.group);
-      game.cruisers.push(c);
-    }
-    game.cruiserState = game.cruisers.map(() => ({ speed: 0, mode: 'pursue', ramTimer: 0 }));
+const walker = {
+  group: makePerson({
+    name: 'Dante', activity: 'idle', skin: '#c98d5f', shirt: '#14324a',
+    hairStyle: 'swept', hair: '#1c1210',
+  }),
+  heading: 0,
+};
+walker.group.visible = false;
+scene.add(walker.group);
 
-    // The police helicopter.
-    game.heli = window.SB.vehicles.buildHelicopter();
-    game.heli.group.position.set(20, 26, -20);
-    scene.add(game.heli.group);
-    scene.add(game.heli.beam);
-    game.heliTarget = new THREE.Vector3(0, 0, 0);
-    // The spotlight pool: a soft additive circle on the ground.
-    const poolTex = U.makeTexture(128, 128, (ctx) => {
-      const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-      g.addColorStop(0, 'rgba(255,246,192,0.85)');
-      g.addColorStop(0.6, 'rgba(255,246,192,0.28)');
-      g.addColorStop(1, 'rgba(255,246,192,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 128, 128);
-    });
-    game.pool = new THREE.Mesh(
-      new THREE.PlaneGeometry(9, 9),
-      new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
-    );
-    game.pool.rotation.x = -Math.PI / 2;
-    game.pool.position.y = 0.08;
-    scene.add(game.pool);
+// Traffic: ambient cars on the boulevard lanes, kept clear of the chase zone.
+const traffic = [];
+const trafficCols = [0x3fae6a, 0x4a7fd0, 0xd9d9d9, 0x8a4fd0, 0xe8b93b, 0x2c3a4a, 0xc0c0c8, 0x7a4a22];
+const trafficSpots = [
+  { lane: 0, z: -70 }, { lane: 1, z: -110 }, { lane: 2, z: -60 }, { lane: 3, z: -95 },
+  { lane: 0, z: 70 }, { lane: 1, z: 110 }, { lane: 2, z: 65 }, { lane: 3, z: 130 },
+];
+for (let i = 0; i < trafficSpots.length; i++) {
+  const s = trafficSpots[i];
+  const lane = city.lanes[s.lane];
+  const car = makeCar({ color: trafficCols[i] });
+  car.position.set(lane.x, 0, s.z);
+  car.rotation.y = lane.dir > 0 ? Math.PI : 0;
+  scene.add(car);
+  traffic.push({ group: car, lane, speed: 9 + (i % 3) * 2 });
+}
 
-    // Traffic: eight cars on fixed routes around the grid.
-    game.traffic = [];
-    const trafficCols = ['#4a90d8', '#e8e8e8', '#3a3f46', '#d8a03a', '#5ab87a', '#8a6ab0', '#c8c8c8', '#b03a3a'];
-    const routes = [
-      { axis: 'z', lane: -5.2, dir: 1, at: -60 }, { axis: 'z', lane: -1.8, dir: -1, at: 30 },
-      { axis: 'z', lane: 1.8, dir: 1, at: 90 }, { axis: 'z', lane: 5.2, dir: -1, at: -110 },
-      { axis: 'x', lane: -40, dir: 1, at: -70, side: -2.5 }, { axis: 'x', lane: 40, dir: -1, at: 50, side: 2.5 },
-      { axis: 'x', lane: -80, dir: -1, at: 20, side: -2.5 }, { axis: 'x', lane: 80, dir: 1, at: -30, side: 2.5 },
-    ];
-    routes.forEach((r, i) => {
-      const car = window.SB.vehicles.buildCar({ color: trafficCols[i], profile: i % 3 === 2 ? 'van' : 'sports' });
-      const pos = r.axis === 'z'
-        ? { x: r.lane, z: r.at, ry: r.dir > 0 ? 0 : Math.PI }
-        : { x: r.at, z: r.lane + r.side, ry: r.dir > 0 ? -Math.PI / 2 : Math.PI / 2 };
-      car.group.position.set(pos.x, 0, pos.z);
-      car.group.rotation.y = pos.ry;
-      scene.add(car.group);
-      game.traffic.push({ car: car, route: r, speed: 8 + (i % 4) * 1.5 });
-    });
+// Pedestrians on sidewalks and the beach; two panic near the chase road.
+const peds = makePedestrians(16, 9917);
+const pedSpots = [
+  { x: -11.5, z: -40 }, { x: 11.5, z: -70 }, { x: -11.5, z: 60 }, { x: 11.5, z: 90 },
+  { x: -11.5, z: -120 }, { x: 11.5, z: 130 }, { x: -36, z: -30 }, { x: -52, z: 20 },
+  { x: -70, z: -90 }, { x: -44, z: 60 }, { x: -90, z: 40 }, { x: -30, z: 120 },
+  { x: 11.5, z: -15 }, { x: -11.5, z: 45 }, { x: -60, z: -130 }, { x: -100, z: -40 },
+];
+peds.forEach((p, i) => {
+  p.position.set(pedSpots[i].x, 0, pedSpots[i].z);
+  p.rotation.y = (i % 2 === 0 ? 1 : -1) * (Math.PI / 2 + 0.3);
+  p.userData.home = { x: pedSpots[i].x, z: pedSpots[i].z };
+  p.userData.walkDir = i % 2 === 0 ? 1 : -1;
+  scene.add(p);
+});
+const panickers = [];
+for (const [px, pz, ry] of [[-10.5, 8, 0.8], [10.5, 30, -0.8]]) {
+  const p = makePerson({ name: 'panic', activity: 'panic', shirt: '#e86a8a' });
+  p.position.set(px, 0, pz);
+  p.rotation.y = ry;
+  scene.add(p);
+  panickers.push(p);
+}
 
-    // Pedestrians: twelve walkers on the sidewalks and the beach.
-    game.pedestrians = [];
-    const rng = U.makeRng(99);
-    const looks = [
-      { skin: '#f2c69b', shirt: '#e85a5a', pants: '#2d3748', hair: '#8a5a2b', hairStyle: 'long' },
-      { skin: '#8d5a33', shirt: '#4a90d8', pants: '#3a3f46', hair: '#1c1410', hairStyle: 'short' },
-      { skin: '#e8b07e', shirt: '#5ab87a', pants: '#2d3748', hair: '#3a2417', hairStyle: 'buzz' },
-      { skin: '#c98d5a', shirt: '#f2c230', pants: '#4a4a4a', hair: '#1c1410', hairStyle: 'ponytail' },
-      { skin: '#f7d7b0', shirt: '#8a6ab0', pants: '#2d3748', hair: '#b0b0b0', hairStyle: 'short' },
-      { skin: '#a06a3b', shirt: '#e85a8a', pants: '#3a3f46', hair: '#5b3a1e', hairStyle: 'long' },
-    ];
-    for (let i = 0; i < 12; i++) {
-      const look = looks[i % looks.length];
-      const p = window.SB.people.buildPerson(Object.assign({}, look, { face: { skin: look.skin } }));
-      const onBeach = i >= 9;
-      const x = onBeach ? 100 + rng() * 25 : (i % 2 ? 10.2 : -10.2);
-      const z = -150 + rng() * 300;
-      p.group.position.set(x, 0, z);
-      p.group.rotation.y = rng() > 0.5 ? 0 : Math.PI;
-      scene.add(p.group);
-      game.pedestrians.push({ person: p, dir: rng() > 0.5 ? 1 : -1, speed: 1.2 + rng() * 0.8, phase: rng() * 6, onBeach: onBeach, panic: 0 });
-    }
+// ---------- state ----------
+const state = {
+  money: 27850,
+  wanted: 4,
+  health: 78,
+  armour: 61,
+  rep: 2310,
+  repMax: 2800,
+  jobIndex: 6,
+  stage: 3,
+  stages: 4,
+  timer: 192, // 03:12
+  carCondition: 71,
+  speedKmh: 0,
+  clock: 'FRI 18:42',
+  district: 'EMBER STRAND',
+  street: 'Sunset Mile',
+  driving: true,
+  started: false,
+  mapOpen: false,
+  muted: false,
+  mission: { x: -8, z: 130 },
+  nearMissAt: 0,
+  wantedQuiet: 0,
+};
 
-    // The marina crew — six people, each with a job, posed at the dock.
-    game.marinaCrew = [];
-    const crewLooks = [
-      { skin: '#c98d5a', shirt: '#2b6cb0', pants: '#2d3748', hair: '#1c1410', hairStyle: 'short', face: { skin: '#c98d5a', smile: 0.7 } },
-      { skin: '#f2c69b', shirt: '#e85a8a', pants: '#3a3f46', hair: '#8a5a2b', hairStyle: 'ponytail', face: { skin: '#f2c69b', smile: 0.9, freckles: true } },
-      { skin: '#8d5a33', shirt: '#5ab87a', pants: '#2d3748', hair: '#1c1410', hairStyle: 'buzz', face: { skin: '#8d5a33', smile: 0.5, beard: true } },
-      { skin: '#e8b07e', shirt: '#e8a33a', pants: '#4a4a4a', hair: '#3a2417', hairStyle: 'short', face: { skin: '#e8b07e', smile: 0.6, glasses: true } },
-      { skin: '#a06a3b', shirt: '#e85a5a', pants: '#2d3748', hair: '#2b2b2b', hairStyle: 'cap', face: { skin: '#a06a3b', smile: 0.4 } },
-      { skin: '#f7d7b0', shirt: '#4a90d8', pants: '#3a3f46', hair: '#5b3a1e', hairStyle: 'long', face: { skin: '#f7d7b0', smile: 0.8 } },
-    ];
-    crewLooks.forEach((look) => {
-      const p = window.SB.people.buildPerson(look);
-      scene.add(p.group);
-      game.marinaCrew.push(p);
-    });
-    // Default dock poses (the marina shot re-poses them precisely).
-    poseCrew(0, 'carry');
-    poseCrew(1, 'wave');
-    poseCrew(2, 'talk');
-    poseCrew(3, 'talk2');
-    poseCrew(4, 'kneel');
-    poseCrew(5, 'walk');
-    const dockSpots = [[-34, 113], [-31, 113], [-29, 115], [-27, 115], [-25.5, 113.5], [-33.5, 116]];
-    game.marinaCrew.forEach((c, i) => {
-      c.group.position.set(dockSpots[i][0], 0.6, dockSpots[i][1]);
-      c.group.rotation.y = Math.PI + (i % 2 ? -0.3 : 0.3);
-    });
-    // The duffel bag for the walker, and the crate for the carrier.
-    const duffel = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.4, 4, 10), new THREE.MeshStandardMaterial({ color: '#d8c832', roughness: 0.8 }));
-    duffel.rotation.z = Math.PI / 2;
-    duffel.position.set(0.32, 0.55, 0.1);
-    game.marinaCrew[5].group.add(duffel);
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: '#b08a4a', roughness: 0.9 }));
-    crate.position.set(0, 1.05, 0.42);
-    game.marinaCrew[0].group.add(crate);
-    const wrench = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.025, 6, 12, Math.PI * 1.5), new THREE.MeshStandardMaterial({ color: '#c8ccd2', metalness: 0.9, roughness: 0.3 }));
-    wrench.position.set(0.12, 0.85, 0.35);
-    wrench.rotation.x = 0.6;
-    game.marinaCrew[4].group.add(wrench);
+function saveGame() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      money: state.money, wanted: state.wanted, health: state.health,
+      armour: state.armour, rep: state.rep, jobIndex: state.jobIndex,
+      x: hero.group.position.x, z: hero.group.position.z,
+    }));
+  } catch (e) { /* storage unavailable — play on */ }
+}
 
-    // The garage objective: a glowing ring and a light pillar on Mermaid Mile.
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(3, 0.18, 10, 32),
-      new THREE.MeshBasicMaterial({ color: '#39ff88' })
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.set(8, 0.3, -140);
-    scene.add(ring);
-    game.objectiveRing = ring;
-    const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.2, 1.2, 40, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: '#39ff88', transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-    );
-    pillar.position.set(8, 20, -140);
-    scene.add(pillar);
-    game.objective = { x: 8, z: -140 };
-
-    window.SB.hud.buildHud();
-    buildTitleScreen();
-    bindInput();
-    loadSave();
-
-    // Shot mode: freeze the game in the staged pose.
-    const params = new URLSearchParams(window.location.search);
-    const shot = params.get('shot');
-    if (shot) {
-      game.mode = 'play';
-      game.paused = true;
-      hideOverlays();
-      window.SB.shots.setupShot(shot, game);
-      game.shotName = shot;
-    }
-
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    let last = performance.now();
-    let acc = 0;
-    let frames = 0;
-    function loop(now) {
-      requestAnimationFrame(loop);
-      const dt = Math.min(0.25, (now - last) / 1000);
-      last = now;
-      if (!game.paused) {
-        acc += dt;
-        let n = 0;
-        while (acc >= STEP && n < 8) {
-          update(STEP);
-          acc -= STEP;
-          n++;
-        }
-      }
-      updateCamera(dt);
-      updateHudDom();
-      renderer.render(scene, camera);
-      frames++;
-      if (frames === 3) window.__ready = true;
-    }
-    requestAnimationFrame(loop);
-    window.__game = game;
-  }
-
-  // ------------------------------------------------------------------
-  // Posing helpers used by the staged shots
-  // ------------------------------------------------------------------
-  function placeCar(car, x, y, z, ry) {
-    car.group.position.set(x, y, z);
-    car.group.rotation.y = ry;
-  }
-
-  function placeHeli(x, y, z, target) {
-    game.heli.group.position.set(x, y, z);
-    game.heliTarget.copy(target);
-    game.pool.position.set(target.x, 0.08, target.z);
-    aimBeam();
-  }
-
-  // Stretch the spotlight beam from the helicopter to the pool on the ground.
-  function aimBeam() {
-    const from = game.heli.group.position;
-    const to = new THREE.Vector3(game.heliTarget.x, 0.1, game.heliTarget.z);
-    const dir = to.clone().sub(from);
-    const len = dir.length();
-    const beam = game.heli.beam;
-    beam.position.copy(from).add(to).multiplyScalar(0.5);
-    beam.scale.set(1, len, 1);
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize().negate());
-    beam.visible = game.heli.group.visible;
-  }
-
-  function placeTraffic(i, x, z, ry) {
-    const t = game.traffic[i];
-    if (!t) return;
-    t.car.group.position.set(x, 0, z);
-    t.car.group.rotation.y = ry;
-  }
-
-  function posePedestrian(i, x, z, pose) {
-    const p = game.pedestrians[i];
-    if (!p) return;
-    p.person.group.position.set(x, 0, z);
-    p.person.group.rotation.y = 0.4;
-    const P = window.SB.people;
-    if (pose === 'panic') P.posePanic(p.person.pivots);
-    else if (pose === 'walk') P.poseWalk(p.person.pivots, 1.2);
-    else P.resetPose(p.person.pivots);
-    p.panic = pose === 'panic' ? 1 : 0;
-  }
-
-  function poseCrew(i, pose) {
-    const c = game.marinaCrew[i];
-    if (!c) return;
-    const P = window.SB.people;
-    const pv = c.pivots;
-    if (pose === 'carry') P.poseCarry(pv);
-    else if (pose === 'wave') P.poseWave(pv);
-    else if (pose === 'kneel') P.poseKneel(pv);
-    else if (pose === 'talk') P.poseTalk(pv, false);
-    else if (pose === 'talk2') P.poseTalk(pv, true);
-    else if (pose === 'walk') P.poseWalk(pv, 2.1);
-    else if (pose === 'point') P.posePoint(pv);
-    else P.resetPose(pv);
-  }
-
-  function setDriving(on) {
-    game.driving = on;
-    game.walker.group.visible = !on;
-  }
-
-  // ------------------------------------------------------------------
-  // Overlays: title, pause map, HUD visibility
-  // ------------------------------------------------------------------
-  function hideOverlays() {
-    document.getElementById('title-screen').style.display = 'none';
-    document.getElementById('map-overlay').style.display = 'none';
-    document.getElementById('help-overlay').style.display = 'none';
-  }
-
-  function showHud() {
-    document.getElementById('hud').style.display = 'block';
-    hideOverlays();
-    // Draw the minimap at once: the screenshot may come before the next
-    // frame's HUD refresh, and a blank minimap reads as broken.
-    const mini = document.getElementById('minimap');
-    if (mini) window.SB.hud.drawMinimap(mini, minimapState());
-  }
-
-  function showTitle() {
-    document.getElementById('title-screen').style.display = 'flex';
-    document.getElementById('hud').style.display = 'none';
-  }
-
-  function showMap() {
-    const overlay = document.getElementById('map-overlay');
-    overlay.style.display = 'flex';
-    const canvas = document.getElementById('big-map');
-    window.SB.hud.drawBigMap(canvas, minimapState());
-  }
-
-  function buildTitleScreen() {
-    const hero = window.SB.faces.paintPortrait({
-      skin: '#c98d5a', hair: '#1c1410', hairStyle: 'short', shirt: '#c0392b',
-    });
-    document.getElementById('title-portrait').src = hero;
-    document.getElementById('btn-new').addEventListener('click', () => {
-      AudioSys.init();
-      AudioSys.blip(660);
-      startGame(false);
-    });
-    document.getElementById('btn-continue').addEventListener('click', () => {
-      AudioSys.init();
-      AudioSys.blip(660);
-      startGame(true);
-    });
-    document.getElementById('btn-help').addEventListener('click', () => {
-      document.getElementById('help-overlay').style.display = 'flex';
-    });
-    document.getElementById('btn-help-close').addEventListener('click', () => {
-      document.getElementById('help-overlay').style.display = 'none';
-    });
-  }
-
-  function startGame(useSave) {
-    if (useSave) loadSave();
-    game.mode = 'play';
-    showHud();
-  }
-
-  // ------------------------------------------------------------------
-  // Input
-  // ------------------------------------------------------------------
-  function bindInput() {
-    window.addEventListener('keydown', (e) => {
-      game.keys[e.code] = true;
-      AudioSys.init();
-      if (e.code === 'KeyM' && game.mode === 'play') {
-        const overlay = document.getElementById('map-overlay');
-        if (overlay.style.display === 'flex') {
-          overlay.style.display = 'none';
-          game.paused = false;
-        } else {
-          showMap();
-          game.paused = true;
-        }
-      }
-      if (e.code === 'Escape') {
-        document.getElementById('map-overlay').style.display = 'none';
-        game.paused = false;
-      }
-      if (e.code === 'KeyN') {
-        AudioSys.muted = !AudioSys.muted;
-        if (AudioSys.master) AudioSys.master.gain.value = AudioSys.muted ? 0 : 0.35;
-      }
-      if (e.code === 'KeyE' && game.mode === 'play') toggleEnterExit();
-      if (e.code === 'KeyZ' && game.mode === 'play') crewAbility('plates');
-      if (e.code === 'KeyX' && game.mode === 'play') crewAbility('fix');
-      if (e.code === 'KeyC' && game.mode === 'play') crewAbility('eyes');
-      if (e.code === 'KeyR' && game.mode === 'play') {
-        AudioSys.blip(880);
-        window.SB.hud.showPopup('radio', 'SIRENA FM 99.7 · "Night Drive"');
-      }
-    });
-    window.addEventListener('keyup', (e) => { game.keys[e.code] = false; });
-    let dragging = false;
-    let lx = 0, ly = 0;
-    window.addEventListener('mousedown', (e) => {
-      dragging = true;
-      lx = e.clientX;
-      ly = e.clientY;
-      AudioSys.init();
-      if (game.mode === 'play' && e.button === 0) shoot();
-    });
-    window.addEventListener('mouseup', () => { dragging = false; });
-    window.addEventListener('mousemove', (e) => {
-      if (!dragging) return;
-      game.camYaw -= (e.clientX - lx) * 0.004;
-      game.camPitch = U.clamp(game.camPitch + (e.clientY - ly) * 0.003, -0.3, 0.5);
-      lx = e.clientX;
-      ly = e.clientY;
-    });
-  }
-
-  function toggleEnterExit() {
-    if (game.driving) {
-      setDriving(false);
-      const p = game.playerCar.group.position;
-      game.walker.group.position.set(p.x + 1.6, 0, p.z + 0.5);
-      game.walker.group.rotation.y = game.playerCar.group.rotation.y;
-      game.playerSpeed = 0;
-    } else {
-      const wp = game.walker.group.position;
-      const cp = game.playerCar.group.position;
-      const d = Math.hypot(wp.x - cp.x, wp.z - cp.z);
-      if (d < 4) {
-        setDriving(true);
-        AudioSys.blip(440);
-      }
-    }
-  }
-
-  function crewAbility(kind) {
-    const now = game.time;
-    if (kind === 'plates' && now - (game.lastPlates || -99) > 30) {
-      game.lastPlates = now;
-      game.state.stars = Math.max(0, game.state.stars - 1);
-      window.SB.hud.showPopup('crew', 'PILAR SWAPPED THE PLATES · -1 ★');
-      AudioSys.blip(520);
-    }
-    if (kind === 'fix') {
-      game.state.condition = Math.min(100, game.state.condition + 25);
-      window.SB.hud.showPopup('crew', 'TOMAS PATCHED THE MANTA · +25%');
-      AudioSys.blip(520);
-    }
-    if (kind === 'eyes') {
-      window.SB.hud.showPopup('crew', 'NADIA: ROADBLOCK AHEAD ON MERMAID MILE');
-      AudioSys.blip(520);
-    }
-  }
-
-  function shoot() {
-    // A hitscan shot: a tracer line from the car toward the aim, and a hit
-    // puff on the nearest cruiser inside a cone ahead of the player.
-    AudioSys.blip(180);
-    const origin = game.playerCar.group.position.clone();
-    origin.y = 1.2;
-    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(game.playerCar.group.quaternion);
-    const geo = new THREE.BufferGeometry().setFromPoints([origin, origin.clone().add(dir.clone().multiplyScalar(30))]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0.9 }));
-    game.scene.add(line);
-    setTimeout(() => game.scene.remove(line), 90);
-    let best = null;
-    let bestD = 30;
-    game.cruisers.forEach((c) => {
-      const d = c.group.position.distanceTo(origin);
-      const to = c.group.position.clone().sub(origin).normalize();
-      if (d < bestD && to.dot(dir) > 0.92) {
-        best = c;
-        bestD = d;
-      }
-    });
-    if (best) {
-      best.group.position.y += 0.02;
-      window.SB.hud.showPopup('hit', 'HIT · ' + Math.round(bestD) + ' m');
-      addWanted(1);
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Wanted, collisions, missions
-  // ------------------------------------------------------------------
-  function addWanted(n) {
-    if (game.wantedCooldown > 0) return;
-    game.wantedCooldown = 2;
-    game.state.stars = Math.min(5, game.state.stars + n);
-    game.hiddenTimer = 0;
-  }
-
-  function collideBuildings(pos, radius) {
-    for (const b of game.buildings) {
-      const hw = b.w / 2 + radius;
-      const hd = b.d / 2 + radius;
-      if (Math.abs(pos.x - b.x) < hw && Math.abs(pos.z - b.z) < hd) {
-        const dx = pos.x - b.x;
-        const dz = pos.z - b.z;
-        const px = hw - Math.abs(dx);
-        const pz = hd - Math.abs(dz);
-        if (px < pz) pos.x = b.x + (dx > 0 ? hw : -hw);
-        else pos.z = b.z + (dz > 0 ? hd : -hd);
-        return true;
-      }
-    }
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    state.money = s.money;
+    state.wanted = s.wanted;
+    state.health = s.health;
+    state.armour = s.armour;
+    state.rep = s.rep;
+    state.jobIndex = s.jobIndex;
+    hero.group.position.set(s.x || -1, 0, s.z || 14);
+    return true;
+  } catch (e) {
     return false;
   }
+}
 
-  function update(dt) {
-    game.time += dt;
-    if (game.wantedCooldown > 0) game.wantedCooldown -= dt;
-    const S = game.state;
-    const keys = game.keys;
+// ---------- HUD ----------
+initPortraits();
+const minimapEl = document.getElementById('minimap');
+const bigMapEl = document.getElementById('big-map');
 
-    if (game.mode === 'play') {
-      if (game.driving) updateDriving(dt);
-      else updateWalking(dt);
-      updateTraffic(dt);
-      updatePedestrians(dt);
-      updatePolice(dt);
-      updateHeli(dt);
-      updateMission(dt);
-      // Stars fade when no police can see the player for a while.
-      const nearest = nearestPoliceDist();
-      if (nearest > 60) {
-        game.hiddenTimer += dt;
-        if (game.hiddenTimer > 12 && S.stars > 0) {
-          S.stars -= 1;
-          game.hiddenTimer = 0;
-          window.SB.hud.showPopup('crew', 'YOU LOST THEM · -1 ★');
-        }
-      } else {
-        game.hiddenTimer = 0;
-      }
+function hudState() {
+  return {
+    player: { x: hero.group.position.x, z: hero.group.position.z },
+    heading: hero.heading,
+    police: cruisers.map((c) => ({ x: c.group.position.x, z: c.group.position.z })),
+    mission: state.mission,
+    money: state.money,
+    speedKmh: state.speedKmh,
+    wanted: state.wanted,
+    health: state.health,
+    armour: state.armour,
+    carCondition: state.carCondition,
+    clock: state.clock,
+    district: state.district,
+    street: state.street,
+  };
+}
+
+function refreshMaps() {
+  drawMinimap(minimapEl, hudState());
+  if (state.mapOpen) drawBigMap(bigMapEl, hudState());
+}
+
+// ---------- audio (synthesized, no files) ----------
+let audioCtx = null;
+let engineOsc = null;
+let engineGain = null;
+let sirenOsc = null;
+let sirenGain = null;
+let radioOsc = null;
+let radioGain = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const master = audioCtx.createGain();
+    master.gain.value = state.muted ? 0 : 0.5;
+    master.connect(audioCtx.destination);
+    audioCtx._master = master;
+    engineOsc = audioCtx.createOscillator();
+    engineOsc.type = 'sawtooth';
+    engineOsc.frequency.value = 55;
+    const engineFilter = audioCtx.createBiquadFilter();
+    engineFilter.type = 'lowpass';
+    engineFilter.frequency.value = 420;
+    engineGain = audioCtx.createGain();
+    engineGain.gain.value = 0.0;
+    engineOsc.connect(engineFilter).connect(engineGain).connect(master);
+    engineOsc.start();
+    sirenOsc = audioCtx.createOscillator();
+    sirenOsc.type = 'triangle';
+    sirenOsc.frequency.value = 720;
+    sirenGain = audioCtx.createGain();
+    sirenGain.gain.value = 0.0;
+    sirenOsc.connect(sirenGain).connect(master);
+    sirenOsc.start();
+    radioOsc = audioCtx.createOscillator();
+    radioOsc.type = 'sine';
+    radioOsc.frequency.value = 220;
+    radioGain = audioCtx.createGain();
+    radioGain.gain.value = 0.0;
+    radioOsc.connect(radioGain).connect(master);
+    radioOsc.start();
+  } catch (e) { /* audio unavailable — play silent */ }
+}
+
+function updateAudio(t) {
+  if (!audioCtx) return;
+  const speedN = clamp(Math.abs(hero.speed) / 55, 0, 1);
+  engineOsc.frequency.value = 50 + speedN * 130;
+  engineGain.gain.value = state.driving && state.started ? 0.05 + speedN * 0.06 : 0.0;
+  sirenOsc.frequency.value = 660 + (Math.sin(t * 4.2) > 0 ? 160 : 0);
+  sirenGain.gain.value = state.wanted > 0 && state.started ? 0.028 : 0.0;
+  // A slow golden-hour chord drift for the radio.
+  const notes = [220, 277.2, 329.6, 261.6];
+  radioOsc.frequency.value = notes[Math.floor(t / 2.4) % 4];
+  radioGain.gain.value = state.started && !state.muted ? 0.02 : 0.0;
+}
+
+// ---------- input ----------
+const keys = {};
+let dragYaw = 0;
+let dragPitch = 0;
+let dragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code === 'KeyM') toggleMap();
+  if (e.code === 'Escape') {
+    if (state.mapOpen) toggleMap();
+    document.getElementById('how-overlay').style.display = 'none';
+  }
+  if (e.code === 'KeyE' && state.started) toggleEnterExit();
+  if (e.code === 'KeyR' && state.started) cycleRadio();
+  if (e.code === 'KeyN') toggleMute();
+  if (e.code === 'Digit1') selectWeapon(0);
+  if (e.code === 'Digit2') selectWeapon(1);
+  if (e.code === 'Digit3') selectWeapon(2);
+  if (e.code === 'Digit4') selectWeapon(3);
+  if (e.code === 'KeyZ') callCrew('Lena swaps the plates — heat drops a star.');
+  if (e.code === 'KeyX') callCrew('Hugo patches the Dorado — condition restored.');
+  if (e.code === 'KeyC') callCrew('Nina marks every unit on your map.');
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  dragging = true;
+  lastMouse = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  dragYaw -= (e.clientX - lastMouse.x) * 0.005;
+  dragPitch = clamp(dragPitch + (e.clientY - lastMouse.y) * 0.003, -0.25, 0.45);
+  lastMouse = { x: e.clientX, y: e.clientY };
+});
+window.addEventListener('pointerup', () => { dragging = false; });
+
+const RADIOS = [
+  '♪ SOL FM 101.3 — “Golden Hour” — The Marigolds',
+  '♪ EMBER FM 96.7 — “Sunset Static” — Low Tide Club',
+  '♪ PALMA 88.2 — “Café con Leche” — Rosa Delgado',
+];
+let radioIdx = 0;
+function cycleRadio() {
+  radioIdx = (radioIdx + 1) % RADIOS.length;
+  const el = document.getElementById('hud-radio');
+  if (el) el.textContent = RADIOS[radioIdx];
+}
+
+function toggleMute() {
+  state.muted = !state.muted;
+  if (audioCtx) audioCtx._master.gain.value = state.muted ? 0 : 0.5;
+  showPopup(state.muted ? 'MUTED' : 'SOUND ON', 1200);
+}
+
+function selectWeapon(i) {
+  document.querySelectorAll('.weapon-slot').forEach((el, j) => {
+    el.classList.toggle('active', i === j && !el.classList.contains('locked'));
+  });
+}
+
+function callCrew(line) {
+  if (!state.started) return;
+  setDialog('CREW', line, 'lena');
+  if (line.includes('heat drops')) state.wanted = Math.max(0, state.wanted - 1);
+  if (line.includes('condition restored')) state.carCondition = 100;
+}
+
+function toggleMap() {
+  state.mapOpen = !state.mapOpen;
+  document.getElementById('map-overlay').style.display = state.mapOpen ? 'flex' : 'none';
+  if (state.mapOpen) drawBigMap(bigMapEl, hudState());
+}
+
+function toggleEnterExit() {
+  if (state.driving) {
+    state.driving = false;
+    walker.group.visible = true;
+    walker.group.position.set(hero.group.position.x + 1.8, 0, hero.group.position.z + 1);
+    walker.heading = hero.heading;
+    walker.group.rotation.y = walker.heading;
+    setDialog('DANTE “DUSK” REYES', 'On foot. Keep it low — the ABPD is still out there.', 'dante');
+  } else {
+    // Enter the nearest car (hero or traffic).
+    let best = hero.group;
+    let bestD = best.position.distanceTo(walker.group.position);
+    for (const t of traffic) {
+      const d = t.group.position.distanceTo(walker.group.position);
+      if (d < bestD) { best = t.group; bestD = d; }
     }
-    // The objective ring pulses; the rotors always spin.
-    game.objectiveRing.rotation.z += dt * 0.8;
-    game.heli.rotor.rotation.y += dt * 22;
-    game.heli.tailRotor.rotation.x += dt * 30;
-    AudioSys.update(dt);
-  }
-
-  function updateDriving(dt) {
-    const S = game.state;
-    const keys = game.keys;
-    const car = game.playerCar.group;
-    const forward = keys['KeyW'] || keys['ArrowUp'];
-    const back = keys['KeyS'] || keys['ArrowDown'];
-    const left = keys['KeyA'] || keys['ArrowLeft'];
-    const right = keys['KeyD'] || keys['ArrowRight'];
-    const brake = keys['Space'];
-    const maxSpeed = 52;
-    if (forward) game.playerSpeed += 15 * dt;
-    if (back) game.playerSpeed -= 12 * dt;
-    if (brake) game.playerSpeed -= Math.sign(game.playerSpeed) * 26 * dt;
-    game.playerSpeed -= game.playerSpeed * 0.35 * dt;
-    game.playerSpeed = U.clamp(game.playerSpeed, -12, maxSpeed);
-    const steer = (left ? 1 : 0) - (right ? 1 : 0);
-    const grip = brake ? 0.45 : 1;
-    const speedFactor = U.clamp(Math.abs(game.playerSpeed) / 14, 0, 1);
-    game.playerHeading += steer * 1.7 * speedFactor * grip * dt * Math.sign(game.playerSpeed || 1);
-    // Drift: the heading lags the velocity when the handbrake is on.
-    if (brake && Math.abs(game.playerSpeed) > 18 && Math.random() < 0.02) {
-      window.SB.hud.showPopup('drift', 'DRIFT x3');
-      S.cash += 250;
-    }
-    const dir = new THREE.Vector3(Math.sin(game.playerHeading), 0, Math.cos(game.playerHeading));
-    const pos = car.position;
-    pos.x += dir.x * game.playerSpeed * dt;
-    pos.z += dir.z * game.playerSpeed * dt;
-    pos.x = U.clamp(pos.x, -168, 168);
-    pos.z = U.clamp(pos.z, -168, 168);
-    if (collideBuildings(pos, 1.6)) {
-      if (Math.abs(game.playerSpeed) > 8) {
-        S.condition = Math.max(0, S.condition - 3);
-        addWanted(1);
-        window.SB.hud.showPopup('hit', 'CRASH · -3% CONDITION');
-        AudioSys.blip(120);
+    if (bestD < 6) {
+      if (best !== hero.group) {
+        // Steal it: it becomes the player car.
+        const old = hero.group;
+        hero.group = best;
+        const idx = traffic.findIndex((t) => t.group === best);
+        if (idx >= 0) traffic.splice(idx, 1);
+        traffic.push({ group: old, lane: city.lanes[1], speed: 0 });
       }
-      game.playerSpeed *= -0.25;
-    }
-    car.rotation.y = game.playerHeading;
-    game.playerCar.wheels.forEach((w) => { w.rotation.x += game.playerSpeed * dt / 0.34; });
-    S.speed = Math.abs(game.playerSpeed) * 3.6;
-    updateDistrict(pos);
-  }
-
-  function updateWalking(dt) {
-    const keys = game.keys;
-    const w = game.walker.group;
-    let mx = 0, mz = 0;
-    if (keys['KeyW'] || keys['ArrowUp']) mz -= 1;
-    if (keys['KeyS'] || keys['ArrowDown']) mz += 1;
-    if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
-    if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
-    const run = keys['ShiftLeft'] || keys['ShiftRight'];
-    const speed = run ? 7 : 3.6;
-    if (mx || mz) {
-      const len = Math.hypot(mx, mz);
-      mx /= len;
-      mz /= len;
-      const pos = w.position;
-      pos.x += mx * speed * dt;
-      pos.z += mz * speed * dt;
-      pos.x = U.clamp(pos.x, -168, 168);
-      pos.z = U.clamp(pos.z, -168, 168);
-      collideBuildings(pos, 0.5);
-      w.rotation.y = Math.atan2(mx, mz);
-      game.walkPhase += dt * speed * 1.6;
-      window.SB.people.poseWalk(game.walker.pivots, game.walkPhase);
-      game.state.speed = speed * 3.6;
-    } else {
-      window.SB.people.resetPose(game.walker.pivots);
-      game.state.speed = 0;
-    }
-    updateDistrict(w.position);
-  }
-
-  function updateDistrict(pos) {
-    const S = game.state;
-    if (pos.x > 95) { S.district = 'PALM BEACH'; S.street = 'Shoreline Drive'; }
-    else if (pos.z > 100) { S.district = 'THE MARINA'; S.street = 'Mermaid Mile'; }
-    else if (Math.abs(pos.x) < 8) { S.district = 'SUNSET QUAY'; S.street = 'Mermaid Mile'; }
-    else if (pos.x < 0) { S.district = 'OLD HARBOUR'; S.street = 'Coral Street'; }
-    else { S.district = 'SUNSET QUAY'; S.street = 'Palm Avenue'; }
-  }
-
-  function updateTraffic(dt) {
-    game.traffic.forEach((t) => {
-      const g = t.car.group;
-      const r = t.route;
-      if (r.axis === 'z') {
-        g.position.z += r.dir * t.speed * dt;
-        if (g.position.z > 170) g.position.z = -170;
-        if (g.position.z < -170) g.position.z = 170;
-      } else {
-        g.position.x += r.dir * t.speed * dt;
-        if (g.position.x > 170) g.position.x = -170;
-        if (g.position.x < -170) g.position.x = 170;
-      }
-      t.car.wheels.forEach((w) => { w.rotation.x += t.speed * dt / 0.34; });
-    });
-  }
-
-  function updatePedestrians(dt) {
-    game.pedestrians.forEach((p) => {
-      if (p.panic) return;
-      const g = p.person.group;
-      g.position.z += p.dir * p.speed * dt;
-      if (g.position.z > 160) { g.position.z = 160; p.dir = -1; g.rotation.y = Math.PI; }
-      if (g.position.z < -160) { g.position.z = -160; p.dir = 1; g.rotation.y = 0; }
-      p.phase += dt * p.speed * 2.2;
-      window.SB.people.poseWalk(p.person.pivots, p.phase);
-    });
-  }
-
-  function nearestPoliceDist() {
-    const p = game.playerCar.group.position;
-    let best = Infinity;
-    game.cruisers.forEach((c) => {
-      best = Math.min(best, c.group.position.distanceTo(p));
-    });
-    return best;
-  }
-
-  function updatePolice(dt) {
-    const S = game.state;
-    const target = game.driving ? game.playerCar.group.position : game.walker.group.position;
-    const active = S.stars >= 1 ? Math.min(1 + S.stars, 5) : 0;
-    game.cruisers.forEach((c, i) => {
-      const st = game.cruiserState[i];
-      const g = c.group;
-      if (i >= active) {
-        // Idle units cruise slowly along the boulevard.
-        g.position.z += 6 * dt;
-        if (g.position.z > 170) g.position.z = -170;
-        st.speed = 6;
-        return;
-      }
-      // Pursue: steer toward the player with a per-unit offset.
-      const off = new THREE.Vector3(((i % 2) ? 1 : -1) * (2 + (i % 3)), 0, -4 - (i % 3) * 3);
-      const want = target.clone().add(off);
-      const to = want.clone().sub(g.position);
-      const dist = to.length();
-      const desired = Math.atan2(to.x, to.z);
-      let dh = desired - g.rotation.y;
-      while (dh > Math.PI) dh -= Math.PI * 2;
-      while (dh < -Math.PI) dh += Math.PI * 2;
-      g.rotation.y += U.clamp(dh, -1.6 * dt, 1.6 * dt);
-      // Ram: a burst of speed when close.
-      if (dist < 9 && st.ramTimer <= 0) st.ramTimer = 1.2;
-      if (st.ramTimer > 0) st.ramTimer -= dt;
-      const topSpeed = st.ramTimer > 0 ? 40 : 30;
-      st.speed = U.clamp(st.speed + (dist > 4 ? 12 : -20) * dt, 0, topSpeed);
-      const fwd = new THREE.Vector3(Math.sin(g.rotation.y), 0, Math.cos(g.rotation.y));
-      g.position.x += fwd.x * st.speed * dt;
-      g.position.z += fwd.z * st.speed * dt;
-      g.position.x = U.clamp(g.position.x, -168, 168);
-      g.position.z = U.clamp(g.position.z, -168, 168);
-      c.wheels.forEach((w) => { w.rotation.x += st.speed * dt / 0.34; });
-      // A cruiser that touches the player dents the car.
-      if (g.position.distanceTo(target) < 3.2 && game.driving) {
-        S.condition = Math.max(0, S.condition - 0.06);
-      }
-    });
-  }
-
-  function updateHeli(dt) {
-    const S = game.state;
-    const target = game.driving ? game.playerCar.group.position : game.walker.group.position;
-    const active = S.stars >= 3;
-    game.heli.group.visible = active || game.shotName === 'chase';
-    game.pool.visible = active || game.shotName === 'chase';
-    if (!active && game.shotName !== 'chase') return;
-    const want = new THREE.Vector3(target.x + 6, 24, target.z - 8);
-    game.heli.group.position.lerp(want, 1 - Math.pow(0.02, dt));
-    game.heliTarget.lerp(target, 1 - Math.pow(0.02, dt));
-    game.pool.position.set(game.heliTarget.x, 0.08, game.heliTarget.z);
-    game.heli.group.lookAt(target.x, 24, target.z);
-    aimBeam();
-  }
-
-  function updateMission(dt) {
-    const S = game.state;
-    const pos = game.driving ? game.playerCar.group.position : game.walker.group.position;
-    const d = Math.hypot(pos.x - game.objective.x, pos.z - game.objective.z);
-    if (d < 5 && S.stage === 3) {
-      if (S.stars <= 1) {
-        S.stage = 4;
-        S.cash += 5000;
-        S.respect = Math.min(S.respectMax, S.respect + 460);
-        window.SB.hud.showPopup('crew', 'JOB DONE · +$5,000 · RESPECT UP');
-        document.getElementById('hud-dialog-line').textContent =
-          'Clean run, Mako. The garage has the Manta — come by the marina when you are ready for the next one.';
-        AudioSys.blip(990);
-      }
+      state.driving = true;
+      walker.group.visible = false;
+      showPopup('CAR JACKED', 1400);
     }
   }
+}
 
-  // ------------------------------------------------------------------
-  // Camera + HUD refresh
-  // ------------------------------------------------------------------
-  function updateCamera(dt) {
-    if (game.shotName) return; // staged shots hold their own camera
-    const cam = game.camera;
-    let anchor;
-    let heading;
-    if (game.driving) {
-      anchor = game.playerCar.group.position;
-      heading = game.playerHeading;
-    } else {
-      anchor = game.walker.group.position;
-      heading = game.walker.group.rotation.y;
-    }
-    const yaw = heading + Math.PI + game.camYaw;
-    const dist = game.driving ? 11 : 6;
-    const height = game.driving ? 4.6 : 3.0;
-    const want = new THREE.Vector3(
-      anchor.x + Math.sin(yaw) * dist,
-      anchor.y + height + game.camPitch * 4,
-      anchor.z + Math.cos(yaw) * dist
-    );
-    cam.position.lerp(want, 1 - Math.pow(0.001, dt));
-    cam.lookAt(anchor.x, anchor.y + 1.2, anchor.z);
+// ---------- title buttons ----------
+document.getElementById('btn-new').addEventListener('click', () => startGame(false));
+document.getElementById('btn-continue').addEventListener('click', () => startGame(true));
+document.getElementById('btn-how').addEventListener('click', () => {
+  document.getElementById('how-overlay').style.display = 'flex';
+});
+document.getElementById('btn-how-close').addEventListener('click', () => {
+  document.getElementById('how-overlay').style.display = 'none';
+});
+
+function startGame(load) {
+  if (load) loadGame();
+  else {
+    state.money = 27850; state.wanted = 4; state.health = 78; state.armour = 61;
+    state.rep = 2310; state.jobIndex = 6; state.stage = 3; state.timer = 192;
+    state.carCondition = 71;
+    hero.group.position.set(-1.0, 0, 14);
   }
+  state.started = true;
+  initAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  // The title vista hid the pursuit — bring it back around the hero.
+  const hx = hero.group.position.x;
+  const hz = hero.group.position.z;
+  const spots = [[-4.2, 4], [3.2, 5], [-3.6, -10], [5.8, -20]];
+  cruisers.forEach((c, i) => {
+    c.group.visible = true;
+    c.group.position.set(hx + spots[i][0], 0, hz + spots[i][1]);
+    c.heading = 0;
+    c.speed = 10;
+  });
+  heli.group.visible = state.wanted >= 3;
+  heli.group.position.set(hx + 16, 36, hz - 16);
+  hero.heading = 0;
+  hero.group.rotation.y = 0;
+  document.getElementById('title-screen').style.display = 'none';
+  document.getElementById('hud').style.display = 'block';
+  updateHud(hudState());
+  refreshMaps();
+  setDialog('VERA “THE VELVET” CASTILLO · FIXER',
+    'Six units and a chopper, Dante — lose the blue lights or lose the car. The garage on Ember Strand is waiting.', 'vera');
+}
 
-  function minimapState() {
-    const pos = game.driving ? game.playerCar.group.position : game.walker.group.position;
-    return {
-      player: { x: pos.x, z: pos.z, heading: game.driving ? -game.playerHeading : -game.walker.group.rotation.y },
-      objective: game.objective,
-      police: game.cruisers.map((c) => ({ x: c.group.position.x, z: c.group.position.z }))
-        .concat(game.state.stars >= 3 ? [{ x: game.heli.group.position.x, z: game.heli.group.position.z, air: true }] : []),
+// ---------- driving / walking ----------
+function updateDriving(dt) {
+  const accel = keys.KeyW ? 18 : 0;
+  const brake = keys.KeyS ? 26 : 0;
+  const handbrake = !!keys.Space;
+  hero.speed += (accel - brake) * dt;
+  if (!keys.KeyW && !keys.KeyS) hero.speed -= Math.sign(hero.speed) * 4 * dt;
+  if (handbrake) hero.speed -= Math.sign(hero.speed) * 10 * dt;
+  hero.speed = clamp(hero.speed, -12, 55);
+  if (Math.abs(hero.speed) < 0.05 && !keys.KeyW) hero.speed = 0;
+
+  const steerInput = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
+  const steer = steerInput * clamp(Math.abs(hero.speed) / 12, 0, 1) * (handbrake ? 1.6 : 1.0);
+  hero.heading += steer * dt * 1.35 * Math.sign(hero.speed || 1);
+  const dx = -Math.sin(hero.heading) * hero.speed * dt;
+  const dz = -Math.cos(hero.heading) * hero.speed * dt;
+  hero.group.position.x = clamp(hero.group.position.x + dx, -150, 150);
+  hero.group.position.z = clamp(hero.group.position.z + dz, -175, 175);
+  hero.group.rotation.y = hero.heading;
+  // Body lean into steering + squat under acceleration.
+  hero.group.rotation.z = steerInput * clamp(Math.abs(hero.speed) / 55, 0, 1) * 0.06;
+  hero.group.rotation.x = clamp(-accel * 0.0012 + brake * 0.001, -0.03, 0.03);
+  // Wheels spin.
+  for (const w of hero.group.userData.wheels) w.rotation.x -= (hero.speed * dt) / 0.38;
+  state.speedKmh = Math.abs(hero.speed) * 3.6;
+
+  // Drift popup.
+  if (handbrake && Math.abs(hero.speed) > 10 && Math.random() < dt * 0.8) {
+    showPopup('DRIFT x3<small>NEAR MISS +$250</small>', 1600);
+    state.money += 25;
+  }
+  // Near miss: passing a traffic car close at speed.
+  for (const t of traffic) {
+    const d = t.group.position.distanceTo(hero.group.position);
+    if (d < 3.2 && Math.abs(hero.speed) > 15 && performance.now() - state.nearMissAt > 4000) {
+      state.nearMissAt = performance.now();
+      state.money += 250;
+      showPopup('NEAR MISS<small>+$250</small>', 1500);
+    }
+  }
+  // Bumping traffic slows the player and dents the car.
+  for (const t of traffic) {
+    const d = t.group.position.distanceTo(hero.group.position);
+    if (d < 2.6) {
+      hero.speed *= 0.55;
+      state.carCondition = Math.max(0, state.carCondition - 0.4);
+      state.health = Math.max(0, state.health - 0.2);
+    }
+  }
+}
+
+function updateWalking(dt) {
+  const run = keys.ShiftLeft || keys.ShiftRight;
+  const speed = run ? 7 : 3.4;
+  let mx = 0;
+  let mz = 0;
+  if (keys.KeyW) mz -= 1;
+  if (keys.KeyS) mz += 1;
+  if (keys.KeyA) mx -= 1;
+  if (keys.KeyD) mx += 1;
+  if (mx || mz) {
+    const len = Math.hypot(mx, mz);
+    mx /= len;
+    mz /= len;
+    walker.heading = Math.atan2(-mx, -mz);
+    walker.group.rotation.y = walker.heading;
+    walker.group.position.x = clamp(walker.group.position.x + mx * speed * dt, -150, 150);
+    walker.group.position.z = clamp(walker.group.position.z + mz * speed * dt, -175, 175);
+    // Walk-cycle swing.
+    const t = performance.now() / 90;
+    walker.group.userData.legL.rotation.x = Math.sin(t) * 0.55;
+    walker.group.userData.legR.rotation.x = -Math.sin(t) * 0.55;
+    walker.group.userData.armL.rotation.x = -Math.sin(t) * 0.4;
+    walker.group.userData.armR.rotation.x = Math.sin(t) * 0.4;
+    state.speedKmh = speed * 3.6;
+  } else {
+    walker.group.userData.legL.rotation.x *= 0.8;
+    walker.group.userData.legR.rotation.x *= 0.8;
+    state.speedKmh = 0;
+  }
+}
+
+// ---------- police / heli ----------
+function updatePolice(dt, t) {
+  const playerPos = hero.group.position;
+  const wanted = state.wanted;
+  cruisers.forEach((c, i) => {
+    const g = c.group;
+    if (wanted === 0) {
+      // Patrol: cruise down the boulevard and leave.
+      g.position.z -= 8 * dt;
+      if (g.position.z < -170) g.position.z = 170;
+      g.rotation.y = 0;
+      return;
+    }
+    // Pursue: steer toward a point offset from the player.
+    const offsets = [[-4, 8], [4, 10], [-5, -6], [5, -4]];
+    const [ox, oz] = offsets[i];
+    const tx = playerPos.x + ox;
+    const tz = playerPos.z + oz;
+    const dx = tx - g.position.x;
+    const dz = tz - g.position.z;
+    const dist = Math.hypot(dx, dz);
+    const targetHeading = Math.atan2(-dx, -dz);
+    let dh = targetHeading - c.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    c.heading += clamp(dh, -1.6 * dt, 1.6 * dt);
+    const targetSpeed = dist > 30 ? 46 : dist > 8 ? 34 : 20;
+    c.speed += clamp(targetSpeed - c.speed, -20 * dt, 12 * dt);
+    g.position.x += -Math.sin(c.heading) * c.speed * dt;
+    g.position.z += -Math.cos(c.heading) * c.speed * dt;
+    g.position.x = clamp(g.position.x, -150, 150);
+    g.position.z = clamp(g.position.z, -175, 175);
+    g.rotation.y = c.heading;
+    for (const w of g.userData.wheels) w.rotation.x -= (c.speed * dt) / 0.38;
+    // Ramming nudge when close.
+    if (dist < 4 && Math.abs(hero.speed) > 5) {
+      state.carCondition = Math.max(0, state.carCondition - 0.15);
+    }
+    // Light bar strobe (alternate red/blue).
+    const lb = g.userData.lightBar;
+    if (lb) {
+      const on = Math.sin(t * 9 + c.phase) > 0;
+      lb.redMat.emissiveIntensity = on ? 3.2 : 0.4;
+      lb.blueMat.emissiveIntensity = on ? 0.4 : 3.2;
+      lb.redGlow.material.opacity = on ? 0.9 : 0.15;
+      lb.blueGlow.material.opacity = on ? 0.15 : 0.9;
+    }
+  });
+
+  // Helicopter orbits the player; spotlight tracks the hero car.
+  // In shot mode (dt === 0) the heli keeps its staged position — only the
+  // aim and the rotors keep running.
+  if (wanted >= 3) {
+    heli.group.visible = true;
+    if (dt > 0) {
+      heli.angle += dt * 0.14;
+      const hx = playerPos.x + Math.cos(heli.angle) * 20;
+      const hz = playerPos.z + Math.sin(heli.angle) * 20 - 8;
+      heli.group.position.x += (hx - heli.group.position.x) * Math.min(1, dt * 1.2);
+      heli.group.position.z += (hz - heli.group.position.z) * Math.min(1, dt * 1.2);
+      heli.group.position.y = 36 + Math.sin(t * 0.5) * 1.5;
+    }
+    heli.group.rotation.y = Math.atan2(
+      playerPos.x - heli.group.position.x,
+      playerPos.z - heli.group.position.z,
+    ) + Math.PI;
+    heli.group.rotation.z = 0.06;
+    aimSpotlight(heli.group, new THREE.Vector3(playerPos.x, 0, playerPos.z));
+  } else {
+    heli.group.visible = false;
+  }
+  heli.group.userData.rotor.rotation.y += dt * 22;
+  heli.group.userData.tailRotor.rotation.z += dt * 30;
+}
+
+// ---------- traffic / peds ----------
+function updateTraffic(dt) {
+  for (const t of traffic) {
+    t.group.position.z += t.lane.dir * t.speed * dt;
+    if (t.group.position.z > t.lane.max) t.group.position.z = t.lane.min;
+    if (t.group.position.z < t.lane.min) t.group.position.z = t.lane.max;
+    for (const w of t.group.userData.wheels) w.rotation.x -= (t.speed * dt) / 0.38;
+  }
+}
+
+function updatePeds(dt, t) {
+  for (const p of peds) {
+    const home = p.userData.home;
+    const range = 14;
+    p.position.z += p.userData.walkDir * 1.1 * dt;
+    if (p.position.z > home.z + range) p.userData.walkDir = -1;
+    if (p.position.z < home.z - range) p.userData.walkDir = 1;
+    p.rotation.y = p.userData.walkDir > 0 ? Math.PI : 0;
+    const s = Math.sin(t * 4 + home.x);
+    p.userData.legL.rotation.x = s * 0.4;
+    p.userData.legR.rotation.x = -s * 0.4;
+    // Flee the hero car when it bears down.
+    const d = p.position.distanceTo(hero.group.position);
+    if (d < 7 && Math.abs(hero.speed) > 8) {
+      p.position.x += Math.sign(p.position.x - hero.group.position.x) * 4 * dt;
+      p.userData.armL.rotation.z = 2.4;
+      p.userData.armR.rotation.z = -2.4;
+    }
+  }
+  // The waving crewman waves; the talkers gesture.
+  const tomas = crew[1];
+  tomas.userData.armR.rotation.x = -0.15 + Math.sin(t * 5) * 0.25;
+  const dario = crew[3];
+  dario.userData.armR.rotation.x = -1.0 + Math.sin(t * 1.8) * 0.25;
+}
+
+// ---------- missions / timer ----------
+function updateMission(dt) {
+  if (!state.started) return;
+  state.timer = Math.max(0, state.timer - dt);
+  const mm = String(Math.floor(state.timer / 60)).padStart(2, '0');
+  const ss = String(Math.floor(state.timer % 60)).padStart(2, '0');
+  const timerEl = document.getElementById('hud-mission-timer');
+  if (timerEl) {
+    timerEl.innerHTML = `&#9202; ${mm}:${ss} — reach the garage in time`;
+  }
+  if (state.timer === 0 && state.wanted < 5) {
+    state.wanted = 5;
+    setDialog('ABPD DISPATCH', 'All units: roadblocks are up. Box him in on Sunset Mile.', 'vera');
+    state.timer = 120;
+  }
+  // Wanted decays when no unit is near.
+  const nearest = Math.min(...cruisers.map((c) => c.group.position.distanceTo(hero.group.position)));
+  if (nearest > 30 && state.wanted > 0) {
+    state.wantedQuiet += dt;
+    if (state.wantedQuiet > 10) {
+      state.wantedQuiet = 0;
+      state.wanted -= 1;
+      setDialog('ABPD DISPATCH', 'Lost visual. Dropping a star — keep it quiet, Dante.', 'vera');
+    }
+  } else {
+    state.wantedQuiet = 0;
+  }
+  // Garage arrival completes the job.
+  const gd = Math.hypot(
+    hero.group.position.x - state.mission.x,
+    hero.group.position.z - state.mission.z,
+  );
+  if (gd < 9 && state.wanted === 0 && state.jobIndex < JOBS.length - 1) {
+    state.jobIndex += 1;
+    state.stage = 1;
+    state.money += 5000;
+    state.rep = Math.min(state.repMax, state.rep + 320);
+    state.timer = 240;
+    const job = JOBS[state.jobIndex];
+    document.querySelector('#hud-mission .job').textContent = `JOB ${state.jobIndex + 1}/8 · ${job.name}`;
+    document.getElementById('hud-mission-title').textContent = job.name;
+    document.getElementById('hud-mission-sub').textContent = job.desc;
+    showPopup('JOB COMPLETE<small>+$5,000 &middot; REP +320</small>', 2600);
+    setDialog('VERA “THE VELVET” CASTILLO · FIXER',
+      'Beautiful work. Next job is on the board — the night is still young.', 'vera');
+    saveGame();
+  }
+  // District by position.
+  const { x, z } = hero.group.position;
+  if (x < -30) { state.district = 'EMBER STRAND'; state.street = 'Shoreline Walk'; }
+  else if (z > 70 && x < 0) { state.district = 'GILDED QUAY'; state.street = 'Harbour Road'; }
+  else if (x > 90) { state.district = 'EMBER HEIGHTS'; state.street = 'Palma Row'; }
+  else { state.district = 'EMBER STRAND'; state.street = 'Sunset Mile'; }
+}
+
+// ---------- camera ----------
+function updateCamera(dt) {
+  if (state.mapOpen) return;
+  const target = state.driving ? hero.group.position : walker.group.position;
+  const heading = state.driving ? hero.heading : walker.heading;
+  const back = state.driving ? 8.5 : 5.5;
+  const up = state.driving ? 3.4 : 2.6;
+  const yaw = heading + dragYaw;
+  const cx = target.x + Math.sin(yaw) * back;
+  const cz = target.z + Math.cos(yaw) * back;
+  const cy = up + dragPitch * 4;
+  camera.position.x += (cx - camera.position.x) * Math.min(1, dt * 5);
+  camera.position.y += (cy - camera.position.y) * Math.min(1, dt * 5);
+  camera.position.z += (cz - camera.position.z) * Math.min(1, dt * 5);
+  camera.lookAt(target.x - Math.sin(heading) * 6, 1.2, target.z - Math.cos(heading) * 6);
+}
+
+// ---------- shot routing ----------
+const params = new URLSearchParams(window.location.search);
+const shot = params.get('shot');
+const world = { camera, hero, cruisers, heli, crew, traffic, city };
+
+window.__game = {
+  get playerCar() { return hero; },
+  get walker() { return walker; },
+  get driving() { return state.driving; },
+  get time() { return gameTime; },
+  get playerSpeed() { return hero.speed; },
+  state,
+  world,
+};
+let gameTime = 0;
+
+if (shot) {
+  // Staged screenshot mode. The title shot keeps the title screen over
+  // the vista (HUD hidden); every other shot hides the menu and shows HUD.
+  if (shot === 'title') {
+    document.getElementById('title-screen').style.display = 'flex';
+    document.getElementById('hud').style.display = 'none';
+  } else {
+    document.getElementById('title-screen').style.display = 'none';
+    document.getElementById('hud').style.display = 'block';
+  }
+  state.started = true;
+  // The marina shot is on foot at the quay — no driving speed.
+  state.speedKmh = shot === 'marina' ? 0 : 118;
+  updateHud(hudState());
+  setupShot(shot, world);
+  if (shot === 'chase' || shot === 'map') {
+    // Heli spotlight on the hero for the cover frame.
+    aimSpotlight(heli.group, new THREE.Vector3(hero.group.position.x, 0, hero.group.position.z));
+  }
+  if (shot === 'chase') {
+    showPopup('DRIFT x3<small>NEAR MISS +$250</small>', 60000);
+  }
+  if (shot === 'map') {
+    state.mapOpen = true;
+    document.getElementById('map-overlay').style.display = 'flex';
+    drawBigMap(bigMapEl, hudState());
+  }
+  refreshMaps();
+} else {
+  // Play mode: title vista behind the menu.
+  setupShot('title', world);
+}
+
+// ---------- main loop ----------
+const clock = new THREE.Clock();
+let mapTick = 0;
+let firstFrame = true;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const rawDt = clock.getDelta();
+  const dt = Math.min(rawDt, 0.1); // SwiftShader-proof: time-based motion
+  gameTime += dt;
+  const t = gameTime;
+
+  city.update(t);
+  if (state.started && !shot) {
+    if (state.driving) updateDriving(dt);
+    else updateWalking(dt);
+    updatePolice(dt, t);
+    updateMission(dt);
+    updateCamera(dt);
+    mapTick += dt;
+    if (mapTick > 0.25) {
+      mapTick = 0;
+      updateHud(hudState());
+      refreshMaps();
+      saveGame();
+    }
+  } else if (shot === 'chase' || shot === 'map') {
+    // Keep the chase alive behind the screenshot: rotors, strobes, flicker.
+    updatePolice(0, t);
+  }
+  if (!shot) updateTraffic(dt);
+  updatePeds(dt, t);
+  updateAudio(t);
+
+  renderer.render(scene, camera);
+  // Renderer diagnostics for the scorecard: draw calls + triangles from
+  // the frame just rendered, so the playtest can cite measured evidence.
+  if (window.__shotInfo) {
+    const ri = renderer.info;
+    window.__shotInfo.renderer = {
+      calls: ri.render.calls,
+      triangles: ri.render.triangles,
+      geometries: ri.memory.geometries,
+      textures: ri.memory.textures,
     };
   }
-
-  let hudTick = 0;
-  function updateHudDom() {
-    if (game.mode !== 'play') return;
-    hudTick++;
-    const S = game.state;
-    const distances = {};
-    const target = game.driving ? game.playerCar.group.position : game.walker.group.position;
-    window.SB.hud.UNITS.forEach((u, i) => {
-      if (i < game.cruisers.length) {
-        distances[u.name] = game.cruisers[i].group.position.distanceTo(target);
-      } else if (u.name === 'AIR-9') {
-        distances[u.name] = game.heli.group.position.distanceTo(target);
-      } else {
-        distances[u.name] = 92;
-      }
-    });
-    window.SB.hud.updateHud({
-      speed: S.speed, health: S.health, armor: S.armor, stars: S.stars,
-      cash: S.cash, condition: S.condition, distances: distances,
-      district: S.district, street: S.street,
-    });
-    const inSight = document.getElementById('hud-insight');
-    inSight.style.display = S.stars >= 3 ? 'block' : 'none';
-    // The minimap redraws every frame: it is a small canvas, and the
-    // screenshot must never catch it blank.
-    const mini = document.getElementById('minimap');
-    if (mini) window.SB.hud.drawMinimap(mini, minimapState());
+  if (firstFrame) {
+    firstFrame = false;
+    window.__ready = true;
   }
+}
+animate();
 
-  // ------------------------------------------------------------------
-  // Save / load
-  // ------------------------------------------------------------------
-  function saveGame() {
-    try {
-      const pos = game.playerCar.group.position;
-      localStorage.setItem(SAVE_KEY, JSON.stringify({
-        cash: game.state.cash, stars: game.state.stars, stage: game.state.stage,
-        x: pos.x, z: pos.z,
-      }));
-    } catch (e) { /* private mode: the game plays without a save */ }
-  }
-
-  function loadSave() {
-    try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return false;
-      const s = JSON.parse(raw);
-      game.state.cash = s.cash;
-      game.state.stars = s.stars;
-      game.state.stage = s.stage;
-      if (s.x !== undefined) {
-        game.playerCar.group.position.set(s.x, 0, s.z);
-      }
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  setInterval(() => { if (game.mode === 'play') saveGame(); }, 15000);
-  window.addEventListener('beforeunload', () => { if (game.mode === 'play') saveGame(); });
-
-  // Expose the helpers the staged shots use.
-  game.placeCar = placeCar;
-  game.placeHeli = placeHeli;
-  game.placeTraffic = placeTraffic;
-  game.posePedestrian = posePedestrian;
-  game.poseCrew = poseCrew;
-  game.setDriving = setDriving;
-  game.showHud = showHud;
-  game.showTitle = showTitle;
-  game.showMap = showMap;
-  game.setPopup = (kind, text) => {
-    const box = document.getElementById('hud-popup');
-    box.textContent = text;
-    box.className = 'hud-popup show ' + kind;
-  };
-  game.setPopup2 = (kind, text) => {
-    const box = document.getElementById('hud-popup2');
-    box.textContent = text;
-    box.className = 'hud-popup show ' + kind;
-  };
-
-  window.SB.game = game;
-  window.addEventListener('DOMContentLoaded', init);
-})();
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
