@@ -13,7 +13,7 @@
 
     buildHeli(scene) {
       const g = new THREE.Group();
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a2536, roughness: 0.4, metalness: 0.5 });
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x35486b, roughness: 0.4, metalness: 0.5 });
       const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.9, 5.2), bodyMat);
       g.add(body);
       const nose = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.4, 1.6), bodyMat);
@@ -42,10 +42,13 @@
         skid.position.set(x, -1.35, 0);
         g.add(skid);
       }
-      // White VBPD belly band + stripe.
+      // White VBPD belly band + stripe + belly plate (visible from below).
       const band = new THREE.Mesh(new THREE.BoxGeometry(2.46, 0.7, 3.4), new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5 }));
       band.position.set(0, -0.3, -0.4);
       g.add(band);
+      const belly = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.12, 4.2), new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.5 }));
+      belly.position.set(0, -0.98, -0.2);
+      g.add(belly);
       // Main rotor (spins in update).
       this.rotor = new THREE.Group();
       for (let i = 0; i < 2; i++) {
@@ -64,21 +67,21 @@
       g.add(beacon);
       this.beacon = beacon;
 
-      // Spotlight: a NARROW bright cone (not a white triangle wash).
+      // Spotlight: a WIDE, soft cone AIMED from the heli lamp at the hero car.
+      // It lives in world space (not a child of the heli) so it can slant
+      // diagonally onto the car instead of hanging as a vertical pillar.
       const beamMat = new THREE.MeshBasicMaterial({
-        color: 0xfff2c0, transparent: true, opacity: 0.16,
+        color: 0xfff2c0, transparent: true, opacity: 0.13,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false,
       });
-      this.beam = new THREE.Mesh(new THREE.ConeGeometry(4.2, 26, 20, 1, true), beamMat);
-      this.beam.position.set(0, -13.5, -1);
-      g.add(this.beam);
+      this.beam = new THREE.Mesh(new THREE.ConeGeometry(5.0, 26, 20, 1, true), beamMat);
+      scene.add(this.beam);
       // Bright core cone inside it.
-      const core = new THREE.Mesh(
-        new THREE.ConeGeometry(1.7, 26, 12, 1, true),
-        new THREE.MeshBasicMaterial({ color: 0xfffbe0, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
+      this.beamCore = new THREE.Mesh(
+        new THREE.ConeGeometry(2.0, 26, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xfffbe0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
       );
-      core.position.copy(this.beam.position);
-      g.add(core);
+      scene.add(this.beamCore);
       // Small lamp housing under the nose.
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfffbe0 }));
       lamp.position.set(0, -1.05, -2.6);
@@ -145,11 +148,24 @@
         this.heli.position.y = 26 + Math.sin(t * 0.6) * 0.8;
         this.heli.rotation.y = U.damp(this.heli.rotation.y, 0.5 + Math.sin(t * 0.2) * 0.15, 1, dt);
       }
-      // Beam hangs straight down from the heli (the heli keeps itself above
-      // the car, so the cone lands on it); pool + light track the hero.
+      // Aim the beam: apex at the heli lamp, base on the hero car.
+      const hp = this.heli.position;
+      const lampPos = new THREE.Vector3(hp.x, hp.y - 2, hp.z - 2);
+      const target = new THREE.Vector3(heroPos.x, 0.3, heroPos.z);
+      const dir = new THREE.Vector3().subVectors(target, lampPos);
+      const len = dir.length();
+      const mid = new THREE.Vector3().addVectors(lampPos, target).multiplyScalar(0.5);
+      const up = new THREE.Vector3(0, 1, 0);
+      const aim = dir.clone().normalize().negate(); // cone +Y points at the heli
+      const q = new THREE.Quaternion().setFromUnitVectors(up, aim);
+      for (const cone of [this.beam, this.beamCore]) {
+        cone.position.copy(mid);
+        cone.quaternion.copy(q);
+        cone.scale.set(1, len / 26, 1);
+      }
+      // Pool + light track the hero car.
       this.pool.position.x = U.damp(this.pool.position.x, heroPos.x, 4, dt);
       this.pool.position.z = U.damp(this.pool.position.z, heroPos.z, 4, dt);
-      const hp = this.heli.position;
       this.heliLight.position.set(hp.x, hp.y - 1, hp.z - 2);
       this.heliLight.target.position.set(heroPos.x, 0, heroPos.z);
     },

@@ -70,17 +70,17 @@ VB.CONFIG = {
   // Chase-shot staging: camera + hero + cruisers + heli, tuned so all four
   // cruisers and a BIG helicopter sit inside the frame.
   chase: {
-    heroPos: { x: 6, z: 14 },
+    heroPos: { x: 6, z: 17 },
     heroRot: -0.12,
-    camPos: { x: 13.5, y: 5.2, z: 30 },
-    camLook: { x: 0, y: 2.2, z: -6 },
+    camPos: { x: 10, y: 3.6, z: 25 },
+    camLook: { x: 1, y: 2.2, z: -2 },
     cruisers: [
-      { x: -4, z: -14, rot: 0.08 },   // ahead-left, in frame
-      { x: 10, z: -20, rot: -0.06 },  // ahead-right, in frame
-      { x: -9, z: 4, rot: 0.15 },     // alongside-left, in frame
-      { x: 16, z: 2, rot: -0.10 },    // alongside-right, in frame
+      { x: -3, z: 6, rot: 0.08 },    // ahead-left, boxing in
+      { x: 13, z: 4, rot: -0.06 },   // ahead-right, boxing in
+      { x: -8, z: 16, rot: 0.15 },   // alongside-left, in frame
+      { x: 15, z: 14, rot: -0.10 },  // alongside-right, in frame
     ],
-    heliPos: { x: -14, y: 26, z: -34 },
+    heliPos: { x: -18, y: 26, z: -28 },
     heliScale: 1.9,
   },
 };

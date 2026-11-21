@@ -10,7 +10,7 @@
   const Shots = {
     // GPS route: hero -> garage on Solana Avenue (for minimap + pause map).
     route: [
-      { x: 6, z: 14 }, { x: 4, z: -30 }, { x: 4, z: -80 },
+      { x: 6, z: 17 }, { x: 4, z: -30 }, { x: 4, z: -80 },
       { x: -24, z: -96 }, { x: -52, z: -96 }, { x: -64, z: -70 },
     ],
     active: '',
