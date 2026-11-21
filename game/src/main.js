@@ -203,16 +203,12 @@
         VB.audio.blip(700, 0.1);
       }
 
-      if (M.started && !M.paused) {
+      if (M.started && !M.paused && !VB.shots.staged) {
         VB.missions.tick(dt);
         if (!this.onFoot) VB.cars.drive(dt, input);
         else this.updateOnFoot(dt);
-        if (!VB.shots.staged) {
-          VB.police.updateGround(dt, VB.cars.hero.position);
-          VB.police.update(dt, t, VB.cars.hero.position, false);
-        } else {
-          VB.police.update(dt, t, VB.cars.hero.position, true);
-        }
+        VB.police.updateGround(dt, VB.cars.hero.position);
+        VB.police.update(dt, t, VB.cars.hero.position, false);
         VB.audio.setEngine(U.clamp(Math.abs(VB.cars.heroState.speed) / 38, 0, 1));
         VB.audio.setSiren(M.wanted > 0);
         // Near-miss bonus while drifting at speed.
@@ -221,6 +217,7 @@
           VB.hud.setPopup('DRIFT x3', 'NEAR MISS +$250');
         }
       } else if (VB.shots.staged) {
+        // Staged shots hold the frame: no driving, no timer, heli hovers.
         VB.police.update(dt, t, VB.cars.hero.position, true);
       }
 
