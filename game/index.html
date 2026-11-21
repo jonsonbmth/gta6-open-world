@@ -1,90 +1,265 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ember Bay — an open-world crime game</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./style.css">
+<title>SIRENA BAY — an open-world crime game</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #10141c; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #f2f2f2; }
+  #game-canvas-holder, #game-canvas-holder canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .panel {
+    background: rgba(12, 16, 26, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    backdrop-filter: blur(3px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  }
+  #hud { position: absolute; inset: 0; pointer-events: none; display: none; }
+
+  /* Mission, top left */
+  #hud-mission { position: absolute; top: 14px; left: 14px; width: 330px; padding: 12px 14px; }
+  #hud-mission-title { color: #ffd94a; font-weight: bold; font-size: 15px; letter-spacing: 0.5px; }
+  #hud-mission-objective { font-size: 13px; line-height: 1.45; margin-top: 5px; color: #e8e8e8; }
+  .mission-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
+  #hud-mission-stage { color: #39ff88; font-weight: bold; }
+  .stage-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.18); border-radius: 3px; overflow: hidden; }
+  .stage-bar i { display: block; height: 100%; width: 75%; background: linear-gradient(90deg, #39ff88, #ffd94a); }
+  #hud-mission-time { background: #e8362d; padding: 2px 7px; border-radius: 4px; font-weight: bold; }
+  #hud-mission-next { margin-top: 7px; font-size: 12px; color: #ffd94a; }
+
+  /* Dispatch, left */
+  #hud-dispatch { position: absolute; top: 168px; left: 14px; width: 300px; padding: 10px 12px; }
+  .dispatch-head { font-size: 13px; font-weight: bold; color: #ffa502; letter-spacing: 0.5px; }
+  .dispatch-sub { font-size: 11px; color: #ddd; margin-top: 2px; }
+  .dispatch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.07); }
+  .dispatch-row:first-of-type { border-top: none; }
+  .dispatch-name { flex: 1; font-weight: bold; white-space: nowrap; }
+  .dispatch-tactic { font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 3px; white-space: nowrap; }
+  .dispatch-dist { color: #ffd94a; min-width: 40px; text-align: right; }
+  .dispatch-foot { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+  /* Minimap + vitals, bottom left */
+  #hud-minimap-box { position: absolute; left: 14px; bottom: 14px; width: 208px; padding: 10px; }
+  #minimap { width: 186px; height: 186px; border-radius: 6px; display: block; }
+  #hud-district { color: #ffd94a; font-weight: bold; font-size: 14px; margin-top: 8px; }
+  #hud-street { font-size: 12px; color: #ccc; }
+  .vital { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 11px; }
+  .vital label { width: 52px; color: #bbb; }
+  .vital .bar { flex: 1; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
+  .vital .bar i { display: block; height: 100%; }
+  #hud-health-fill { width: 100%; background: #39ff88; }
+  #hud-armor-fill { width: 65%; background: #4aa8ff; }
+  .rep-line { font-size: 11px; margin-top: 6px; color: #ffd94a; }
+
+  /* Cash + stars, top right */
+  #hud-money { position: absolute; top: 14px; right: 14px; padding: 10px 16px; text-align: right; min-width: 190px; }
+  #hud-clock { font-size: 11px; color: #aaa; }
+  #hud-cash { font-size: 26px; font-weight: bold; color: #39ff88; }
+  #hud-stars { font-size: 19px; color: #ffd94a; letter-spacing: 3px; }
+  #hud-insight { display: none; margin-top: 5px; background: #e8362d; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
+
+  /* Weapons, right */
+  #hud-weapons { position: absolute; top: 128px; right: 14px; display: flex; gap: 6px; }
+  .weapon-slot {
+    width: 62px; padding: 7px 4px 6px; text-align: center; position: relative;
+    background: rgba(12, 16, 26, 0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+  }
+  .weapon-slot.active { border-color: #ffd94a; box-shadow: 0 0 0 1px #ffd94a; }
+  .weapon-slot.locked { opacity: 0.55; }
+  .weapon-key { position: absolute; top: 3px; left: 5px; font-size: 10px; color: #aaa; }
+  .weapon-icon { display: block; height: 22px; color: #fff; }
+  .weapon-icon svg { width: 30px; height: 22px; }
+  .weapon-name { display: block; font-size: 9px; font-weight: bold; margin-top: 2px; }
+  .weapon-ammo { display: block; font-size: 11px; color: #ffd94a; font-weight: bold; }
+
+  /* Crew cards, right */
+  #hud-crew { position: absolute; top: 208px; right: 14px; width: 220px; display: flex; flex-direction: column; gap: 7px; }
+  .crew-card { display: flex; gap: 9px; align-items: center; padding: 8px 10px; background: rgba(12,16,26,0.78); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; }
+  .crew-portrait { width: 42px; height: 42px; border-radius: 6px; }
+  .crew-ability { display: block; font-size: 11px; font-weight: bold; color: #ffd94a; }
+  .crew-name { display: block; font-size: 11px; color: #ddd; }
+
+  /* Dialog, bottom centre */
+  #hud-dialog { position: absolute; bottom: 46px; left: 50%; transform: translateX(-50%); width: 560px; display: flex; gap: 12px; padding: 12px 14px; align-items: center; }
+  #hud-dialog-portrait { width: 58px; height: 58px; border-radius: 8px; flex-shrink: 0; }
+  #hud-dialog-name { font-size: 12px; font-weight: bold; color: #ffd94a; }
+  #hud-dialog-line { font-size: 14px; line-height: 1.4; margin-top: 3px; }
+
+  /* Speed + car, bottom right */
+  #hud-drive { position: absolute; right: 14px; bottom: 14px; text-align: right; }
+  #hud-speed { font-size: 46px; font-weight: bold; line-height: 1; }
+  #hud-speed-unit { font-size: 14px; color: #ccc; }
+  #hud-car-name { color: #4aa8ff; font-weight: bold; font-size: 14px; }
+  .condition-row { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 4px; font-size: 11px; color: #bbb; }
+  .condition-row .bar { width: 110px; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
+  #hud-condition-fill { display: block; height: 100%; width: 82%; background: linear-gradient(90deg, #39ff88, #ffd94a); }
+  #hud-radio { position: absolute; right: 14px; bottom: 118px; font-size: 12px; color: #ddd; background: rgba(12,16,26,0.7); padding: 5px 10px; border-radius: 6px; }
+
+  /* Centre popups */
+  .hud-popup {
+    position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
+    font-size: 52px; font-weight: bold; color: #ffd94a; text-shadow: 0 3px 0 #7a5a00, 0 6px 24px rgba(0,0,0,0.6);
+    opacity: 0; transition: opacity 0.15s; text-align: center; letter-spacing: 1px;
+  }
+  .hud-popup.show { opacity: 1; }
+  .hud-popup.nearmiss, #hud-popup2 { font-size: 22px; color: #39ff88; top: 41%; }
+  .hud-popup.crew, .hud-popup.radio, .hud-popup.hit { font-size: 20px; color: #fff; top: 27%; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+
+  #hud-hint {
+    position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: rgba(255,255,255,0.65); white-space: nowrap;
+  }
+
+  /* Title screen */
+  #title-screen {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(10,14,24,0.55) 0%, rgba(10,14,24,0.25) 45%, rgba(10,14,24,0.75) 100%);
+    text-align: center; z-index: 5;
+  }
+  #title-screen h1 {
+    font-size: 84px; letter-spacing: 6px; font-weight: bold;
+    background: linear-gradient(180deg, #fff6c0 20%, #ffb03a 60%, #ff5a3a 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: none; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.7));
+  }
+  #title-screen .subtitle { font-size: 17px; letter-spacing: 4px; color: #ffd94a; margin-top: -6px; }
+  #title-hero { display: flex; gap: 18px; align-items: center; margin-top: 26px; background: rgba(12,16,26,0.8); border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 14px 20px; }
+  #title-portrait { width: 92px; height: 92px; border-radius: 10px; }
+  #title-hero .who { text-align: left; }
+  #title-hero .who b { font-size: 19px; }
+  #title-hero .who span { display: block; font-size: 13px; color: #ccc; margin-top: 3px; line-height: 1.45; }
+  .title-buttons { display: flex; gap: 12px; margin-top: 26px; }
+  .title-buttons button {
+    pointer-events: auto; cursor: pointer; font-size: 16px; font-weight: bold; padding: 13px 30px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); color: #fff; background: rgba(20,26,40,0.9);
+  }
+  .title-buttons button.primary { background: linear-gradient(180deg, #ffb03a, #ff5a3a); border: none; }
+  .title-foot { margin-top: 22px; font-size: 12px; color: rgba(255,255,255,0.7); }
+
+  /* Pause map + help overlays */
+  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(8,10,18,0.82); z-index: 6; flex-direction: column; }
+  .overlay h2 { color: #ffd94a; letter-spacing: 3px; margin-bottom: 12px; }
+  #big-map { border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); }
+  .overlay .close-hint { margin-top: 12px; font-size: 13px; color: #ccc; }
+  .help-grid { display: grid; grid-template-columns: auto auto; gap: 8px 22px; font-size: 14px; text-align: left; background: rgba(12,16,26,0.9); padding: 20px 26px; border-radius: 10px; }
+  .help-grid b { color: #ffd94a; }
+  #btn-help-close { pointer-events: auto; cursor: pointer; margin-top: 16px; font-size: 14px; font-weight: bold; padding: 10px 26px; border-radius: 8px; border: none; background: #ffb03a; color: #201404; }
+</style>
 </head>
 <body>
-<div id="game-root"></div>
+<div id="game-canvas-holder"></div>
 
-<!-- HUD -->
 <div id="hud">
-  <div id="mission-panel" class="panel"></div>
-  <div id="dispatch-panel" class="panel">
-    <div id="dispatch-head" class="d-head"></div>
-    <div id="dispatch-rows"></div>
-    <div class="d-foot">+2 more units · roadblock ahead</div>
+  <div id="hud-mission" class="panel">
+    <div id="hud-mission-title">JOB 8/8 · THE SIRENA SCORE</div>
+    <div id="hud-mission-objective">Lose the heat, then bring the car to the garage on Mermaid Mile.</div>
+    <div class="mission-row">
+      <span id="hud-mission-stage">STAGE 3/4</span>
+      <span class="stage-bar"><i></i></span>
+      <span id="hud-mission-time">03:12</span>
+    </div>
+    <div id="hud-mission-next">NEXT · Reach the garage on Mermaid Mile</div>
   </div>
-  <div id="minimap-wrap" class="panel">
-    <canvas id="minimap" width="168" height="168"></canvas>
-    <div id="district"></div>
-    <div id="street"></div>
-    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="hp-fill" class="fill hp" style="width:88%"></div></div></div>
-    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="ar-fill" class="fill ar" style="width:64%"></div></div></div>
-    <div class="bar-row"><span id="rep-line"></span></div>
-    <div class="bar"><div id="rep-fill" class="fill rep"></div></div>
+
+  <div id="hud-dispatch" class="panel">
+    <div class="dispatch-head">SIRENA BAY PD DISPATCH</div>
+    <div class="dispatch-sub">6 UNITS · CODE 4</div>
+    <div id="hud-dispatch-list"></div>
+    <div class="dispatch-foot">+2 more units · roadblock ahead</div>
   </div>
-  <div id="money-panel" class="panel">
-    <div id="clock">FRI 17:58</div>
-    <div id="money"></div>
-    <div id="stars"></div>
-    <div id="insight">IN SIGHT · AIR-3</div>
+
+  <div id="hud-minimap-box" class="panel">
+    <canvas id="minimap" width="186" height="186"></canvas>
+    <div id="hud-district">SUNSET QUAY</div>
+    <div id="hud-street">Mermaid Mile</div>
+    <div class="vital"><label>HEALTH</label><span class="bar"><i id="hud-health-fill"></i></span></div>
+    <div class="vital"><label>ARMOUR</label><span class="bar"><i id="hud-armor-fill"></i></span></div>
+    <div class="rep-line">REP 6 · WHEELMAN — 2140 / 2600 XP</div>
   </div>
-  <div id="weapons"></div>
-  <div id="crew-cards"></div>
-  <div id="dialog" class="panel">
-    <canvas id="dialog-face" width="72" height="72"></canvas>
-    <div><div id="dialog-name"></div><div id="dialog-text"></div></div>
+
+  <div id="hud-money" class="panel">
+    <div id="hud-clock">FRI 17:58</div>
+    <div id="hud-cash">$31,240</div>
+    <div id="hud-stars">★★★★☆</div>
+    <div id="hud-insight">IN SIGHT · AIR-9</div>
   </div>
-  <div id="speedo">
-    <div id="speed">0</div>
-    <div class="kmh">KM/H</div>
-    <div id="car-name"></div>
-    <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="car-cond" class="fill cond"></div></div><span id="cond-pct"></span></div>
+
+  <div id="hud-weapons"></div>
+  <div id="hud-crew"></div>
+
+  <div id="hud-dialog" class="panel">
+    <img id="hud-dialog-portrait" alt="">
+    <div>
+      <div id="hud-dialog-name">Iris "The Broker" Santos · FIXER · SUNSET QUAY</div>
+      <div id="hud-dialog-line">Six units and a chopper, Mako — lose the blue lights or lose the car. Your call, make it fast.</div>
+    </div>
   </div>
-  <div id="radio"></div>
-  <div id="controls-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
-  <div id="popup"></div>
+
+  <div id="hud-radio">♪ SIRENA FM 99.7 — "Night Drive" — The Shorelines</div>
+  <div id="hud-drive">
+    <div><span id="hud-speed">112</span> <span id="hud-speed-unit">KM/H</span></div>
+    <div id="hud-car-name">MANTA GT</div>
+    <div class="condition-row">CONDITION <span class="bar"><i id="hud-condition-fill"></i></span> 82%</div>
+  </div>
+
+  <div id="hud-popup" class="hud-popup"></div>
+  <div id="hud-popup2" class="hud-popup"></div>
+  <div id="hud-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute · drag mouse to look</div>
 </div>
 
-<!-- Title screen -->
 <div id="title-screen">
-  <div class="ts-inner">
-    <div class="ts-kicker">AN EMBER BAY STORY</div>
-    <h1 class="ts-title">EMBER<br>BAY</h1>
-    <div class="ts-tag">Heat, hustle and high tide.</div>
-    <p class="ts-story">Rico "Rook" Salazar is back in Ember Bay with one fast car, three loyal crew and the whole EBPD on his tail. Eight jobs stand between him and the Ember Run score — if the heat doesn't catch him first.</p>
-    <div class="ts-buttons">
-      <button id="btn-start" class="btn primary">▶ START ENGINE</button>
-      <button id="btn-continue" class="btn">CONTINUE</button>
+  <h1>SIRENA BAY</h1>
+  <div class="subtitle">AN OPEN-WORLD CRIME GAME</div>
+  <div id="title-hero">
+    <img id="title-portrait" alt="Marco Delgado">
+    <div class="who">
+      <b>Marco "Mako" Delgado</b>
+      <span>Wheelman for Iris "The Broker" Santos.<br>JOB 8/8 · THE SIRENA SCORE — lose the heat,<br>bring the MANTA GT home.</span>
     </div>
-    <div class="ts-saves">
-      <button id="save-1" class="save">SAVE 1 · <span>EMPTY SLOT</span></button>
-      <button id="save-2" class="save">SAVE 2 · <span>EMPTY SLOT</span></button>
-      <button id="save-3" class="save">SAVE 3 · <span>EMPTY SLOT</span></button>
-    </div>
-    <div class="ts-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run · M map · R radio · F talk/act · N mute · drag mouse to look</div>
-    <div class="ts-fine">An original game — its city, characters, vehicles and music are invented for this entry. No Rockstar Games names, art or assets.</div>
   </div>
+  <div class="title-buttons">
+    <button id="btn-continue">CONTINUE</button>
+    <button id="btn-new" class="primary">NEW GAME</button>
+    <button id="btn-help">HOW TO PLAY</button>
+  </div>
+  <div class="title-foot">WASD drive &amp; walk · E enter / exit car · M map · R radio · drag mouse to look · an original game, nothing from Rockstar Games</div>
 </div>
 
-<!-- Pause / city map -->
-<div id="pause-menu">
-  <div class="pm-inner panel">
-    <h2>CITY MAP — EMBER BAY</h2>
-    <canvas id="bigmap" width="640" height="400"></canvas>
-    <div class="pm-row">
-      <div><b>JOB 7/8 · THE EMBER RUN</b><br>STAGE 3/4 · Lose the heat, then bring the car to the garage on Marlin Avenue.</div>
-      <button id="btn-resume" class="btn primary">RESUME</button>
-    </div>
-    <div class="pm-legend">● You &nbsp; ● Police &nbsp; <span class="gps">– – GPS route to the garage</span></div>
-  </div>
+<div id="map-overlay" class="overlay">
+  <h2>SIRENA BAY — CITY MAP</h2>
+  <canvas id="big-map" width="760" height="560"></canvas>
+  <div class="close-hint">M or ESC to close · green line: GPS route to the garage · red dots: police</div>
 </div>
 
-<script src="./vendor/three.min.js"></script>
-<script type="module" src="./src/main.js"></script>
+<div id="help-overlay" class="overlay">
+  <h2>HOW TO PLAY</h2>
+  <div class="help-grid">
+    <b>WASD / arrows</b><span>Drive / walk</span>
+    <b>E</b><span>Enter / exit the car</span>
+    <b>SPACE</b><span>Handbrake — drift for cash</span>
+    <b>SHIFT</b><span>Run on foot</span>
+    <b>Mouse drag</b><span>Look around</span>
+    <b>Click</b><span>Fire the equipped weapon</span>
+    <b>Z / X / C</b><span>Crew: swap plates / quick fix / eyes out</span>
+    <b>M</b><span>City map</span>
+    <b>R</b><span>Radio</span>
+    <b>N</b><span>Mute</span>
+  </div>
+  <button id="btn-help-close">GOT IT</button>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="src/util.js"></script>
+<script src="src/faces.js"></script>
+<script src="src/people.js"></script>
+<script src="src/vehicles.js"></script>
+<script src="src/city.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/main.js"></script>
 </body>
 </html>
