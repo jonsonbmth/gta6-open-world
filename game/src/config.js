@@ -75,12 +75,12 @@ VB.CONFIG = {
     camPos: { x: 10, y: 3.6, z: 25 },
     camLook: { x: 1, y: 2.2, z: -2 },
     cruisers: [
-      { x: -3, z: 6, rot: 0.08 },    // ahead-left, boxing in
-      { x: 13, z: 4, rot: -0.06 },   // ahead-right, boxing in
-      { x: -8, z: 16, rot: 0.15 },   // alongside-left, in frame
-      { x: 15, z: 14, rot: -0.10 },  // alongside-right, in frame
+      { x: -4, z: 2, rot: 0.08 },    // ahead-left, boxing in
+      { x: 14, z: 0, rot: -0.06 },   // ahead-right, boxing in
+      { x: -3, z: 13, rot: 0.15 },   // alongside-left, fully in frame
+      { x: 13, z: 11, rot: -0.10 },  // alongside-right, fully in frame
     ],
-    heliPos: { x: -18, y: 26, z: -28 },
+    heliPos: { x: -18, y: 24, z: -26 },
     heliScale: 1.9,
   },
 };

@@ -71,15 +71,15 @@
       // It lives in world space (not a child of the heli) so it can slant
       // diagonally onto the car instead of hanging as a vertical pillar.
       const beamMat = new THREE.MeshBasicMaterial({
-        color: 0xfff2c0, transparent: true, opacity: 0.13,
+        color: 0xfff2c0, transparent: true, opacity: 0.09,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false,
       });
-      this.beam = new THREE.Mesh(new THREE.ConeGeometry(5.0, 26, 20, 1, true), beamMat);
+      this.beam = new THREE.Mesh(new THREE.ConeGeometry(4.0, 26, 20, 1, true), beamMat);
       scene.add(this.beam);
       // Bright core cone inside it.
       this.beamCore = new THREE.Mesh(
-        new THREE.ConeGeometry(2.0, 26, 12, 1, true),
-        new THREE.MeshBasicMaterial({ color: 0xfffbe0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
+        new THREE.ConeGeometry(1.6, 26, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xfffbe0, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false })
       );
       scene.add(this.beamCore);
       // Small lamp housing under the nose.
