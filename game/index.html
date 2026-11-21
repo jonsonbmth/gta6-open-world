@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-<title>VERANO BAY — Open-World Crime Game</title>
+<title>SOLSTICE BAY — a GTA 6-style open-world crime game</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,126 +11,103 @@
 
 <!-- ============ HUD ============ -->
 <div id="hud">
-  <div id="mission-panel" class="panel"></div>
-  <div id="dispatch-panel" class="panel"></div>
+  <div id="mission-panel" class="panel">
+    <div id="mission-title">JOB 6/8 · THE HARBOR HEIST</div>
+    <div id="mission-obj">Lose the heat, then bring the car to the garage on Marlin Avenue.</div>
+    <div class="stage-row"><span id="mission-stage">STAGE 2/4</span><span id="mission-time" class="timer">03:12</span></div>
+    <div class="stage-bar"><div id="stage-fill"></div></div>
+    <div id="mission-next">NEXT&nbsp;&nbsp;Reach the garage on Marlin Avenue</div>
+  </div>
+
+  <div id="dispatch-panel" class="panel">
+    <div class="panel-head"><span>SOLSTICE PD DISPATCH</span><span id="dispatch-code">6 UNITS · CODE 4</span></div>
+    <div id="dispatch-rows"></div>
+    <div class="dispatch-foot">+2 more units · roadblock ahead</div>
+  </div>
 
   <div id="top-right">
-    <div id="money-block" class="panel">
+    <div id="money-box" class="panel">
       <div id="clock">FRI 17:58</div>
       <div id="money">$31,240</div>
-      <div id="stars"></div>
-      <div id="in-sight">IN SIGHT · AIR-1</div>
+      <div id="stars"><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star">★</span></div>
+      <div id="sight-badge">IN SIGHT · AIR-2</div>
     </div>
     <div id="weapon-slots"></div>
     <div id="crew-cards"></div>
   </div>
 
   <div id="bottom-left">
-    <canvas id="minimap" width="168" height="168"></canvas>
-    <div id="district">MIRAMAR STRAND</div>
-    <div id="street">Solana Avenue</div>
-    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="health-fill" class="fill health"></div></div></div>
-    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="armor-fill" class="fill armor"></div></div></div>
-    <div id="rep-line">REP 5 · WHEELMAN — 1,940 / 2,600 XP</div>
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="district">CASINO STRIP</div>
+    <div id="street">Solstice Boulevard</div>
+    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="health" style="width:86%"></div></div></div>
+    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="armor" style="width:64%"></div></div></div>
+    <div id="rep-name">REP 5 · WHEELMAN</div>
+    <div class="bar"><div id="rep-bar" style="width:74%"></div></div>
+    <div id="rep-xp">1,940 / 2,600 XP</div>
   </div>
 
   <div id="dialog" class="panel">
-    <canvas id="dialog-face" width="56" height="56"></canvas>
-    <div class="d-body">
-      <div id="dialog-name">Nico Ramos <span class="d-role">FIXER · OLD PORT</span></div>
-      <div id="dialog-text"></div>
+    <canvas id="dialog-face" width="72" height="72"></canvas>
+    <div class="dialog-body">
+      <div id="dialog-name">Gus Moreno · FIXER · HARBOR LIGHTS</div>
+      <div id="dialog-text">Four cruisers and a chopper, Torch — lose the blue lights or lose the car. Your call, make it fast.</div>
     </div>
   </div>
 
   <div id="bottom-right">
     <div id="speed">108</div>
     <div id="speed-unit">KM/H</div>
-    <div id="car-name">TEMPEST GT</div>
-    <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="car-cond-fill" class="fill cond"></div></div><span id="car-cond">87%</span></div>
-    <div id="radio">♪ SOL FM 101.5 — "Neon Palms" · The Miramar Club</div>
+    <div id="carname">MERIDIAN GT</div>
+    <div class="cond-row"><span>CONDITION</span><div class="bar"><div id="condition" style="width:82%"></div></div><span id="condition-num">82%</span></div>
+    <div id="radio">♪ WAVE FM 96.5 — "Midnight Run" · The Solstice Club</div>
   </div>
 
   <div id="popup"></div>
-  <div id="hint">WASD drive / walk&nbsp;&nbsp;·&nbsp;&nbsp;E enter &amp; exit car&nbsp;&nbsp;·&nbsp;&nbsp;SPACE handbrake&nbsp;&nbsp;·&nbsp;&nbsp;SHIFT run&nbsp;&nbsp;·&nbsp;&nbsp;M city map&nbsp;&nbsp;·&nbsp;&nbsp;R radio&nbsp;&nbsp;·&nbsp;&nbsp;F action&nbsp;&nbsp;·&nbsp;&nbsp;N mute</div>
-  <div id="debug"></div>
+  <div id="controls-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
 </div>
 
 <!-- ============ TITLE SCREEN ============ -->
 <div id="title-screen">
-  <div class="t-inner">
-    <div class="t-kicker">A VERANO BAY STORY</div>
-    <h1 class="t-title">VERANO<br>BAY</h1>
-    <div class="t-tag">Sun, salt and sirens.</div>
-    <p class="t-blurb">Dario "Daz" Mendoza is back in Verano Bay with one fast car, three loyal
-      crew and the whole VBPD on his tail. Eight jobs stand between him and the
-      King Tide score — if the heat doesn't catch him first.</p>
-    <div class="t-buttons">
-      <button id="btn-start" class="t-btn primary">▶ START ENGINE</button>
-      <button id="btn-continue" class="t-btn">CONTINUE</button>
+  <div class="title-inner">
+    <div class="title-kicker">A SOLSTICE BAY STORY</div>
+    <h1>SOLSTICE<br>BAY</h1>
+    <div class="title-tag">Sun, salt and sirens.</div>
+    <p class="title-blurb">Tommy "Torch" Vega is back in Solstice Bay with one fast car, three loyal crew and the whole Solstice PD on his tail. Eight jobs stand between him and the Harbor Heist score — if the heat doesn't catch him first.</p>
+    <div class="title-btns">
+      <button id="btn-start" class="btn-primary">▶ START ENGINE</button>
+      <button id="btn-continue" class="btn-ghost">CONTINUE</button>
     </div>
-    <div class="t-saves">
-      <div class="t-save" id="save-slot-1">SAVE 1 · EMPTY SLOT</div>
-      <div class="t-save">SAVE 2 · EMPTY SLOT</div>
-      <div class="t-save">SAVE 3 · EMPTY SLOT</div>
-    </div>
-    <div class="t-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run ·
-      M map · R radio · F talk/act · N mute · drag mouse to look</div>
-    <div class="t-foot">An original game — its city, characters, vehicles and music are invented
-      for this entry. No Rockstar Games names, art or assets.</div>
+    <div class="title-saves"><span>SAVE 1 · EMPTY SLOT</span><span>SAVE 2 · EMPTY SLOT</span><span>SAVE 3 · EMPTY SLOT</span></div>
+    <div class="title-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run · M map · R radio · F talk/act · N mute · drag mouse to look</div>
+    <div class="title-legal">An original game — its city, characters, vehicles and music are invented for this entry. No Rockstar Games names, art or assets.</div>
   </div>
 </div>
 
-<!-- ============ PAUSE / MAP MENU ============ -->
+<!-- ============ PAUSE MENU ============ -->
 <div id="pause-menu">
-  <div class="p-inner">
-    <div class="p-left">
-      <h2>VERANO BAY</h2>
-      <div class="p-sub">CITY MAP · FRI 17:58 · COMPLETION 38%</div>
-      <canvas id="pause-map" width="560" height="420"></canvas>
-      <div class="p-legend">★ Garage — Solana Avenue &nbsp;·&nbsp; ● You — Miramar Strand &nbsp;·&nbsp; <span class="gps">— GPS route</span></div>
-    </div>
-    <div class="p-right">
-      <h3>STORY JOBS</h3>
-      <ul class="p-jobs">
-        <li class="done">1 · FIRST LIGHT <span>GOLD</span></li>
-        <li class="done">2 · SALT IN THE WOUND <span>SILVER</span></li>
-        <li class="done">3 · LOW TIDE <span>GOLD</span></li>
-        <li class="done">4 · NIGHT FERRY <span>BRONZE</span></li>
-        <li class="now">5 · THE TIDE RUN <span>IN PROGRESS</span></li>
-        <li>6 · GLASS HOUSE <span>—</span></li>
-        <li>7 · HIGH WATER <span>—</span></li>
-        <li>8 · KING TIDE <span>—</span></li>
-      </ul>
-      <h3>CAREER</h3>
-      <div class="p-stats">
-        <div><span>Cash</span><b>$31,240</b></div>
-        <div><span>Rep</span><b>5 · WHEELMAN</b></div>
-        <div><span>Jobs done</span><b>4 / 8</b></div>
-        <div><span>Cars owned</span><b>3</b></div>
-        <div><span>Near misses</span><b>27</b></div>
-        <div><span>Time in city</span><b>6h 12m</b></div>
-      </div>
-      <div class="p-buttons">
-        <button id="btn-resume" class="t-btn primary">RESUME</button>
-        <button id="btn-save" class="t-btn">SAVE GAME</button>
-        <button id="btn-quit" class="t-btn">QUIT TO TITLE</button>
-      </div>
-    </div>
+  <div class="pause-left">
+    <h2 id="pause-title">SOLSTICE BAY — PAUSED</h2>
+    <canvas id="bigmap" width="640" height="480"></canvas>
+    <div class="pause-districts">6 districts · 42 landmarks · GPS route active</div>
+  </div>
+  <div class="pause-right">
+    <h3>MISSIONS</h3>
+    <ul id="mission-list"></ul>
+    <h3>CAREER</h3>
+    <div id="career"></div>
+    <h3>SAVE GAME</h3>
+    <div id="save-slots"></div>
+    <div class="pause-hint">M resume · R radio · N mute</div>
   </div>
 </div>
 
 <script src="vendor/three.min.js"></script>
 <script src="src/config.js"></script>
-<script src="src/util.js"></script>
+<script src="src/textures.js"></script>
+<script src="src/models.js"></script>
+<script src="src/city.js"></script>
 <script src="src/audio.js"></script>
-<script src="src/input.js"></script>
-<script src="src/world.js"></script>
-<script src="src/vehicles.js"></script>
-<script src="src/police.js"></script>
-<script src="src/peds.js"></script>
-<script src="src/missions.js"></script>
-<script src="src/hud.js"></script>
-<script src="src/shots.js"></script>
-<script src="src/main.js"></script>
+<script src="src/game.js"></script>
 </body>
 </html>

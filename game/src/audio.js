@@ -1,86 +1,80 @@
-// Procedural sound: engine hum, siren wail, radio sting and UI blips, all
-// synthesized with WebAudio oscillators. No audio assets, no network.
-// Audio starts only after the first user gesture (browser policy); the
-// screenshot shots never need it.
-
-(function () {
-  'use strict';
-
-  const AudioSys = {
-    ctx: null, master: null, engineOsc: null, engineGain: null,
-    sirenOsc: null, sirenGain: null, muted: false, started: false,
-
-    init() {
-      if (this.started) return;
-      try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return;
-        this.ctx = new AC();
-        this.master = this.ctx.createGain();
-        this.master.gain.value = 0.35;
-        this.master.connect(this.ctx.destination);
-        this.started = true;
-      } catch (e) { /* audio unavailable: game stays silent */ }
-    },
-
-    startEngine() {
-      if (!this.ctx || this.engineOsc) return;
-      this.engineOsc = this.ctx.createOscillator();
-      this.engineOsc.type = 'sawtooth';
-      this.engineOsc.frequency.value = 55;
-      this.engineGain = this.ctx.createGain();
-      this.engineGain.gain.value = 0.0;
-      const lp = this.ctx.createBiquadFilter();
-      lp.type = 'lowpass'; lp.frequency.value = 420;
-      this.engineOsc.connect(lp); lp.connect(this.engineGain); this.engineGain.connect(this.master);
-      this.engineOsc.start();
-    },
-
-    setEngine(speed01) {
-      if (!this.ctx || !this.engineOsc) return;
-      const t = this.ctx.currentTime;
-      this.engineOsc.frequency.setTargetAtTime(55 + speed01 * 130, t, 0.08);
-      this.engineGain.gain.setTargetAtTime(0.05 + speed01 * 0.075, t, 0.08);
-    },
-
-    startSiren() {
-      if (!this.ctx || this.sirenOsc) return;
-      this.sirenOsc = this.ctx.createOscillator();
-      this.sirenOsc.type = 'triangle';
-      this.sirenGain = this.ctx.createGain();
-      this.sirenGain.gain.value = 0.0;
-      this.sirenOsc.connect(this.sirenGain); this.sirenGain.connect(this.master);
-      this.sirenOsc.start();
-      const lfo = this.ctx.createOscillator();
-      lfo.frequency.value = 0.7;
-      const lfoGain = this.ctx.createGain();
-      lfoGain.gain.value = 220;
-      lfo.connect(lfoGain); lfoGain.connect(this.sirenOsc.frequency);
-      this.sirenOsc.frequency.value = 880;
-      lfo.start();
-    },
-
-    setSiren(on) {
-      if (!this.ctx || !this.sirenGain) return;
-      this.sirenGain.gain.setTargetAtTime(on ? 0.045 : 0.0, this.ctx.currentTime, 0.2);
-    },
-
-    blip(freq, dur) {
-      if (!this.ctx || this.muted) return;
-      const o = this.ctx.createOscillator(), gn = this.ctx.createGain();
-      o.type = 'square'; o.frequency.value = freq;
-      gn.gain.setValueAtTime(0.08, this.ctx.currentTime);
-      gn.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + (dur || 0.12));
-      o.connect(gn); gn.connect(this.master);
-      o.start(); o.stop(this.ctx.currentTime + (dur || 0.12));
-    },
-
-    toggleMute() {
-      this.muted = !this.muted;
-      if (this.master) this.master.gain.value = this.muted ? 0 : 0.35;
-      return this.muted;
-    },
-  };
-
-  VB.audio = AudioSys;
+// SOLSTICE BAY — procedural audio: engine hum, police siren, radio jingles.
+// Everything is synthesized with WebAudio oscillators. No audio files.
+window.SB = window.SB || {};
+SB.Audio = (function () {
+  let ctx = null, engineOsc = null, engineGain = null, engineFilter = null;
+  let sirenOsc = null, sirenGain = null, sirenTimer = null, muted = false;
+  function ensure() {
+    if (ctx) return true;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      return true;
+    } catch (e) { return false; }
+  }
+  function init() {
+    if (!ensure()) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    if (!engineOsc) {
+      engineOsc = ctx.createOscillator();
+      engineOsc.type = 'sawtooth';
+      engineOsc.frequency.value = 55;
+      engineFilter = ctx.createBiquadFilter();
+      engineFilter.type = 'lowpass';
+      engineFilter.frequency.value = 320;
+      engineGain = ctx.createGain();
+      engineGain.gain.value = 0.0;
+      engineOsc.connect(engineFilter).connect(engineGain).connect(ctx.destination);
+      engineOsc.start();
+    }
+    if (!sirenOsc) {
+      sirenOsc = ctx.createOscillator();
+      sirenOsc.type = 'triangle';
+      sirenOsc.frequency.value = 720;
+      sirenGain = ctx.createGain();
+      sirenGain.gain.value = 0.0;
+      sirenOsc.connect(sirenGain).connect(ctx.destination);
+      sirenOsc.start();
+      let hi = false;
+      sirenTimer = setInterval(() => {
+        if (!sirenOsc) return;
+        hi = !hi;
+        sirenOsc.frequency.setTargetAtTime(hi ? 950 : 700, ctx.currentTime, 0.08);
+      }, 420);
+    }
+  }
+  function setEngine(speedKmh, on) {
+    if (!engineOsc || !ctx) return;
+    const t = ctx.currentTime;
+    engineGain.gain.setTargetAtTime(muted || !on ? 0 : 0.05 + Math.min(0.06, speedKmh / 2400), t, 0.1);
+    engineOsc.frequency.setTargetAtTime(50 + speedKmh * 1.1, t, 0.1);
+    engineFilter.frequency.setTargetAtTime(240 + speedKmh * 6, t, 0.1);
+  }
+  function setSiren(on) {
+    if (!sirenGain || !ctx) return;
+    sirenGain.gain.setTargetAtTime(muted || !on ? 0 : 0.035, ctx.currentTime, 0.2);
+  }
+  function blip(freq) {
+    if (!ensure() || muted) return;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.value = freq || 880;
+    g.gain.setValueAtTime(0.04, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.13);
+  }
+  function jingle() {
+    if (!ensure() || muted) return;
+    [523, 659, 784, 1046].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      const t = ctx.currentTime + i * 0.09;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      o.connect(g).connect(ctx.destination);
+      o.start(t); o.stop(t + 0.25);
+    });
+  }
+  function toggleMute() { muted = !muted; return muted; }
+  return { init, setEngine, setSiren, blip, jingle, toggleMute, get muted() { return muted; } };
 })();
