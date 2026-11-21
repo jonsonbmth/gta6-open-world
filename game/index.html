@@ -1,114 +1,89 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-<title>SOLSTICE BAY — a GTA 6-style open-world crime game</title>
-<link rel="stylesheet" href="style.css">
+<title>Ember Bay — an open-world crime game</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <div id="game-root"></div>
 
-<!-- ============ HUD ============ -->
+<!-- HUD -->
 <div id="hud">
-  <div id="mission-panel" class="panel">
-    <div id="mission-title">JOB 6/8 · THE HARBOR HEIST</div>
-    <div id="mission-obj">Lose the heat, then bring the car to the garage on Marlin Avenue.</div>
-    <div class="stage-row"><span id="mission-stage">STAGE 2/4</span><span id="mission-time" class="timer">03:12</span></div>
-    <div class="stage-bar"><div id="stage-fill"></div></div>
-    <div id="mission-next">NEXT&nbsp;&nbsp;Reach the garage on Marlin Avenue</div>
-  </div>
-
+  <div id="mission-panel" class="panel"></div>
   <div id="dispatch-panel" class="panel">
-    <div class="panel-head"><span>SOLSTICE PD DISPATCH</span><span id="dispatch-code">6 UNITS · CODE 4</span></div>
+    <div id="dispatch-head" class="d-head"></div>
     <div id="dispatch-rows"></div>
-    <div class="dispatch-foot">+2 more units · roadblock ahead</div>
+    <div class="d-foot">+2 more units · roadblock ahead</div>
   </div>
-
-  <div id="top-right">
-    <div id="money-box" class="panel">
-      <div id="clock">FRI 17:58</div>
-      <div id="money">$31,240</div>
-      <div id="stars"><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star on">★</span><span class="star">★</span></div>
-      <div id="sight-badge">IN SIGHT · AIR-2</div>
-    </div>
-    <div id="weapon-slots"></div>
-    <div id="crew-cards"></div>
+  <div id="minimap-wrap" class="panel">
+    <canvas id="minimap" width="168" height="168"></canvas>
+    <div id="district"></div>
+    <div id="street"></div>
+    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="hp-fill" class="fill hp" style="width:88%"></div></div></div>
+    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="ar-fill" class="fill ar" style="width:64%"></div></div></div>
+    <div class="bar-row"><span id="rep-line"></span></div>
+    <div class="bar"><div id="rep-fill" class="fill rep"></div></div>
   </div>
-
-  <div id="bottom-left">
-    <canvas id="minimap" width="190" height="190"></canvas>
-    <div id="district">CASINO STRIP</div>
-    <div id="street">Solstice Boulevard</div>
-    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="health" style="width:86%"></div></div></div>
-    <div class="bar-row"><span>ARMOUR</span><div class="bar"><div id="armor" style="width:64%"></div></div></div>
-    <div id="rep-name">REP 5 · WHEELMAN</div>
-    <div class="bar"><div id="rep-bar" style="width:74%"></div></div>
-    <div id="rep-xp">1,940 / 2,600 XP</div>
+  <div id="money-panel" class="panel">
+    <div id="clock">FRI 17:58</div>
+    <div id="money"></div>
+    <div id="stars"></div>
+    <div id="insight">IN SIGHT · AIR-3</div>
   </div>
-
+  <div id="weapons"></div>
+  <div id="crew-cards"></div>
   <div id="dialog" class="panel">
     <canvas id="dialog-face" width="72" height="72"></canvas>
-    <div class="dialog-body">
-      <div id="dialog-name">Gus Moreno · FIXER · HARBOR LIGHTS</div>
-      <div id="dialog-text">Four cruisers and a chopper, Torch — lose the blue lights or lose the car. Your call, make it fast.</div>
-    </div>
+    <div><div id="dialog-name"></div><div id="dialog-text"></div></div>
   </div>
-
-  <div id="bottom-right">
-    <div id="speed">108</div>
-    <div id="speed-unit">KM/H</div>
-    <div id="carname">MERIDIAN GT</div>
-    <div class="cond-row"><span>CONDITION</span><div class="bar"><div id="condition" style="width:82%"></div></div><span id="condition-num">82%</span></div>
-    <div id="radio">♪ WAVE FM 96.5 — "Midnight Run" · The Solstice Club</div>
+  <div id="speedo">
+    <div id="speed">0</div>
+    <div class="kmh">KM/H</div>
+    <div id="car-name"></div>
+    <div class="cond-row"><span>CONDITION</span><div class="bar small"><div id="car-cond" class="fill cond"></div></div><span id="cond-pct"></span></div>
   </div>
-
-  <div id="popup"></div>
+  <div id="radio"></div>
   <div id="controls-hint">WASD drive / walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute</div>
+  <div id="popup"></div>
 </div>
 
-<!-- ============ TITLE SCREEN ============ -->
+<!-- Title screen -->
 <div id="title-screen">
-  <div class="title-inner">
-    <div class="title-kicker">A SOLSTICE BAY STORY</div>
-    <h1>SOLSTICE<br>BAY</h1>
-    <div class="title-tag">Sun, salt and sirens.</div>
-    <p class="title-blurb">Tommy "Torch" Vega is back in Solstice Bay with one fast car, three loyal crew and the whole Solstice PD on his tail. Eight jobs stand between him and the Harbor Heist score — if the heat doesn't catch him first.</p>
-    <div class="title-btns">
-      <button id="btn-start" class="btn-primary">▶ START ENGINE</button>
-      <button id="btn-continue" class="btn-ghost">CONTINUE</button>
+  <div class="ts-inner">
+    <div class="ts-kicker">AN EMBER BAY STORY</div>
+    <h1 class="ts-title">EMBER<br>BAY</h1>
+    <div class="ts-tag">Heat, hustle and high tide.</div>
+    <p class="ts-story">Rico "Rook" Salazar is back in Ember Bay with one fast car, three loyal crew and the whole EBPD on his tail. Eight jobs stand between him and the Ember Run score — if the heat doesn't catch him first.</p>
+    <div class="ts-buttons">
+      <button id="btn-start" class="btn primary">▶ START ENGINE</button>
+      <button id="btn-continue" class="btn">CONTINUE</button>
     </div>
-    <div class="title-saves"><span>SAVE 1 · EMPTY SLOT</span><span>SAVE 2 · EMPTY SLOT</span><span>SAVE 3 · EMPTY SLOT</span></div>
-    <div class="title-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run · M map · R radio · F talk/act · N mute · drag mouse to look</div>
-    <div class="title-legal">An original game — its city, characters, vehicles and music are invented for this entry. No Rockstar Games names, art or assets.</div>
+    <div class="ts-saves">
+      <button id="save-1" class="save">SAVE 1 · <span>EMPTY SLOT</span></button>
+      <button id="save-2" class="save">SAVE 2 · <span>EMPTY SLOT</span></button>
+      <button id="save-3" class="save">SAVE 3 · <span>EMPTY SLOT</span></button>
+    </div>
+    <div class="ts-controls">WASD drive &amp; walk · E enter/exit car · SPACE handbrake · SHIFT run · M map · R radio · F talk/act · N mute · drag mouse to look</div>
+    <div class="ts-fine">An original game — its city, characters, vehicles and music are invented for this entry. No Rockstar Games names, art or assets.</div>
   </div>
 </div>
 
-<!-- ============ PAUSE MENU ============ -->
+<!-- Pause / city map -->
 <div id="pause-menu">
-  <div class="pause-left">
-    <h2 id="pause-title">SOLSTICE BAY — PAUSED</h2>
-    <canvas id="bigmap" width="640" height="480"></canvas>
-    <div class="pause-districts">6 districts · 42 landmarks · GPS route active</div>
-  </div>
-  <div class="pause-right">
-    <h3>MISSIONS</h3>
-    <ul id="mission-list"></ul>
-    <h3>CAREER</h3>
-    <div id="career"></div>
-    <h3>SAVE GAME</h3>
-    <div id="save-slots"></div>
-    <div class="pause-hint">M resume · R radio · N mute</div>
+  <div class="pm-inner panel">
+    <h2>CITY MAP — EMBER BAY</h2>
+    <canvas id="bigmap" width="640" height="400"></canvas>
+    <div class="pm-row">
+      <div><b>JOB 7/8 · THE EMBER RUN</b><br>STAGE 3/4 · Lose the heat, then bring the car to the garage on Marlin Avenue.</div>
+      <button id="btn-resume" class="btn primary">RESUME</button>
+    </div>
+    <div class="pm-legend">● You &nbsp; ● Police &nbsp; <span class="gps">– – GPS route to the garage</span></div>
   </div>
 </div>
 
-<script src="vendor/three.min.js"></script>
-<script src="src/config.js"></script>
-<script src="src/textures.js"></script>
-<script src="src/models.js"></script>
-<script src="src/city.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/game.js"></script>
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -1,10 +1,6 @@
-// SOLSTICE BAY — a GTA 6-style open-world crime game for make.fun's gta6-01.
-// Node 22, standard library only. This program hands the game in: it copies
-// game/ (static files, playable offline in desktop Chrome) and screenshots/
-// beside this file into /output, then writes /output/dossier.json with the
-// kit's buildDossier library. Run it twice and both runs write the same bytes.
-//
-// Serve locally with `node serve.ts`, then open http://localhost:8080.
+// Ember Bay — the program that hands the game in (Node 22, stdlib only).
+// It copies game/ and screenshots/ from beside this file to /output and
+// writes /output/dossier.json with the kit's make.fun library.
 // Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
@@ -19,19 +15,10 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
+if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
-// The scorer's caps (reference/gate.json): at most 4 screenshots, each at most
-// 256 KiB; at most 993 files and 48 MiB under game/; paths under game/ at most
-// 1000 bytes; the dossier text capped at 160 KiB.
-//
-// V19 note: the four screenshots are the staged shots — 1-chase is the cover
-// (Solstice PD chase, all four cruisers + AIR-2 in frame), then the title
-// screen, the pause-map, and the marina crew portrait. The game itself is
-// offline static files: three.js is vendored at game/vendor/three.min.js and
-// every texture is painted on canvas at load time — no network requests.
+// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
+// bytes; the others refuse an entry the scorer would refuse.
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {

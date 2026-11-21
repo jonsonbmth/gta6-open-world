@@ -1,290 +1,265 @@
-// SOLSTICE BAY — canvas textures: every facade, face, sign and ground surface
-// is painted in code (no image files, no downloads). Rich painted facades are
-// what keeps the buildings from reading as plain window-grid boxes.
-window.SB = window.SB || {};
-SB.TEX = (function () {
-  function canvas(w, h) {
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    return c;
-  }
-  function tex(c, rx, ry) {
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    if (rx) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry || rx); }
-    return t;
-  }
-  function rnd(seed) {
-    let s = seed >>> 0;
-    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-  }
+// Canvas-painted textures: building facades, shop signs, wood planks,
+// clouds, and the 2D portraits used by the HUD dialog and crew cards.
+// Everything is drawn in code — no image files, no downloads.
+const THREE = window.THREE;
 
-  // Building facade: painted windows with varied sizes/lit states, floor bands,
-  // ground-floor shop with a readable sign, awning stripes, balconies, AC units.
-  function facade(opts) {
-    const o = opts || {};
-    const base = o.base || '#d8b48f';
-    const floors = o.floors || 5;
-    const c = canvas(256, 512);
-    const g = c.getContext('2d');
-    const R = rnd(o.seed || 7);
-    g.fillStyle = base;
-    g.fillRect(0, 0, 256, 512);
-    // subtle vertical shading + grime
-    const grad = g.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, 'rgba(255,255,255,0.10)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.22)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 256, 512);
-    const shopH = 92;
-    const floorH = (512 - shopH) / floors;
-    for (let f = 0; f < floors; f++) {
-      const y0 = 8 + f * floorH;
-      // floor band
-      g.fillStyle = 'rgba(0,0,0,0.10)';
-      g.fillRect(0, y0 + floorH - 5, 256, 4);
-      const cols = 4 + Math.floor(R() * 2);
-      for (let i = 0; i < cols; i++) {
-        const w = 30 + R() * 14, h = 34 + R() * 22;
-        const x = 14 + i * ((256 - 28) / cols) + R() * 6;
-        const y = y0 + 8 + R() * 6;
-        const lit = R() < 0.42;
-        g.fillStyle = 'rgba(0,0,0,0.35)';
-        g.fillRect(x - 3, y - 3, w + 6, h + 6);
-        g.fillStyle = lit ? (R() < 0.5 ? '#ffd98a' : '#ffeec2') : (R() < 0.5 ? '#2c3e55' : '#43586e');
-        g.fillRect(x, y, w, h);
-        // window shine + mullions
-        g.fillStyle = 'rgba(255,255,255,0.25)';
-        g.fillRect(x, y, w, 6);
-        g.fillStyle = 'rgba(0,0,0,0.3)';
-        g.fillRect(x + w / 2 - 1, y, 2, h);
-        // balcony on some windows
-        if (R() < 0.3) {
-          g.fillStyle = 'rgba(20,20,28,0.8)';
-          g.fillRect(x - 4, y + h + 2, w + 8, 10);
-          g.fillStyle = 'rgba(255,255,255,0.16)';
-          for (let b = 0; b < 4; b++) g.fillRect(x + b * (w / 4), y + h + 3, 2, 8);
-        }
-      }
-      // AC unit on some floors
-      if (R() < 0.5) {
-        const ax = 20 + R() * 190, ay = y0 + floorH - 22;
-        g.fillStyle = '#cfd4d8';
-        g.fillRect(ax, ay, 26, 14);
-        g.fillStyle = '#8a9298';
-        for (let v = 0; v < 3; v++) g.fillRect(ax + 3, ay + 3 + v * 4, 20, 2);
-      }
-    }
-    // ground-floor shop
-    const sy = 512 - shopH;
-    g.fillStyle = o.shopColor || '#20303e';
-    g.fillRect(0, sy, 256, shopH);
-    // awning stripes
-    for (let i = 0; i < 8; i++) {
-      g.fillStyle = i % 2 ? (o.awning || '#e84c6a') : '#f5efe2';
-      g.fillRect(i * 32, sy, 32, 22);
-    }
-    g.fillStyle = 'rgba(0,0,0,0.25)';
-    g.fillRect(0, sy + 20, 256, 4);
-    // shop glass + door
-    g.fillStyle = '#9fd8e8';
-    g.fillRect(16, sy + 30, 150, 52);
-    g.fillStyle = 'rgba(255,255,255,0.35)';
-    g.fillRect(16, sy + 30, 150, 10);
-    g.fillStyle = '#1c2733';
-    g.fillRect(182, sy + 30, 52, 52);
-    g.fillStyle = '#ffd98a';
-    g.fillRect(190, sy + 38, 36, 26);
-    // sign text
-    g.fillStyle = o.signColor || '#ffd94d';
-    g.font = 'bold 22px Arial, sans-serif';
-    g.textAlign = 'center';
-    g.fillText(o.sign || 'MANGO & RYE', 128, sy + 78);
-    return tex(c);
-  }
+function canvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return [c, c.getContext('2d')];
+}
 
-  // Drawn character face (dialog portraits + crew cards + 3D head texture).
-  function face(opts) {
-    const o = opts || {};
-    const c = canvas(128, 128);
-    const g = c.getContext('2d');
-    g.fillStyle = o.bg || '#2a2438';
-    g.fillRect(0, 0, 128, 128);
-    const skin = o.skin || '#c98d64';
-    // head
-    g.fillStyle = skin;
-    g.beginPath();
-    g.ellipse(64, 66, 38, 44, 0, 0, Math.PI * 2);
-    g.fill();
-    // ears
-    g.beginPath(); g.ellipse(26, 66, 8, 12, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(102, 66, 8, 12, 0, 0, Math.PI * 2); g.fill();
-    // hair
-    g.fillStyle = o.hair || '#2a1a12';
-    g.beginPath();
-    g.ellipse(64, 38, 40, 26, 0, Math.PI, 0);
-    g.fill();
-    g.fillRect(24, 30, 80, 14);
-    if (o.hairStyle === 'mohawk') { g.fillRect(56, 6, 16, 26); }
-    if (o.hairStyle === 'bun') { g.beginPath(); g.arc(64, 12, 12, 0, Math.PI * 2); g.fill(); }
-    if (o.hairStyle === 'cap') {
-      g.fillStyle = o.capColor || '#c2242e';
-      g.beginPath(); g.ellipse(64, 34, 42, 20, 0, Math.PI, 0); g.fill();
-      g.fillRect(24, 30, 82, 8);
+export function canvasTexture(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+// A building facade: base colour, rows of lit/unlit windows, a ground-floor
+// shopfront with a readable sign, an awning and a door.
+export function facadeTexture(base, sign, signColor, floors, litRatio, rng) {
+  const [c, g] = canvas(256, 512);
+  g.fillStyle = base;
+  g.fillRect(0, 0, 256, 512);
+  // subtle vertical shading
+  const grad = g.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0, 'rgba(0,0,0,0.18)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.06)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.18)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 512);
+  // window grid (upper floors)
+  const rows = floors, cols = 4;
+  const top = 24, bottom = 380;
+  const rh = (bottom - top) / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const x = 18 + col * 58, y = top + r * rh + 8;
+      const lit = rng() < litRatio;
+      g.fillStyle = lit ? '#ffd98a' : '#1d2733';
+      g.fillRect(x, y, 38, Math.min(30, rh - 16));
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(x, y, 38, 4);
+      // window frame
+      g.strokeStyle = 'rgba(0,0,0,0.35)';
+      g.lineWidth = 2;
+      g.strokeRect(x, y, 38, Math.min(30, rh - 16));
     }
-    // brows + eyes
-    g.fillStyle = o.hair || '#2a1a12';
-    g.fillRect(38, 56, 18, 5);
-    g.fillRect(72, 56, 18, 5);
-    g.fillStyle = '#ffffff';
-    g.beginPath(); g.ellipse(47, 68, 8, 6, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.ellipse(81, 68, 8, 6, 0, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#1a1a22';
-    g.beginPath(); g.arc(48, 68, 3.5, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(80, 68, 3.5, 0, Math.PI * 2); g.fill();
-    // nose + mouth
-    g.strokeStyle = 'rgba(0,0,0,0.35)';
+  }
+  // ground floor: shopfront
+  g.fillStyle = '#14181f';
+  g.fillRect(0, 400, 256, 112);
+  g.fillStyle = signColor;
+  g.fillRect(0, 400, 256, 34);
+  g.fillStyle = '#101418';
+  g.font = 'bold 21px Arial, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(sign, 128, 418);
+  // shop windows + door
+  g.fillStyle = '#ffe9b0';
+  g.fillRect(16, 446, 84, 52);
+  g.fillRect(156, 446, 84, 52);
+  g.fillStyle = '#2a2118';
+  g.fillRect(108, 446, 40, 58);
+  g.fillStyle = 'rgba(255,255,255,0.35)';
+  g.fillRect(16, 446, 84, 6);
+  g.fillRect(156, 446, 84, 6);
+  // striped awning
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle = i % 2 ? '#f2ede2' : signColor;
+    g.fillRect(16 + i * 28, 434, 28, 12);
+  }
+  return canvasTexture(c);
+}
+
+// Wooden dock planks.
+export function woodTexture() {
+  const [c, g] = canvas(256, 256);
+  g.fillStyle = '#8a5a33';
+  g.fillRect(0, 0, 256, 256);
+  for (let p = 0; p < 8; p++) {
+    const y = p * 32;
+    g.fillStyle = p % 2 ? '#7d4f2b' : '#96683c';
+    g.fillRect(0, y, 256, 30);
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
     g.lineWidth = 2;
-    g.beginPath(); g.moveTo(64, 72); g.lineTo(61, 82); g.lineTo(67, 82); g.stroke();
-    g.strokeStyle = '#7a3b2e';
-    g.lineWidth = 3;
+    g.strokeRect(-2, y, 260, 30);
+    // grain
+    g.strokeStyle = 'rgba(60,30,10,0.35)';
+    g.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const gy = y + 5 + Math.random() * 20;
+      g.beginPath();
+      g.moveTo(0, gy);
+      g.bezierCurveTo(80, gy + 3, 170, gy - 3, 256, gy);
+      g.stroke();
+    }
+    // nails
+    g.fillStyle = 'rgba(30,20,10,0.6)';
+    g.beginPath(); g.arc(12, y + 15, 2, 0, 7); g.fill();
+    g.beginPath(); g.arc(244, y + 15, 2, 0, 7); g.fill();
+  }
+  const t = canvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+// Soft round cloud puff for the sky.
+export function cloudTexture() {
+  const [c, g] = canvas(256, 128);
+  const blob = (x, y, r, a) => {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(255,235,220,${a})`);
+    gr.addColorStop(1, 'rgba(255,235,220,0)');
+    g.fillStyle = gr;
+    g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  };
+  blob(70, 80, 55, 0.85); blob(130, 65, 65, 0.9); blob(190, 82, 50, 0.8); blob(110, 90, 70, 0.7);
+  return canvasTexture(c);
+}
+
+// Police door decal: "EBPD" + badge star.
+export function policeDecalTexture() {
+  const [c, g] = canvas(256, 128);
+  g.clearRect(0, 0, 256, 128);
+  g.fillStyle = '#12263f';
+  g.font = '900 54px Arial, sans-serif';
+  g.textAlign = 'center';
+  g.fillText('EBPD', 128, 62);
+  g.font = 'bold 20px Arial, sans-serif';
+  g.fillText('EMBER BAY POLICE', 128, 96);
+  // badge star
+  g.fillStyle = '#c9a227';
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 ? 8 : 18;
+    const x = 34 + Math.cos(a) * r, y = 34 + Math.sin(a) * r;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath(); g.fill();
+  return canvasTexture(c);
+}
+
+// Shirt with horizontal stripes.
+export function stripeTexture(c1, c2) {
+  const [c, g] = canvas(128, 128);
+  g.fillStyle = c1;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = c2;
+  for (let y = 0; y < 128; y += 32) g.fillRect(0, y, 128, 14);
+  return canvasTexture(c);
+}
+
+// ---- 2D portraits (HUD) -------------------------------------------------
+// Draw a readable cartoon face on a 2D canvas: skin, hair, eyes, brows,
+// nose shading, mouth, plus a coloured collar. Used for the dialog fixer
+// portrait and the three crew cards.
+export function drawPortrait(el, opts) {
+  const g = el.getContext('2d');
+  const W = el.width, H = el.height;
+  g.clearRect(0, 0, W, H);
+  // background
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, opts.bg || '#3a2b4d');
+  bg.addColorStop(1, opts.bg2 || '#1d1526');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H * 0.46, r = W * 0.30;
+  // neck + shoulders
+  g.fillStyle = opts.skin;
+  g.fillRect(cx - r * 0.32, cy + r * 0.72, r * 0.64, r * 0.7);
+  g.fillStyle = opts.shirt;
+  g.beginPath();
+  g.ellipse(cx, H * 1.02, W * 0.62, H * 0.34, 0, Math.PI, 0);
+  g.fill();
+  // collar
+  g.fillStyle = 'rgba(0,0,0,0.25)';
+  g.beginPath();
+  g.moveTo(cx - r * 0.5, H * 0.86);
+  g.lineTo(cx, H * 0.74);
+  g.lineTo(cx + r * 0.5, H * 0.86);
+  g.lineTo(cx + r * 0.28, H * 0.98);
+  g.lineTo(cx, H * 0.9);
+  g.lineTo(cx - r * 0.28, H * 0.98);
+  g.closePath(); g.fill();
+  // head
+  g.fillStyle = opts.skin;
+  g.beginPath();
+  g.ellipse(cx, cy, r, r * 1.12, 0, 0, 7);
+  g.fill();
+  // ears
+  g.beginPath(); g.ellipse(cx - r * 0.98, cy, r * 0.16, r * 0.26, 0, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(cx + r * 0.98, cy, r * 0.16, r * 0.26, 0, 0, 7); g.fill();
+  // hair
+  g.fillStyle = opts.hair;
+  if (opts.hairStyle === 'cap') {
     g.beginPath();
-    if (o.smile === false) { g.moveTo(52, 96); g.quadraticCurveTo(64, 92, 76, 96); }
-    else { g.moveTo(52, 94); g.quadraticCurveTo(64, 102, 76, 94); }
-    g.stroke();
-    // shirt
-    g.fillStyle = o.shirt || '#4c9e8f';
-    g.fillRect(0, 112, 128, 16);
-    return c;
+    g.ellipse(cx, cy - r * 0.62, r * 1.04, r * 0.6, 0, Math.PI, 0);
+    g.fill();
+    g.fillRect(cx - r * 1.05, cy - r * 0.66, r * 2.1, r * 0.22);
+  } else if (opts.hairStyle === 'long') {
+    g.beginPath();
+    g.ellipse(cx, cy - r * 0.28, r * 1.12, r * 1.15, 0, Math.PI * 0.95, Math.PI * 2.05);
+    g.fill();
+    g.beginPath();
+    g.ellipse(cx - r * 1.0, cy + r * 0.55, r * 0.34, r * 0.8, 0.15, 0, 7);
+    g.fill();
+    g.beginPath();
+    g.ellipse(cx + r * 1.0, cy + r * 0.55, r * 0.34, r * 0.8, -0.15, 0, 7);
+    g.fill();
+  } else if (opts.hairStyle === 'bun') {
+    g.beginPath();
+    g.ellipse(cx, cy - r * 0.55, r * 1.02, r * 0.62, 0, Math.PI, 0);
+    g.fill();
+    g.beginPath(); g.arc(cx, cy - r * 1.18, r * 0.34, 0, 7); g.fill();
+  } else if (opts.hairStyle === 'grey') {
+    g.beginPath();
+    g.ellipse(cx, cy - r * 0.6, r * 1.02, r * 0.55, 0, Math.PI, 0);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.25)';
+    g.beginPath();
+    g.ellipse(cx - r * 0.4, cy - r * 0.7, r * 0.3, r * 0.18, -0.4, 0, 7);
+    g.fill();
+  } else {
+    g.beginPath();
+    g.ellipse(cx, cy - r * 0.58, r * 1.03, r * 0.6, 0, Math.PI, 0);
+    g.fill();
   }
-
-  // Ground: one big painted canvas — asphalt avenues with dashes, crosswalks,
-  // sidewalks, sand beach and water edge. Far richer than a flat gray plane.
-  function ground() {
-    const S = 2048;
-    const c = canvas(S, S);
-    const g = c.getContext('2d');
-    const R = rnd(99);
-    // base: warm sidewalk concrete
-    g.fillStyle = '#b8a88e';
-    g.fillRect(0, 0, S, S);
-    // speckle
-    for (let i = 0; i < 9000; i++) {
-      g.fillStyle = R() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-      g.fillRect(R() * S, R() * S, 3, 3);
-    }
-    // beach sand on the west edge + water
-    g.fillStyle = '#e8d29a';
-    g.fillRect(0, 0, 220, S);
-    g.fillStyle = '#2e8fa8';
-    g.fillRect(0, 0, 70, S);
-    g.fillStyle = 'rgba(255,255,255,0.35)';
-    for (let y = 0; y < S; y += 46) g.fillRect(66, y, 10, 22);
-    // roads: grid every 44 world units -> 2048/420 px per unit ≈ 4.876
-    const px = S / 420;
-    const roadW = 14 * px;
-    const step = 44 * px;
-    function road(x0, y0, w, h) {
-      g.fillStyle = '#3a3f46';
-      g.fillRect(x0, y0, w, h);
-      // center dashes
-      g.fillStyle = '#e8c33c';
-      if (w > h) { for (let x = x0 + 8; x < x0 + w - 20; x += 42) g.fillRect(x, y0 + h / 2 - 2, 24, 4); }
-      else { for (let y = y0 + 8; y < y0 + h - 20; y += 42) g.fillRect(x0 + w / 2 - 2, y, 4, 24); }
-      // edge lines
-      g.fillStyle = 'rgba(255,255,255,0.55)';
-      if (w > h) { g.fillRect(x0, y0 + 6, w, 3); g.fillRect(x0, y0 + h - 9, w, 3); }
-      else { g.fillRect(x0 + 6, y0, 3, h); g.fillRect(x0 + w - 9, y0, 3, h); }
-    }
-    const off = S / 2;
-    for (let i = -4; i <= 4; i++) {
-      const p = off + i * step - roadW / 2;
-      if (p > 240) road(p, 0, roadW, S); // vertical avenues
-      if (p > 240) road(0, p, S, roadW); // horizontal streets
-    }
-    // crosswalks at intersections
-    g.fillStyle = 'rgba(255,255,255,0.75)';
-    for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
-      const cx = off + i * step, cy = off + j * step;
-      if (cx < 260 || cy < 260) continue;
-      for (let k = -2; k <= 2; k++) {
-        g.fillRect(cx - roadW / 2 + 8, cy + k * 12 - 3, roadW - 16, 6);
-        g.fillRect(cx + k * 12 - 3, cy - roadW / 2 + 8, 6, roadW - 16);
-      }
-    }
-    // sidewalk curbs around blocks
-    g.strokeStyle = 'rgba(0,0,0,0.18)';
-    g.lineWidth = 4;
-    for (let i = -4; i < 4; i++) for (let j = -4; j < 4; j++) {
-      const x0 = off + i * step + roadW / 2, y0 = off + j * step + roadW / 2;
-      if (x0 < 240) continue;
-      g.strokeRect(x0 + 2, y0 + 2, step - roadW - 4, step - roadW - 4);
-    }
-    return tex(c);
-  }
-
-  // Sunset sky gradient for the dome.
-  function sky() {
-    const c = canvas(64, 512);
-    const g = c.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0.0, '#2b1d4e');
-    grad.addColorStop(0.35, '#6b3a7d');
-    grad.addColorStop(0.6, '#c65f7c');
-    grad.addColorStop(0.8, '#f0965a');
-    grad.addColorStop(1.0, '#ffd194');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 64, 512);
-    return tex(c);
-  }
-
-  // Soft radial pool for the helicopter spotlight.
-  function pool() {
-    const c = canvas(256, 256);
-    const g = c.getContext('2d');
-    const grad = g.createRadialGradient(128, 128, 8, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(255,246,200,0.85)');
-    grad.addColorStop(0.5, 'rgba(255,240,170,0.35)');
-    grad.addColorStop(1, 'rgba(255,240,170,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 256, 256);
-    return tex(c);
-  }
-
-  // Soft cloud puff sprite.
-  function cloud() {
-    const c = canvas(256, 128);
-    const g = c.getContext('2d');
-    const blobs = [[60, 80, 34], [110, 62, 44], [170, 74, 38], [210, 88, 26], [90, 92, 30], [150, 94, 28]];
-    for (const [x, y, r] of blobs) {
-      const grad = g.createRadialGradient(x, y, 2, x, y, r);
-      grad.addColorStop(0, 'rgba(255,235,220,0.85)');
-      grad.addColorStop(1, 'rgba(255,235,220,0)');
-      g.fillStyle = grad;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-    }
-    return tex(c);
-  }
-
-  // Neon shop sign strip.
-  function sign(text, bg, fg) {
-    const c = canvas(512, 96);
-    const g = c.getContext('2d');
-    g.fillStyle = bg || '#14101f';
-    g.fillRect(0, 0, 512, 96);
-    g.strokeStyle = fg || '#ff5d8f';
-    g.lineWidth = 4;
-    g.strokeRect(6, 6, 500, 84);
-    g.fillStyle = fg || '#ff5d8f';
-    g.font = 'bold 52px Arial, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.shadowColor = fg || '#ff5d8f';
-    g.shadowBlur = 18;
-    g.fillText(text, 256, 52);
-    return tex(c);
-  }
-
-  return { facade, face, ground, sky, pool, cloud, sign, canvas, tex };
-})();
+  // eyebrows
+  g.strokeStyle = opts.hair;
+  g.lineWidth = Math.max(2, r * 0.09);
+  g.lineCap = 'round';
+  g.beginPath(); g.moveTo(cx - r * 0.62, cy - r * 0.28); g.lineTo(cx - r * 0.2, cy - r * 0.36); g.stroke();
+  g.beginPath(); g.moveTo(cx + r * 0.62, cy - r * 0.28); g.lineTo(cx + r * 0.2, cy - r * 0.36); g.stroke();
+  // eyes
+  const eye = (ex) => {
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.ellipse(ex, cy - r * 0.08, r * 0.2, r * 0.24, 0, 0, 7); g.fill();
+    g.fillStyle = '#1a1512';
+    g.beginPath(); g.arc(ex, cy - r * 0.08, r * 0.1, 0, 7); g.fill();
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.arc(ex + r * 0.04, cy - r * 0.12, r * 0.035, 0, 7); g.fill();
+  };
+  eye(cx - r * 0.4); eye(cx + r * 0.4);
+  // nose shading
+  g.strokeStyle = 'rgba(0,0,0,0.22)';
+  g.lineWidth = Math.max(1.5, r * 0.05);
+  g.beginPath();
+  g.moveTo(cx, cy + r * 0.08);
+  g.quadraticCurveTo(cx + r * 0.06, cy + r * 0.34, cx - r * 0.02, cy + r * 0.4);
+  g.stroke();
+  // mouth
+  g.strokeStyle = '#7a3b2e';
+  g.lineWidth = Math.max(2, r * 0.08);
+  g.beginPath();
+  g.arc(cx, cy + r * 0.42, r * 0.34, Math.PI * 0.15, Math.PI * 0.85);
+  g.stroke();
+  // cheek shading
+  g.fillStyle = 'rgba(255,120,90,0.18)';
+  g.beginPath(); g.ellipse(cx - r * 0.62, cy + r * 0.32, r * 0.22, r * 0.14, 0, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(cx + r * 0.62, cy + r * 0.32, r * 0.22, r * 0.14, 0, 0, 7); g.fill();
+}
