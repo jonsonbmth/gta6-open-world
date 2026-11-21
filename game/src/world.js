@@ -218,7 +218,7 @@
       const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 9, 5), new THREE.MeshStandardMaterial({ color: 0x888888 }));
       mast.position.set(0, 6, 1);
       boat.add(mast);
-      boat.position.set(-30 + i * 18, 0, -196 - (i % 2) * 8);
+      boat.position.set(-30 + i * 18, 0, -206 - (i % 2) * 6);
       boat.rotation.y = (i % 2 ? 0.06 : -0.05);
       g.add(boat);
     }
@@ -229,14 +229,14 @@
     scene.add(g);
   }
 
-  // Puffy cloud billboards for a richer marina sky.
+  // Puffy cloud billboards for a richer sky — low enough to sit in frame.
   function buildClouds(scene) {
     const tex = U.cloudTexture();
-    const spots = [[-60, 70, -260], [20, 88, -280], [90, 64, -250], [-120, 80, -230], [140, 90, -270]];
+    const spots = [[-60, 38, -215], [20, 46, -230], [90, 34, -205], [-120, 42, -220], [140, 48, -235]];
     for (const [x, y, z] of spots) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.95, depthWrite: false, fog: false }));
       sp.position.set(x, y, z);
-      sp.scale.set(90, 42, 1);
+      sp.scale.set(110, 50, 1);
       scene.add(sp);
       WORLD.clouds.push(sp);
     }

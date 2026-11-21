@@ -309,8 +309,6 @@
         const x = ((d.x - d.w / 2 + 160) / 320) * W, y = ((d.z - d.h / 2 + 160) / 320) * H;
         g.fillStyle = cols[i % cols.length];
         g.fillRect(x, y, (d.w / 320) * W, (d.h / 320) * H);
-        g.fillStyle = '#fff'; g.font = 'bold 12px Arial'; g.textAlign = 'center';
-        g.fillText(d.name, x + (d.w / 320) * W / 2, y + 18);
       });
       g.strokeStyle = '#222831'; g.lineWidth = 4;
       for (let i = 0; i < 6; i++) {
@@ -318,6 +316,12 @@
         g.beginPath(); g.moveTo(p, 0); g.lineTo(p, H); g.stroke();
         g.beginPath(); g.moveTo(0, (i + 0.5) * H / 6); g.lineTo(W, (i + 0.5) * H / 6); g.stroke();
       }
+      // Labels AFTER the roads so no grid line crosses the text.
+      C.districts.forEach((d) => {
+        const x = ((d.x - d.w / 2 + 160) / 320) * W, y = ((d.z - d.h / 2 + 160) / 320) * H;
+        g.fillStyle = '#fff'; g.font = 'bold 12px Arial'; g.textAlign = 'center';
+        g.fillText(d.name, x + (d.w / 320) * W / 2, y + 18);
+      });
       // GPS route + markers.
       g.strokeStyle = '#2aff66'; g.lineWidth = 3; g.setLineDash([8, 6]);
       g.beginPath();
@@ -326,6 +330,14 @@
         if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
       });
       g.stroke(); g.setLineDash([]);
+      // Player dot (white) at the hero + gold star at the garage.
+      const hx = ((6 + 160) / 320) * W, hy = ((17 + 160) / 320) * H;
+      g.fillStyle = '#fff';
+      g.beginPath(); g.arc(hx, hy, 7, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#18b7d8'; g.lineWidth = 2.5; g.stroke();
+      const gx = ((-64 + 160) / 320) * W, gy = ((-70 + 160) / 320) * H;
+      g.fillStyle = '#ffd52a'; g.font = 'bold 20px Arial'; g.textAlign = 'center';
+      g.fillText('★', gx, gy + 7);
       g.fillStyle = '#ffd52a'; g.font = 'bold 13px Arial'; g.textAlign = 'left';
       g.fillText('★ GARAGE — Solana Avenue', 14, H - 14);
       g.fillText('● YOU — Miramar Strand', 14, H - 34);

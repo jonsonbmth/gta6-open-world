@@ -51,10 +51,10 @@
         ctx.camera.lookAt(0, 3, -10);
       } else if (shot === 'marina') {
         VB.peds.buildMarinaCrew(ctx.scene);
-        // Camera on the quay, looking at the crew's FACES with the ocean,
+        // Camera on the quay, close on the crew's FACES with the ocean,
         // boats and cloud-rich sunset sky behind them.
-        ctx.camera.position.set(0, 3.4, -156);
-        ctx.camera.lookAt(0, 2.2, -172);
+        ctx.camera.position.set(0, 2.8, -157);
+        ctx.camera.lookAt(0, 1.9, -170);
         VB.hud.setPopup('', '');
         document.body.classList.add('on-marina');
         VB.hud.setDialog('crew0');

@@ -109,7 +109,7 @@
       ];
       for (const d of defs) {
         const p = makePerson(d.shirt, d.pants, d.skin, { hair: d.hair, face: true });
-        p.position.set(d.x, 0, -168);
+        p.position.set(d.x, 0, -165);
         p.rotation.y = 0; // facing +Z, toward the marina camera
         scene.add(p);
         this.crew.push(p);
