@@ -1,163 +1,135 @@
-// Golden-hour sky: a warm sunset dome, a low orange sun with a long-shadow
-// directional light, pink-lit clouds and a warm haze. This is the whole
-// look of V24 — the flat midday light of V23 is what lost pairwise matches
-// against the top entries, so every light here is warm and low.
+// sky.js — the blue daytime sky for AURELIA BAY. Clear blue zenith fading
+// to a pale horizon, a high sun (~47 degrees), a few soft clouds and a
+// light blue haze on the horizon. NOT golden hour: the user asked for a
+// blue sky ("langit kan bisa biru"), and bright daylight is what makes
+// the whole scene read clear and crisp.
 
-import { canvasTexture, glowSprite, mulberry32, rand } from './util.js';
+(function () {
+  'use strict';
 
-// The sun sits low in the west (towards the ocean), 11 degrees up: long
-// shadows across the whole city, everything rim-lit gold.
-export const SUNSET = {
-  elevationDeg: 11,
-  azimuthDeg: 262,
-  sunColor: '#ff9a3c',
-  horizonColor: '#ff7a3c',
-  midColor: '#e85d7a',
-  topColor: '#2a1a4e',
-  fogColor: 0xdd7a52,
-  fogNear: 90,
-  fogFar: 420,
-};
+  var TOP_COLOR = '#2f7fd0'; // deep blue zenith
+  var HORIZON_COLOR = '#d6ecf9'; // pale blue horizon
+  var SUN_ELEVATION_DEG = 47;
+  var SUN_AZIMUTH_DEG = 38; // sun toward the south-east, ahead-right of the chase camera
 
-export function sunDirection() {
-  const el = (SUNSET.elevationDeg * Math.PI) / 180;
-  const az = (SUNSET.azimuthDeg * Math.PI) / 180;
-  return new THREE.Vector3(
-    Math.cos(el) * Math.sin(az),
-    Math.sin(el),
-    Math.cos(el) * Math.cos(az),
-  ).normalize();
-}
-
-function skyTexture() {
-  return canvasTexture(1024, 512, (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0.0, '#1d1238'); // zenith: deep indigo
-    g.addColorStop(0.34, '#4a2560'); // upper: purple
-    g.addColorStop(0.52, '#8e3a6e'); // mid: magenta
-    g.addColorStop(0.66, '#e85d7a'); // low-mid: hot pink
-    g.addColorStop(0.78, '#ff7a3c'); // horizon: burning orange
-    g.addColorStop(0.88, '#ffb340'); // sun band: gold
-    g.addColorStop(0.94, '#c95a3a'); // below horizon: dark warm
-    g.addColorStop(1.0, '#7a2f28');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-    // A warm bloom patch around the sun's azimuth (west, u ~ 0.72).
-    const sx = w * 0.72;
-    const sy = h * 0.82;
-    const glow = ctx.createRadialGradient(sx, sy, 4, sx, sy, 260);
-    glow.addColorStop(0, 'rgba(255, 240, 200, 0.95)');
-    glow.addColorStop(0.25, 'rgba(255, 190, 90, 0.55)');
-    glow.addColorStop(1, 'rgba(255, 140, 60, 0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, w, h);
-  });
-}
-
-function cloudTexture(rng) {
-  return canvasTexture(256, 96, (ctx, w, h) => {
-    for (let i = 0; i < 26; i++) {
-      const x = 30 + rng() * (w - 60);
-      const y = 30 + rng() * (h - 55);
-      const r = 14 + rng() * 26;
-      const g = ctx.createRadialGradient(x, y, 1, x, y, r);
-      g.addColorStop(0, 'rgba(255, 205, 180, 0.55)');
-      g.addColorStop(0.6, 'rgba(235, 140, 150, 0.28)');
-      g.addColorStop(1, 'rgba(235, 140, 150, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  });
-}
-
-export function buildSky(scene, renderer) {
-  // Warm haze so distant buildings melt into the sunset.
-  scene.fog = new THREE.Fog(SUNSET.fogColor, SUNSET.fogNear, SUNSET.fogFar);
-
-  // Sky dome.
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(900, 32, 20),
-    new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }),
-  );
-  scene.add(dome);
-
-  const dir = sunDirection();
-
-  // The sun disc itself: a crisp bright circle low over the ocean.
-  const sun = new THREE.Mesh(
-    new THREE.CircleGeometry(34, 40),
-    new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }),
-  );
-  sun.position.copy(dir).multiplyScalar(820);
-  sun.lookAt(0, 0, 0);
-  scene.add(sun);
-  const halo = glowSprite('rgba(255,160,60,0.55)', 260, 0.9);
-  halo.position.copy(dir).multiplyScalar(800);
-  scene.add(halo);
-  const halo2 = glowSprite('rgba(255,110,80,0.35)', 520, 0.5);
-  halo2.position.copy(dir).multiplyScalar(790);
-  scene.add(halo2);
-
-  // Pink-lit clouds, high and scattered.
-  const rng = mulberry32(2411);
-  const cloudTex = cloudTexture(rng);
-  for (let i = 0; i < 14; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: cloudTex, transparent: true, opacity: rand(rng, 0.5, 0.85),
-      depthWrite: false, fog: false,
+  function buildSky(scene, rng) {
+    // Gradient dome: a big sphere with a top-to-horizon shader. The dome
+    // follows the camera (it is centered on the origin and huge, so the
+    // camera never reaches its edge).
+    var skyGeo = new THREE.SphereGeometry(420, 24, 16);
+    var skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(TOP_COLOR) },
+        horizonColor: { value: new THREE.Color(HORIZON_COLOR) },
+        offset: { value: 12 },
+        exponent: { value: 0.75 },
+      },
+      vertexShader: [
+        'varying vec3 vWorldPosition;',
+        'void main() {',
+        '  vec4 worldPosition = modelMatrix * vec4(position, 1.0);',
+        '  vWorldPosition = worldPosition.xyz;',
+        '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+        '}',
+      ].join('\n'),
+      fragmentShader: [
+        'uniform vec3 topColor;',
+        'uniform vec3 horizonColor;',
+        'uniform float offset;',
+        'uniform float exponent;',
+        'varying vec3 vWorldPosition;',
+        'void main() {',
+        '  float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;',
+        '  float t = pow(max(h, 0.0), exponent);',
+        '  gl_FragColor = vec4(mix(horizonColor, topColor, t), 1.0);',
+        '}',
+      ].join('\n'),
     });
-    const s = new THREE.Sprite(mat);
-    const a = rng() * Math.PI * 2;
-    const r = rand(rng, 480, 760);
-    s.position.set(Math.cos(a) * r, rand(rng, 130, 300), Math.sin(a) * r);
-    s.scale.set(rand(rng, 160, 340), rand(rng, 36, 70), 1);
-    scene.add(s);
+    var dome = new THREE.Mesh(skyGeo, skyMat);
+    dome.name = 'skyDome';
+    scene.add(dome);
+
+    // Sun: a high directional light with shadows. Elevation ~47 deg keeps
+    // the shadows short and the street bright, like a clear midday.
+    var elev = (SUN_ELEVATION_DEG * Math.PI) / 180;
+    var azim = (SUN_AZIMUTH_DEG * Math.PI) / 180;
+    var sunDir = new THREE.Vector3(
+      Math.sin(azim) * Math.cos(elev),
+      Math.sin(elev),
+      Math.cos(azim) * Math.cos(elev),
+    );
+    var sun = new THREE.DirectionalLight(0xfff2d8, 2.6);
+    sun.position.copy(sunDir).multiplyScalar(120);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 20;
+    sun.shadow.camera.far = 260;
+    sun.shadow.camera.left = -70;
+    sun.shadow.camera.right = 70;
+    sun.shadow.camera.top = 70;
+    sun.shadow.camera.bottom = -70;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
+    scene.add(sun);
+    scene.add(sun.target);
+
+    // Sky/ground bounce: blue from above, warm sand from below.
+    var hemi = new THREE.HemisphereLight(0xbcd9ff, 0x8a7a66, 1.15);
+    scene.add(hemi);
+
+    // A soft warm fill from the camera side so the hero's rear (facing the
+    // chase camera) is never in murky shade.
+    var fill = new THREE.DirectionalLight(0xffe8c8, 0.55);
+    fill.position.set(-30, 25, 60);
+    scene.add(fill);
+
+    // Light blue distance haze.
+    scene.fog = new THREE.Fog(0xcfe4f2, 90, 380);
+
+    // A few billboarded clouds, high and spread out. They sit far enough
+    // away that the chase camera reads them as sky, not props.
+    var cloudTex = window.AB.textures.cloud();
+    var clouds = new THREE.Group();
+    clouds.name = 'clouds';
+    var cloudSpots = [
+      [-120, 95, -180, 90], [40, 110, -220, 110], [150, 90, -120, 80],
+      [-60, 120, 60, 100], [120, 105, 120, 90], [-160, 100, 40, 85],
+      [0, 125, -320, 130], [220, 95, -260, 95],
+    ];
+    cloudSpots.forEach(function (spot) {
+      var mat = new THREE.SpriteMaterial({
+        map: cloudTex,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        fog: false,
+      });
+      var sprite = new THREE.Sprite(mat);
+      sprite.position.set(spot[0], spot[1], spot[2]);
+      sprite.scale.set(spot[3], spot[3] * 0.45, 1);
+      clouds.add(sprite);
+    });
+    scene.add(clouds);
+
+    return {
+      sun: sun,
+      sunDirection: sunDir,
+      info: {
+        elevationDeg: SUN_ELEVATION_DEG,
+        topColor: TOP_COLOR,
+        horizonColor: HORIZON_COLOR,
+      },
+    };
   }
 
-  // Low warm sun: long shadows, gold rims on everything.
-  const sunLight = new THREE.DirectionalLight(0xffb066, 3.1);
-  sunLight.position.copy(dir).multiplyScalar(220);
-  sunLight.castShadow = true;
-  sunLight.shadow.mapSize.set(2048, 2048);
-  sunLight.shadow.camera.left = -130;
-  sunLight.shadow.camera.right = 130;
-  sunLight.shadow.camera.top = 130;
-  sunLight.shadow.camera.bottom = -130;
-  sunLight.shadow.camera.near = 20;
-  sunLight.shadow.camera.far = 520;
-  sunLight.shadow.bias = -0.0006;
-  sunLight.shadow.normalBias = 0.02;
-  sunLight.shadow.radius = 4;
-  scene.add(sunLight);
-  scene.add(sunLight.target);
-
-  // Warm sky bounce + cool-ish ground fill so shadows stay readable.
-  const hemi = new THREE.HemisphereLight(0xff9a7a, 0x3a2440, 1.05);
-  scene.add(hemi);
-  const fill = new THREE.AmbientLight(0x60405a, 0.5);
-  scene.add(fill);
-
-  // Frontal fill from the north: faces and rears that turn away from the
-  // setting sun still read (three-point lighting: sun = key, this = fill).
-  const northFill = new THREE.DirectionalLight(0xffd9b0, 0.4);
-  northFill.position.set(-40, 60, -150);
-  scene.add(northFill);
-  scene.add(northFill.target);
-
-  // Sunset environment for PBR reflections: the same gradient sky, baked
-  // through PMREM so car paint, glass and metal pick up warm reflections.
-  if (renderer) {
-    const envTex = skyTexture();
-    envTex.mapping = THREE.EquirectangularReflectionMapping;
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const envMap = pmrem.fromEquirectangular(envTex).texture;
-    scene.environment = envMap;
-    scene.environmentIntensity = 0.55;
-    envTex.dispose();
-    pmrem.dispose();
-  }
-
-  return { sunLight, hemi, sunDirection: dir };
-}
+  window.AB.sky = {
+    buildSky: buildSky,
+    TOP_COLOR: TOP_COLOR,
+    HORIZON_COLOR: HORIZON_COLOR,
+    SUN_ELEVATION_DEG: SUN_ELEVATION_DEG,
+  };
+})();

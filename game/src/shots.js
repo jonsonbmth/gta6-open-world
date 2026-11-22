@@ -1,168 +1,220 @@
-// Staged shots: chase, title, map and marina. Each shot places the camera
-// and the actors, then collects window.__shotInfo — the screen boxes of
-// every car and the screen position + radius of every head — so the
-// playtest runner can verify separation, hero size and face readability.
+// shots.js — the staged shots for AURELIA BAY. Each shot (?shot=chase,
+// title, map, marina) places the camera, the cars and the HUD for one
+// composed frame, renders it ONCE (no animation loop — SwiftShader is
+// slow, and a single frame is all a screenshot needs), and measures the
+// frame into window.__shotInfo: the cars' screen boxes, the marina
+// crew's head positions, the sky facts and the renderer stats. The
+// playtest asserts on those measurements.
+//
+// THE V25r3 FIX: the marina shot shows the FULL HUD, like the chase
+// shot. The V25r2 marina screenshot had no HUD at all and looked like a
+// tech demo; the marina is a game screen, so it carries the game HUD.
 
-import { SUNSET } from './sky.js';
+(function () {
+  'use strict';
 
-const W = 1280;
-const H = 720;
+  var W = 1280;
+  var H = 720;
 
-function projectBox(camera, matrixWorld, min, max) {
-  const v = new THREE.Vector3();
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  let behind = false;
-  for (const [x, y, z] of [
-    [min.x, min.y, min.z], [max.x, min.y, min.z],
-    [min.x, max.y, min.z], [max.x, max.y, min.z],
-    [min.x, min.y, max.z], [max.x, min.y, max.z],
-    [min.x, max.y, max.z], [max.x, max.y, max.z],
-  ]) {
-    v.set(x, y, z).applyMatrix4(matrixWorld).project(camera);
-    if (v.z > 1) behind = true;
-    x0 = Math.min(x0, v.x);
-    y0 = Math.min(y0, v.y);
-    x1 = Math.max(x1, v.x);
-    y1 = Math.max(y1, v.y);
-  }
-  const sx0 = ((x0 + 1) / 2) * W;
-  const sx1 = ((x1 + 1) / 2) * W;
-  const sy0 = ((1 - y1) / 2) * H;
-  const sy1 = ((1 - y0) / 2) * H;
-  return { x0: sx0, y0: sy0, x1: sx1, y1: sy1, w: sx1 - sx0, h: sy1 - sy0, behind };
-}
-
-function projectHead(camera, headGroup) {
-  const p = new THREE.Vector3();
-  headGroup.getWorldPosition(p);
-  const dist = p.distanceTo(camera.position);
-  const v = p.clone().project(camera);
-  const x = ((v.x + 1) / 2) * W;
-  const y = ((1 - v.y) / 2) * H;
-  // Screen radius of a 0.23 m sphere at this distance, FOV 55 vertical.
-  const r = (0.23 * (H / 2)) / (Math.tan((55 * Math.PI) / 360) * dist);
-  return { x, y, r, behind: v.z > 1 };
-}
-
-const CAR_MIN = new THREE.Vector3(-1.05, 0, -2.3);
-const CAR_MAX = new THREE.Vector3(1.05, 1.5, 2.3);
-
-function collectCars(camera, cars) {
-  return cars.map((c) => {
-    // The matrices are still identity before the first render: force an
-    // update or every car projects as if it were at the origin.
-    c.group.updateWorldMatrix(true, false);
-    return {
-      name: c.name,
-      box: projectBox(camera, c.group.matrixWorld, CAR_MIN, CAR_MAX),
-    };
-  });
-}
-
-function collectHeads(camera, crew) {
-  return crew.map((p) => ({
-    name: p.userData.name,
-    ...projectHead(camera, p.userData.head),
-  }));
-}
-
-function baseInfo() {
-  return {
-    sunset: {
-      sunColor: SUNSET.sunColor,
-      elevationDeg: SUNSET.elevationDeg,
-      horizonColor: SUNSET.horizonColor,
-    },
-  };
-}
-
-// Chase staging, shared by the chase shot and the map shot: the hero big
-// in the lower frame (3/4 rear view, fov 45), all four cruisers AHEAD of
-// it spread across the lanes and the depth, and the heli low enough to
-// read in the frame with its spotlight cone sweeping down to the hero.
-// Nothing sits behind the hero — cars back there fall under the camera's
-// near plane and vanish.
-function stageChase(world) {
-  const { camera, hero, cruisers, heli } = world;
-  hero.group.position.set(-1.0, 0, 14);
-  hero.group.rotation.y = 0.15;
-  hero.group.visible = true;
-  const spots = [
-    { car: cruisers[0], x: -5.5, z: 6 },
-    { car: cruisers[1], x: 4.5, z: -2 },
-    { car: cruisers[2], x: -3.5, z: -12 },
-    { car: cruisers[3], x: 5.5, z: -22 },
+  // The chase positions of the four cruisers: staggered down the street
+  // so their screen boxes never overlap each other or the hero.
+  var CRUISER_SPOTS = [
+    { name: 'FALCON-2', x: -3.2, z: -22 },
+    { name: 'OSPREY-7', x: 3.0, z: -30 },
+    { name: 'HERON-4', x: -2.0, z: -42 },
+    { name: 'KITE-9', x: 5.5, z: -68 },
   ];
-  for (const s of spots) {
-    s.car.group.position.set(s.x, 0, s.z);
-    s.car.group.rotation.y = 0;
-    s.car.group.visible = true;
-  }
-  heli.group.position.set(12, 13, -20);
-  heli.group.visible = true;
-  camera.fov = 45;
-  camera.position.set(-1.5, 4.0, 24.5);
-  camera.lookAt(-1, 1.4, -8);
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld(true);
-}
 
-export function setupShot(name, world) {
-  const { camera, hero, cruisers, heli, crew, traffic } = world;
-  const info = baseInfo();
-
-  if (name === 'chase') {
-    stageChase(world);
-    info.cars = collectCars(camera, [
-      { name: 'hero', group: hero.group },
-      ...cruisers.map((c, i) => ({ name: 'cruiser' + (i + 1), group: c.group })),
-    ]);
-  } else if (name === 'title') {
-    // Golden-hour vista: beach, ferris wheel and sunset behind the title.
-    hero.group.position.set(-4, 0, 16);
-    hero.group.rotation.y = 0.5;
-    for (const c of cruisers) c.group.visible = false;
-    heli.group.visible = false;
-    camera.position.set(-6, 3.4, 28);
-    camera.lookAt(-58, 5, -58);
-    camera.updateMatrixWorld(true);
-    info.cars = collectCars(camera, [{ name: 'hero', group: hero.group }]);
-  } else if (name === 'map') {
-    // Same staging as chase; the map overlay opens on top.
-    stageChase(world);
-    info.cars = collectCars(camera, [
-      { name: 'hero', group: hero.group },
-      ...cruisers.map((c, i) => ({ name: 'cruiser' + (i + 1), group: c.group })),
-    ]);
-  } else if (name === 'marina') {
-    // The six crew on the quay, docks and boats behind them, side-lit by
-    // the setting sun. Faces point at the camera (faces are on +Z, so
-    // ry ~ PI); the formation is compressed to fit between the left HUD
-    // column (ends x=334) and the right crew panel (starts x=1046).
-    const spots = [
-      { p: crew[0], x: -57, z: 82.5, ry: Math.PI + 0.2 }, // Mara, carrying
-      { p: crew[1], x: -54, z: 82.0, ry: Math.PI - 0.1 }, // Tomas, waving
-      { p: crew[2], x: -52.5, z: 84.0, ry: Math.PI + 0.35 }, // Rosa, crouched at engine
-      { p: crew[3], x: -59, z: 84.0, ry: Math.PI - 0.35 }, // Dario, talking
-      { p: crew[4], x: -56.5, z: 85.0, ry: Math.PI + 0.35 }, // Luz, talking back
-      { p: crew[5], x: -55, z: 84.5, ry: Math.PI + 0.5 }, // Paco, walking past
-    ];
-    for (const s of spots) {
-      s.p.position.set(s.x, 0, s.z);
-      s.p.rotation.y = s.ry;
-      s.p.visible = true;
+  function setCamera(camera, pos, look, fov) {
+    camera.position.set(pos[0], pos[1], pos[2]);
+    camera.lookAt(look[0], look[1], look[2]);
+    if (fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
     }
-    hero.group.visible = false;
-    for (const c of cruisers) c.group.visible = false;
-    heli.group.visible = false;
-    camera.position.set(-55, 2.1, 75.5);
-    camera.lookAt(-55, 1.25, 85);
     camera.updateMatrixWorld(true);
-    info.heads = collectHeads(camera, crew);
   }
 
-  // Traffic keeps its ambient positions in every shot.
-  void traffic;
-  window.__shotInfo = info;
-  return info;
-}
+  function projectToScreen(camera, v3) {
+    var v = v3.clone().project(camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * W,
+      y: (-v.y * 0.5 + 0.5) * H,
+      behind: v.z > 1,
+    };
+  }
+
+  // The screen box of a car: project the 8 corners of its world bounding
+  // box and take the min/max. That is the box the playtest checks for
+  // size, framing and separation.
+  function carScreenBox(game, carGroup) {
+    var box = new THREE.Box3().setFromObject(carGroup);
+    var min = box.min;
+    var max = box.max;
+    var corners = [
+      new THREE.Vector3(min.x, min.y, min.z),
+      new THREE.Vector3(min.x, min.y, max.z),
+      new THREE.Vector3(min.x, max.y, min.z),
+      new THREE.Vector3(min.x, max.y, max.z),
+      new THREE.Vector3(max.x, min.y, min.z),
+      new THREE.Vector3(max.x, min.y, max.z),
+      new THREE.Vector3(max.x, max.y, min.z),
+      new THREE.Vector3(max.x, max.y, max.z),
+    ];
+    var x0 = Infinity;
+    var y0 = Infinity;
+    var x1 = -Infinity;
+    var y1 = -Infinity;
+    corners.forEach(function (c) {
+      var p = projectToScreen(game.camera, c);
+      if (p.x < x0) x0 = p.x;
+      if (p.y < y0) y0 = p.y;
+      if (p.x > x1) x1 = p.x;
+      if (p.y > y1) y1 = p.y;
+    });
+    return { x0: x0, y0: y0, x1: x1, y1: y1, w: x1 - x0, h: y1 - y0 };
+  }
+
+  // The marina crew's heads: screen position + projected head radius.
+  function crewHeads(game) {
+    var camera = game.camera;
+    var right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    return game.crew.map(function (person) {
+      var headPos = new THREE.Vector3();
+      person.head.getWorldPosition(headPos);
+      var p = projectToScreen(camera, headPos);
+      var edge = headPos.clone().addScaledVector(right, person.headRadius);
+      var pe = projectToScreen(camera, edge);
+      var r = Math.abs(pe.x - p.x);
+      return { name: person.name, x: p.x, y: p.y, r: r, behind: p.behind };
+    });
+  }
+
+  function computeShotInfo(game, shot) {
+    var info = {
+      shot: shot,
+      sky: game.skyInfo,
+      renderer: {
+        calls: game.renderer.info.render.calls,
+        triangles: game.renderer.info.render.triangles,
+        geometries: game.renderer.info.memory.geometries,
+        textures: game.renderer.info.memory.textures,
+      },
+    };
+    if (shot === 'chase' || shot === 'map') {
+      var cars = [{ name: 'hero', box: carScreenBox(game, game.hero.group) }];
+      game.cruisers.forEach(function (c) {
+        cars.push({ name: c.name, box: carScreenBox(game, c.group) });
+      });
+      info.cars = cars;
+    }
+    if (shot === 'marina') {
+      info.heads = crewHeads(game);
+    }
+    window.__shotInfo = info;
+    return info;
+  }
+
+  // Place the hero and the cruisers for a driving shot.
+  function placeTraffic(game) {
+    game.hero.group.position.set(0, 0, 0.5);
+    game.hero.group.rotation.y = Math.PI / 2; // facing down the street
+    game.cruisers.forEach(function (c, i) {
+      var spot = CRUISER_SPOTS[i];
+      c.group.position.set(spot.x, 0, spot.z);
+      c.group.rotation.y = Math.PI / 2;
+    });
+    game.heli.group.position.set(0.5, 19, -38);
+    game.heli.group.rotation.y = 0; // nose down the street
+    game.heli.group.visible = true;
+  }
+
+  function stageChase(game) {
+    placeTraffic(game);
+    setCamera(game.camera, [4.6, 2.9, 8.6], [0, 1.1, -14], 50);
+    window.AB.hud.hideTitle();
+    window.AB.hud.closeMap();
+    window.AB.hud.showHUD();
+    window.AB.hud.setSpeed(118);
+    window.AB.hud.setPopup(
+      '<span class="popup-big">DRIFT x3</span><br>' +
+      '<span class="popup-small">NEAR MISS +$250</span>',
+    );
+  }
+
+  // Close-up of the hero car for the hero-zoom preview: a clean side
+  // profile, no HUD — the full sculpted silhouette (sloped nose,
+  // curved roofline, tapered tail, spoked wheels filling the arches,
+  // wing spoiler) fills the frame, nose to the right.
+  function stageHeroZoom(game) {
+    placeTraffic(game);
+    // Shot-only key light: the hero sits in building shade at this spot,
+    // so light its camera side directly for the close-up.
+    var key = new THREE.DirectionalLight(0xfff2d8, 1.6);
+    key.position.set(14, 8, 6);
+    key.target.position.set(0, 0.7, 0.5);
+    game.scene.add(key);
+    game.scene.add(key.target);
+    setCamera(game.camera, [6.2, 1.4, 0.5], [0, 0.7, 0.5], 50);
+    window.AB.hud.hideTitle();
+    window.AB.hud.hideHUD();
+    window.AB.hud.closeMap();
+  }
+
+  function stageTitle(game) {
+    placeTraffic(game);
+    setCamera(game.camera, [0.5, 1.7, 16], [0, 2.2, -30], 50);
+    window.AB.hud.showTitle();
+    window.AB.hud.hideHUD();
+    window.AB.hud.closeMap();
+  }
+
+  function stageMap(game) {
+    placeTraffic(game);
+    setCamera(game.camera, [4.6, 2.9, 8.6], [0, 1.1, -14], 50);
+    window.AB.hud.hideTitle();
+    window.AB.hud.showHUD();
+    window.AB.hud.setSpeed(118);
+    window.AB.hud.openMap();
+  }
+
+  function stageMarina(game) {
+    placeTraffic(game);
+    // The marina camera: close enough that every crew head reads at
+    // >=15px, wide enough that the six-person row fits the frame.
+    setCamera(game.camera, [-31.5, 1.9, 0.5], [-39, 1.35, 0], 50);
+    window.AB.hud.hideTitle();
+    window.AB.hud.closeMap();
+    // FULL HUD on the marina shot (the V25r3 fix).
+    window.AB.hud.showHUD();
+    window.AB.hud.setSpeed(0);
+    window.AB.hud.setPopup(
+      '<span class="popup-big">GILDED QUAY</span><br>' +
+      '<span class="popup-small">Crew assembled · 6 ready</span>',
+    );
+  }
+
+  // Stage one shot, render a single frame, measure it, and mark the page
+  // ready. No animation loop in shot mode: one frame is the screenshot.
+  function runShot(game, shot) {
+    if (shot === 'title') stageTitle(game);
+    else if (shot === 'map') stageMap(game);
+    else if (shot === 'marina') stageMarina(game);
+    else if (shot === 'hero-zoom') stageHeroZoom(game);
+    else stageChase(game);
+    game.scene.updateMatrixWorld(true);
+    game.renderer.render(game.scene, game.camera);
+    computeShotInfo(game, shot);
+    window.__ready = true;
+  }
+
+  window.AB.shots = {
+    runShot: runShot,
+    stageChase: stageChase,
+    stageTitle: stageTitle,
+    stageMap: stageMap,
+    stageMarina: stageMarina,
+    computeShotInfo: computeShotInfo,
+    CRUISER_SPOTS: CRUISER_SPOTS,
+  };
+})();

@@ -1,353 +1,385 @@
-// Vehicles: rounded cars (ellipsoid bodies — never boxes) and the police
-// helicopter with its big visible spotlight cone. The heli cone is a
-// signature top-10 element: a wide additive cone from the heli to the
-// ground plus a bright pool, tracking the player.
+// vehicles.js — the sculpted vehicle factory for AURELIA BAY. Cars are
+// built from a bezier side profile extruded WITH BEVEL (a real sports-car
+// silhouette: sloped nose, curved roofline, tapered tail, wheel arches
+// cut into the outline) — never a box. The same factory builds the hero
+// DORADO GT, the ABPD cruisers and the parked cars; the helicopter is a
+// separate build with a spotlight cone and a ground pool.
+//
+// Local car space: length along X (front at +X), width along Z, height Y.
+// Cars are rotated +90 degrees about Y to face down the street (-Z).
 
-import { glowSprite } from './util.js';
+(function () {
+  'use strict';
 
-function roundedBody(color, roughness) {
-  return new THREE.MeshStandardMaterial({
-    color, roughness: roughness == null ? 0.32 : roughness, metalness: 0.55,
-  });
-}
+  // Shared geometries/materials: cloned wheels and shared parts keep the
+  // draw-call count down with dozens of cars on screen.
+  var shared = {};
 
-// Hero paint: clearcoat car paint (MeshPhysicalMaterial) — a glossy
-// lacquer layer over the base colour, so the sunset env map gives it a
-// wet showroom reflection instead of flat plastic.
-function heroPaint(color) {
-  return new THREE.MeshPhysicalMaterial({
-    color, metalness: 0.6, roughness: 0.3,
-    clearcoat: 1, clearcoatRoughness: 0.08,
-  });
-}
-
-function glassMat() {
-  return new THREE.MeshStandardMaterial({
-    color: 0x0e1a26, roughness: 0.12, metalness: 0.9,
-  });
-}
-
-// A car from spheres and capsules only: ellipsoid body, ellipsoid glass
-// cabin, cylinder wheels with sphere hubcaps, glowing headlights (dusk).
-export function makeCar(opts) {
-  const o = opts || {};
-  const color = o.color == null ? 0xd94f30 : o.color;
-  const police = !!o.police;
-  const g = new THREE.Group();
-  const wheels = [];
-
-  const bodyMat = o.hero ? heroPaint(color)
-    : roundedBody(police ? 0xf2f0ea : color, police ? 0.4 : 0.3);
-  // Low sleek wedge (sports-car proportions): the body sits 0.06 lower and
-  // 0.08 flatter than the first pass, with a longer nose — the top-3
-  // heroes all read LONG and LOW, never tall and blobby.
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), bodyMat);
-  body.scale.set(1.04, 0.38, 2.35);
-  body.position.y = 0.56;
-  body.castShadow = true;
-  g.add(body);
-
-  // Lower skirt: a darker flattened ellipsoid so the car sits planted.
-  const skirt = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.9 }),
-  );
-  skirt.scale.set(1.0, 0.3, 2.2);
-  skirt.position.y = 0.38;
-  g.add(skirt);
-
-  // Cabin: dark glass ellipsoid, swept back, lower and flatter.
-  const cabin = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), glassMat());
-  cabin.scale.set(0.84, 0.34, 1.1);
-  cabin.position.set(0, 0.86, 0.18);
-  cabin.castShadow = true;
-  g.add(cabin);
-
-  // Hood scoop on the hero car.
-  if (o.hero) {
-    const scoop = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), bodyMat);
-    scoop.scale.set(0.42, 0.14, 0.7);
-    scoop.position.set(0, 0.9, -1.15);
-    g.add(scoop);
-    // Spoiler: a curved wing on two struts.
-    const wing = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), bodyMat);
-    wing.scale.set(0.95, 0.07, 0.32);
-    wing.position.set(0, 0.98, 2.05);
-    wing.rotation.x = -0.12;
-    g.add(wing);
-    const strutMat = new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.7 });
-    for (const s of [-0.6, 0.6]) {
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6), strutMat);
-      strut.position.set(s, 0.84, 2.05);
-      g.add(strut);
-    }
-    // Racing stripes: twin white ribbons following the deck silhouette
-    // (hood, over the cabin, rear deck) — the signature detail on the #3
-    // ref's hero. A ribbon hugging the surface profile reads as a stripe;
-    // short flat lenses read as eyes, and a scaled tube crushes its own
-    // position. The ribbon takes the max of the body and cabin tops.
-    const stripeMat = new THREE.MeshStandardMaterial({
-      color: 0xf2f0ea, roughness: 0.4, side: THREE.DoubleSide,
+  function getShared() {
+    if (shared.tireGeo) return shared;
+    shared.tireGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 20);
+    shared.tireGeo.rotateX(Math.PI / 2);
+    shared.rimGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.28, 16);
+    shared.rimGeo.rotateX(Math.PI / 2);
+    shared.spokeGeo = new THREE.BoxGeometry(0.05, 0.34, 0.05);
+    shared.tireMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.95, metalness: 0 });
+    shared.rimMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.3, metalness: 0.9 });
+    shared.spokeMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6, metalness: 0.4 });
+    shared.glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0d141c, roughness: 0.12, metalness: 0.9,
+      clearcoat: 1, clearcoatRoughness: 0.08,
     });
-    const bodyTop = (z) => 0.56 + 0.38 * Math.sqrt(Math.max(0, 1 - (z / 2.35) * (z / 2.35)));
-    const cabinTop = (z) => 0.86 + 0.34 * Math.sqrt(Math.max(0, 1 - ((z - 0.18) / 1.1) * ((z - 0.18) / 1.1)));
-    const surfTop = (z) => Math.max(bodyTop(z), cabinTop(z)) + 0.012;
-    for (const sx of [-0.18, 0.18]) {
-      const steps = 24;
-      const hw = 0.09;
-      const pos = [];
-      const idx = [];
-      for (let i = 0; i <= steps; i++) {
-        const z = -2.1 + (4.2 * i) / steps;
-        const y = surfTop(z);
-        pos.push(sx - hw, y, z, sx + hw, y, z);
-        if (i < steps) {
-          const a = i * 2;
-          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-        }
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      g.add(new THREE.Mesh(geo, stripeMat));
-    }
-    // Full-width LED tail bar across the rear deck.
-    const tailBar = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 0.07, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0xff2038, emissive: 0xff2038, emissiveIntensity: 2.0 }),
-    );
-    tailBar.position.set(0, 0.62, 2.28);
-    g.add(tailBar);
+    shared.chromeMat = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.25, metalness: 1 });
+    shared.trimMat = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.7, metalness: 0.2 });
+    shared.plateMat = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.5, metalness: 0.1 });
+    return shared;
   }
 
-  // Front grille: a dark low slot so the nose reads from ahead.
-  const grille = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 0.12, 0.06),
-    new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.6 }),
-  );
-  grille.position.set(0, 0.42, -2.32);
-  g.add(grille);
-
-  // Police: black doors band + light bar.
-  let lightBar = null;
-  if (police) {
-    const band = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.5 }));
-    band.scale.set(1.05, 0.26, 1.1);
-    band.position.set(0, 0.62, 0.1);
-    g.add(band);
-    const barBase = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.09, 0.9, 4, 8),
-      new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.5 }),
-    );
-    barBase.rotation.z = Math.PI / 2;
-    barBase.position.set(0, 1.12, 0.15);
-    g.add(barBase);
-    const redMat = new THREE.MeshStandardMaterial({ color: 0xff2038, emissive: 0xff2038, emissiveIntensity: 2.4 });
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x2060ff, emissive: 0x2060ff, emissiveIntensity: 2.4 });
-    const red = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), redMat);
-    red.scale.set(1.6, 0.8, 0.9);
-    red.position.set(-0.42, 1.22, 0.15);
-    const blue = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), blueMat);
-    blue.scale.set(1.6, 0.8, 0.9);
-    blue.position.set(0.42, 1.22, 0.15);
-    g.add(red, blue);
-    const redGlow = glowSprite('rgba(255,40,60,0.7)', 3.2, 0.8);
-    redGlow.position.copy(red.position);
-    const blueGlow = glowSprite('rgba(40,100,255,0.7)', 3.2, 0.8);
-    blueGlow.position.copy(blue.position);
-    g.add(redGlow, blueGlow);
-    lightBar = { redMat, blueMat, redGlow, blueGlow };
+  // The sculpted side profile of a sports sedan: sloped nose, curved
+  // beltline, tapered tail — with the wheel arches cut into the bottom
+  // edge as arc detours (not holes, so the outline stays one clean loop).
+  function carBodyShape() {
+    var s = new THREE.Shape();
+    s.moveTo(-2.2, 0.32); // tail, lower
+    s.lineTo(-2.2, 0.78); // tail face
+    s.quadraticCurveTo(-2.12, 0.86, -1.9, 0.87); // deck edge
+    s.quadraticCurveTo(-0.5, 0.88, 0.6, 0.82); // beltline to cowl
+    s.quadraticCurveTo(1.3, 0.78, 1.9, 0.7); // hood slope
+    s.quadraticCurveTo(2.22, 0.64, 2.24, 0.5); // nose round
+    s.quadraticCurveTo(2.24, 0.34, 2.1, 0.26); // nose bottom
+    // Bottom edge back to the tail, arcing up around each wheel.
+    s.lineTo(1.89, 0.24);
+    s.absarc(1.45, 0.24, 0.44, 0, Math.PI, false); // front arch
+    s.lineTo(-1.01, 0.24);
+    s.absarc(-1.45, 0.24, 0.44, 0, Math.PI, false); // rear arch
+    s.lineTo(-2.2, 0.24);
+    s.closePath();
+    return s;
   }
 
-  // Wheels: dark cylinders + bright hubcaps.
-  const tireMat = new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 0.95 });
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xc8c8d0, roughness: 0.3, metalness: 0.8 });
-  const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 14);
-  wheelGeo.rotateZ(Math.PI / 2);
-  for (const [wx, wz] of [[-0.92, -1.45], [0.92, -1.45], [-0.92, 1.45], [0.92, 1.45]]) {
-    const wheel = new THREE.Group();
-    const tire = new THREE.Mesh(wheelGeo, tireMat);
+  // The glasshouse: windshield + side glass + roof, a narrower extrusion
+  // that sits on the beltline. Dark glossy glass, not body color.
+  function glasshouseShape() {
+    var s = new THREE.Shape();
+    s.moveTo(-1.5, 0.78);
+    s.quadraticCurveTo(-1.38, 1.0, -0.9, 1.08); // rear glass slope
+    s.quadraticCurveTo(-0.2, 1.15, 0.4, 1.1); // roof
+    s.quadraticCurveTo(0.95, 1.02, 1.15, 0.78); // windshield
+    s.closePath();
+    return s;
+  }
+
+  function makeWheel() {
+    var sh = getShared();
+    var wheel = new THREE.Group();
+    var tire = new THREE.Mesh(sh.tireGeo, sh.tireMat);
     tire.castShadow = true;
-    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), hubMat);
-    hub.scale.set(0.5, 1, 1);
-    hub.position.x = wx > 0 ? 0.14 : -0.14;
-    wheel.add(tire, hub);
-    wheel.position.set(wx, 0.38, wz);
-    g.add(wheel);
-    wheels.push(wheel);
-  }
-
-  // Headlights (on at dusk) + taillights.
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffe9a8, emissiveIntensity: 2.6 });
-  const tailMat = new THREE.MeshStandardMaterial({ color: 0xff2038, emissive: 0xff2038, emissiveIntensity: 1.8 });
-  for (const s of [-0.62, 0.62]) {
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), headMat);
-    head.scale.set(1.4, 0.7, 0.6);
-    head.position.set(s, 0.58, -2.28);
-    g.add(head);
-    const hg = glowSprite('rgba(255,240,190,0.6)', 1.6, 0.7);
-    hg.position.set(s, 0.58, -2.4);
-    g.add(hg);
-    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), tailMat);
-    tail.scale.set(1.6, 0.6, 0.5);
-    tail.position.set(s, 0.6, 2.3);
-    g.add(tail);
-  }
-  // Headlight pools on the road ahead.
-  const pool = glowSprite('rgba(255,230,160,0.35)', 7, 0.35);
-  pool.position.set(0, 0.15, -5.5);
-  g.add(pool);
-
-  g.userData = { wheels, lightBar, police, hero: !!o.hero };
-  return g;
-}
-
-// The police helicopter: rounded body, tail boom, spinning rotors, skids,
-// and the big searchlight cone that tracks the player.
-export function makeHelicopter() {
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1c2733, roughness: 0.4, metalness: 0.5 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 14), bodyMat);
-  body.scale.set(1, 0.85, 1.9);
-  body.castShadow = true;
-  g.add(body);
-  // Belly stripe (white).
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.5 }));
-  belly.scale.set(0.86, 0.4, 1.7);
-  belly.position.y = -0.42;
-  g.add(belly);
-  // Cockpit glass.
-  const glass = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), glassMat());
-  glass.scale.set(0.82, 0.6, 0.8);
-  glass.position.set(0, 0.18, -1.35);
-  g.add(glass);
-  // Tail boom + fin.
-  const boom = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.3, 3.6, 8), bodyMat);
-  boom.rotation.x = Math.PI / 2;
-  boom.position.set(0, 0.25, 3.2);
-  boom.castShadow = true;
-  g.add(boom);
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 4), bodyMat);
-  fin.scale.set(1, 1, 0.18);
-  fin.position.set(0, 0.9, 4.8);
-  g.add(fin);
-  // Tail rotor.
-  const tailRotor = new THREE.Group();
-  const trBladeGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.5, 6);
-  const trMat = new THREE.MeshStandardMaterial({ color: 0x11141a, roughness: 0.6 });
-  for (let i = 0; i < 2; i++) {
-    const b = new THREE.Mesh(trBladeGeo, trMat);
-    b.rotation.x = (i * Math.PI) / 2;
-    tailRotor.add(b);
-  }
-  tailRotor.position.set(0.35, 0.5, 4.8);
-  tailRotor.rotation.y = Math.PI / 2;
-  g.add(tailRotor);
-  // Main rotor: hub + two long blades + blur disc.
-  const rotor = new THREE.Group();
-  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), trMat);
-  rotor.add(hub);
-  const bladeGeo = new THREE.CylinderGeometry(0.06, 0.06, 7.6, 6);
-  bladeGeo.scale(1, 1, 0.12);
-  for (let i = 0; i < 2; i++) {
-    const b = new THREE.Mesh(bladeGeo, trMat);
-    b.rotation.y = (i * Math.PI) / 2;
-    rotor.add(b);
-  }
-  const blur = new THREE.Mesh(
-    new THREE.CircleGeometry(3.9, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  blur.rotation.x = -Math.PI / 2;
-  rotor.add(blur);
-  rotor.position.y = 1.05;
-  g.add(rotor);
-  // Skids.
-  const skidMat = new THREE.MeshStandardMaterial({ color: 0x2c2c34, roughness: 0.5, metalness: 0.6 });
-  for (const s of [-0.8, 0.8]) {
-    const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 6), skidMat);
-    skid.rotation.x = Math.PI / 2;
-    skid.position.set(s, -1.05, 0);
-    g.add(skid);
-    for (const z of [-0.8, 0.8]) {
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6), skidMat);
-      strut.position.set(s, -0.8, z);
-      g.add(strut);
+    wheel.add(tire);
+    var rim = new THREE.Mesh(sh.rimGeo, sh.rimMat);
+    wheel.add(rim);
+    // Five spokes on each outer face.
+    for (var side = -1; side <= 1; side += 2) {
+      for (var i = 0; i < 5; i++) {
+        var spoke = new THREE.Mesh(sh.spokeGeo, sh.spokeMat);
+        spoke.position.z = side * 0.13;
+        spoke.rotation.z = (i / 5) * Math.PI * 2;
+        wheel.add(spoke);
+      }
     }
+    return wheel;
   }
-  // Searchlight lamp under the nose.
-  const lamp = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff2c0, emissiveIntensity: 3 }),
-  );
-  lamp.position.set(0, -0.75, -1.2);
-  g.add(lamp);
-  const lampGlow = glowSprite('rgba(255,245,210,0.9)', 3.5, 0.9);
-  lampGlow.position.copy(lamp.position);
-  g.add(lampGlow);
 
-  // The spotlight cone: outer wide cone + inner bright cone, additive.
-  const coneGroup = new THREE.Group();
-  const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xfff3c0, transparent: true, opacity: 0.10,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-    fog: false,
-  });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 42, 24, 1, true), coneMat);
-  cone.position.y = -21;
-  coneGroup.add(cone);
-  const coneMat2 = new THREE.MeshBasicMaterial({
-    color: 0xfff8d8, transparent: true, opacity: 0.18,
-    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-    fog: false,
-  });
-  const cone2 = new THREE.Mesh(new THREE.ConeGeometry(1.6, 42, 20, 1, true), coneMat2);
-  cone2.position.y = -21;
-  coneGroup.add(cone2);
-  // Bright pool where the cone hits the ground.
-  const pool = new THREE.Mesh(
-    new THREE.CircleGeometry(4, 28),
-    new THREE.MeshBasicMaterial({
-      color: 0xfff2c0, transparent: true, opacity: 0.30,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }),
-  );
-  pool.rotation.x = -Math.PI / 2;
-  coneGroup.add(pool);
-  coneGroup.position.set(0, -0.8, -1.2);
-  g.add(coneGroup);
+  function box(w, h, d, mat, x, y, z) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    return m;
+  }
 
-  g.userData = { rotor, tailRotor, coneGroup, pool, lamp };
-  return g;
-}
+  // One sculpted car. opts: color (hex), spoiler (bool), stripes (bool),
+  // police (bool), detail (bool — full trim vs. a lighter parked car).
+  function createSculptedCar(opts) {
+    var o = opts || {};
+    var sh = getShared();
+    var group = new THREE.Group();
+    group.name = o.name || 'car';
 
-// Aim the heli's spotlight cone at a ground target. The cone group hangs
-// from the heli; we stretch + tilt it so its tip stays at the lamp and its
-// base lands on the target.
-export function aimSpotlight(heli, target) {
-  const cg = heli.userData.coneGroup;
-  const lampWorld = new THREE.Vector3();
-  heli.userData.lamp.getWorldPosition(lampWorld);
-  const to = target.clone().sub(lampWorld);
-  const len = to.length();
-  const dir = to.normalize();
-  // Cone geometry points down -Y from the lamp; orient -Y along dir.
-  // q is a WORLD-space quaternion, but the cone group is a child of the
-  // heli group, so convert it into the heli's local space first.
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-  const pq = new THREE.Quaternion();
-  heli.getWorldQuaternion(pq);
-  cg.quaternion.copy(pq.invert().multiply(q));
-  cg.scale.set(1, len / 42, 1);
-  // The pool sits at the target point but stays flat on the ground: counter
-  // the cone group's tilt, keeping its own flat (facing-up) orientation.
-  // Its local Y is -42 (not -len): the cone group's Y scale (len/42)
-  // stretches it to exactly -len, so the pool lands on the target.
-  const flat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-  heli.userData.pool.position.set(0, -42, 0);
-  heli.userData.pool.quaternion.copy(q.clone().invert().multiply(flat));
-}
+    var paint = new THREE.MeshPhysicalMaterial({
+      color: o.color || 0xc01818,
+      roughness: 0.35,
+      metalness: 0.55,
+      clearcoat: 1,
+      clearcoatRoughness: 0.12,
+    });
+
+    // Body: bezier profile extruded with a bevel, so every edge is
+    // rounded and the silhouette reads as a car, not a slab.
+    var bodyGeo = new THREE.ExtrudeGeometry(carBodyShape(), {
+      depth: 1.7,
+      bevelEnabled: true,
+      bevelThickness: 0.07,
+      bevelSize: 0.06,
+      bevelSegments: 3,
+      curveSegments: 16,
+      steps: 1,
+    });
+    bodyGeo.translate(0, 0, -0.85);
+    var body = new THREE.Mesh(bodyGeo, paint);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+
+    // Glasshouse.
+    var glassGeo = new THREE.ExtrudeGeometry(glasshouseShape(), {
+      depth: 1.42,
+      bevelEnabled: true,
+      bevelThickness: 0.04,
+      bevelSize: 0.04,
+      bevelSegments: 2,
+      curveSegments: 12,
+      steps: 1,
+    });
+    glassGeo.translate(0, 0, -0.71);
+    var glass = new THREE.Mesh(glassGeo, sh.glassMat);
+    glass.castShadow = true;
+    group.add(glass);
+
+    // Wheels: spoked rims filling the arches.
+    var wheelPositions = [
+      [1.45, 0.36, 0.82], [1.45, 0.36, -0.82],
+      [-1.45, 0.36, 0.82], [-1.45, 0.36, -0.82],
+    ];
+    wheelPositions.forEach(function (p) {
+      var w = makeWheel();
+      w.position.set(p[0], p[1], p[2]);
+      group.add(w);
+    });
+
+    if (o.detail !== false) {
+      // White racing stripes along the hood and the rear deck.
+      if (o.stripes) {
+        var stripeMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.4, metalness: 0.2 });
+        [-0.14, 0.14].forEach(function (z) {
+          var hood = box(1.15, 0.015, 0.17, stripeMat, 1.45, 0.755, z);
+          hood.rotation.z = -0.09; // follow the hood slope
+          group.add(hood);
+          group.add(box(0.85, 0.015, 0.17, stripeMat, -1.62, 0.885, z));
+        });
+      }
+      // Headlights: emissive white blocks, slightly proud of the nose.
+      var headMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, emissive: 0xfff6c8, emissiveIntensity: 1.4, roughness: 0.2, metalness: 0.1,
+      });
+      group.add(box(0.06, 0.13, 0.42, headMat, 2.24, 0.56, 0.58));
+      group.add(box(0.06, 0.13, 0.42, headMat, 2.24, 0.56, -0.58));
+      // Grille + front bumper lip.
+      group.add(box(0.05, 0.16, 1.05, sh.trimMat, 2.25, 0.4, 0));
+      group.add(box(0.3, 0.07, 1.7, sh.trimMat, 2.05, 0.22, 0));
+      // PROUD red LED tail bar: mounted in front of the rear face on a
+      // black housing strip, so it reads at the chase camera.
+      group.add(box(0.05, 0.1, 1.56, sh.trimMat, -2.26, 0.64, 0)); // housing
+      var ledMat = new THREE.MeshStandardMaterial({
+        color: 0xff2020, emissive: 0xff1818, emissiveIntensity: 2.2, roughness: 0.3,
+      });
+      group.add(box(0.04, 0.06, 1.5, ledMat, -2.29, 0.64, 0)); // LED bar
+      // Corner taillights.
+      group.add(box(0.04, 0.12, 0.2, ledMat, -2.27, 0.64, 0.74));
+      group.add(box(0.04, 0.12, 0.2, ledMat, -2.27, 0.64, -0.74));
+      // License plate + rear bumper band + diffuser fins.
+      group.add(box(0.03, 0.15, 0.42, sh.plateMat, -2.28, 0.44, 0));
+      group.add(box(0.06, 0.1, 1.7, sh.trimMat, -2.24, 0.28, 0));
+      [-0.5, 0, 0.5].forEach(function (z) {
+        group.add(box(0.22, 0.12, 0.05, sh.trimMat, -2.2, 0.24, z));
+      });
+      // Exhaust tips.
+      var exhaustGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.12, 10);
+      exhaustGeo.rotateZ(Math.PI / 2);
+      [-0.55, 0.55].forEach(function (z) {
+        var ex = new THREE.Mesh(exhaustGeo, sh.chromeMat);
+        ex.position.set(-2.26, 0.3, z);
+        group.add(ex);
+      });
+      // Side skirts + mirrors.
+      group.add(box(3.4, 0.09, 0.06, sh.trimMat, 0, 0.27, 0.9));
+      group.add(box(3.4, 0.09, 0.06, sh.trimMat, 0, 0.27, -0.9));
+      [0.95, -0.95].forEach(function (z) {
+        group.add(box(0.05, 0.04, 0.12, sh.trimMat, 0.95, 0.86, z));
+        group.add(box(0.1, 0.09, 0.05, paint, 0.95, 0.88, z + (z > 0 ? 0.06 : -0.06)));
+      });
+      // Wing spoiler on two struts (a shaped wing, not a plank).
+      if (o.spoiler) {
+        var wingGeo = new THREE.ExtrudeGeometry((function () {
+          var w = new THREE.Shape();
+          w.moveTo(-0.28, 0);
+          w.quadraticCurveTo(0, 0.09, 0.28, 0.02);
+          w.lineTo(0.28, -0.04);
+          w.quadraticCurveTo(0, 0.02, -0.28, -0.04);
+          w.closePath();
+          return w;
+        })(), { depth: 1.55, bevelEnabled: false, curveSegments: 8 });
+        wingGeo.translate(0, 0, -0.775);
+        var wing = new THREE.Mesh(wingGeo, sh.trimMat);
+        wing.position.set(-2.02, 1.02, 0);
+        wing.rotation.z = 0.08;
+        wing.castShadow = true;
+        group.add(wing);
+        group.add(box(0.07, 0.16, 0.07, sh.trimMat, -2.02, 0.92, 0.55));
+        group.add(box(0.07, 0.16, 0.07, sh.trimMat, -2.02, 0.92, -0.55));
+      }
+      // Police light bar: red left, blue right, emissive.
+      if (o.police) {
+        group.add(box(0.34, 0.07, 1.1, sh.trimMat, -0.15, 1.18, 0));
+        var redMat = new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff1010, emissiveIntensity: 2.5 });
+        var blueMat = new THREE.MeshStandardMaterial({ color: 0x2060ff, emissive: 0x1040ff, emissiveIntensity: 2.5 });
+        group.add(box(0.3, 0.09, 0.5, redMat, -0.15, 1.25, 0.28));
+        group.add(box(0.3, 0.09, 0.5, blueMat, -0.15, 1.25, -0.28));
+        // White door stripe.
+        var doorMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4, metalness: 0.2 });
+        group.add(box(1.5, 0.3, 0.02, doorMat, -0.1, 0.6, 0.92));
+        group.add(box(1.5, 0.3, 0.02, doorMat, -0.1, 0.6, -0.92));
+        // Push bar.
+        group.add(box(0.08, 0.3, 1.3, sh.trimMat, 2.3, 0.45, 0));
+      }
+    }
+
+    return group;
+  }
+
+  // The hero: a red DORADO GT with stripes and a wing.
+  function createHeroCar() {
+    var car = createSculptedCar({
+      name: 'hero', color: 0xc01818, spoiler: true, stripes: true, detail: true,
+    });
+    return car;
+  }
+
+  // An ABPD cruiser: dark navy with a light bar and white doors.
+  function createCruiser(name) {
+    var car = createSculptedCar({
+      name: name, color: 0x1b2a4a, police: true, detail: true,
+    });
+    return car;
+  }
+
+  // A parked car: sculpted body, lighter trim, a random PS2-era color.
+  function createParkedCar(rng) {
+    var colors = [0x7a4a21, 0x2a5a8a, 0x5a5a5a, 0x8a8a2a, 0x3a6a3a, 0x6a2a5a, 0x9a9a9a, 0x24425e];
+    var idx = Math.floor(rng() * colors.length);
+    return createSculptedCar({
+      name: 'parked', color: colors[idx], detail: false,
+    });
+  }
+
+  // The ABPD helicopter AIR-3: high over the street center, nose down the
+  // street, tail boom foreshortened toward the camera — never touching a
+  // building. A thin spotlight cone drops to a soft pool on the road.
+  function createHelicopter() {
+    var group = new THREE.Group();
+    group.name = 'heli';
+    var bodyMat = new THREE.MeshStandardMaterial({ color: 0x22303f, roughness: 0.4, metalness: 0.6 });
+    var darkMat = new THREE.MeshStandardMaterial({ color: 0x10161d, roughness: 0.6, metalness: 0.4 });
+    var glassMat = new THREE.MeshPhysicalMaterial({ color: 0x0a1622, roughness: 0.1, metalness: 0.9, clearcoat: 1 });
+
+    // Fuselage: a scaled sphere (rounded, not a box).
+    var fuselage = new THREE.Mesh(new THREE.SphereGeometry(1.15, 20, 14), bodyMat);
+    fuselage.scale.set(1.25, 0.95, 1.0);
+    fuselage.castShadow = true;
+    group.add(fuselage);
+    // Cockpit glass: a flattened dark sphere at the nose (-Z).
+    var cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 12), glassMat);
+    cockpit.scale.set(1.0, 0.75, 0.9);
+    cockpit.position.set(0, 0.15, -0.85);
+    group.add(cockpit);
+    // Tail boom: a tapering cylinder back toward +Z, angled slightly up.
+    var boomGeo = new THREE.CylinderGeometry(0.12, 0.28, 3.4, 10);
+    boomGeo.rotateX(Math.PI / 2);
+    var boom = new THREE.Mesh(boomGeo, bodyMat);
+    boom.position.set(0, 0.35, 2.6);
+    boom.rotation.x = -0.08;
+    boom.castShadow = true;
+    group.add(boom);
+    // Tail fin + tail rotor.
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.55), bodyMat);
+    fin.position.set(0, 0.75, 4.1);
+    group.add(fin);
+    var tailRotor = new THREE.Group();
+    tailRotor.position.set(0.18, 0.7, 4.15);
+    var trBlade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.1, 0.12), darkMat);
+    tailRotor.add(trBlade);
+    var trBlade2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.1, 0.12), darkMat);
+    trBlade2.rotation.x = Math.PI / 2;
+    tailRotor.add(trBlade2);
+    group.add(tailRotor);
+    // Main rotor: two long thin blades on a mast.
+    var mast = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 8), darkMat);
+    mast.position.set(0, 1.15, 0);
+    group.add(mast);
+    var rotor = new THREE.Group();
+    rotor.position.set(0, 1.42, 0);
+    rotor.name = 'mainRotor';
+    var bladeGeo = new THREE.BoxGeometry(0.22, 0.04, 4.6);
+    var blade1 = new THREE.Mesh(bladeGeo, darkMat);
+    rotor.add(blade1);
+    var blade2 = new THREE.Mesh(bladeGeo, darkMat);
+    blade2.rotation.y = Math.PI / 2;
+    rotor.add(blade2);
+    rotor.rotation.y = 0.6; // a pleasing static angle for the shot
+    group.add(rotor);
+    // Skids.
+    [-0.75, 0.75].forEach(function (x) {
+      var skidGeo = new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8);
+      skidGeo.rotateX(Math.PI / 2);
+      var skid = new THREE.Mesh(skidGeo, darkMat);
+      skid.position.set(x, -1.05, 0);
+      group.add(skid);
+      [-0.7, 0.7].forEach(function (z) {
+        var strut = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 6), darkMat);
+        strut.position.set(x, -0.85, z);
+        group.add(strut);
+      });
+    });
+    // Searchlight housing under the nose.
+    var lamp = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff8d0, emissiveIntensity: 2 }),
+    );
+    lamp.position.set(0, -0.85, -0.9);
+    group.add(lamp);
+
+    // Spotlight cone: apex at the heli, widening to the road. Additive,
+    // faint — a beam of light, not a solid object.
+    var coneHeight = 19;
+    var cone = new THREE.Mesh(
+      new THREE.ConeGeometry(3.2, coneHeight, 24, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff6c0, transparent: true, opacity: 0.1,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false,
+      }),
+    );
+    cone.position.set(0, -coneHeight / 2 - 0.5, -0.5);
+    cone.name = 'spotCone';
+    group.add(cone);
+    // Ground pool: a soft additive disc where the beam lands.
+    var pool = new THREE.Mesh(
+      new THREE.CircleGeometry(3.4, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff2b0, transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+      }),
+    );
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(0, -coneHeight + 0.6, -0.5);
+    pool.name = 'spotPool';
+    group.add(pool);
+
+    return { group: group, rotor: rotor, tailRotor: tailRotor };
+  }
+
+  window.AB.vehicles = {
+    createSculptedCar: createSculptedCar,
+    createHeroCar: createHeroCar,
+    createCruiser: createCruiser,
+    createParkedCar: createParkedCar,
+    createHelicopter: createHelicopter,
+  };
+})();
+

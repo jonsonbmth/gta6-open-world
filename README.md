@@ -1,57 +1,80 @@
-# SIRENA BAY — an open-world crime game
-
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-An original open-world crime game in the spirit of GTA 6, built by an AI agent
-for make.fun's "Make GTA 6" bounty. Everything is original: the city of Sirena
-Bay, its people, cars, story and music. Nothing from Rockstar Games.
+# AURELIA BAY — An Open-World Crime Game
 
-## The game
+Built by an AI agent for make.fun's "Make GTA 6" bounty, $1,666 in USDC.
 
-You are Marco "Mako" Delgado, wheelman for fixer Iris "The Broker" Santos.
-**JOB 8/8 · THE SIRENA SCORE**: lose the heat, then bring the MANTA GT to the
-garage on Mermaid Mile. Sirena Bay PD is on you — six units, a helicopter,
-roadblocks ahead.
+AURELIA BAY is a complete open-world crime game in the browser: the sun-soaked
+city of Ember Strand, explored on foot and by car, with traffic and
+pedestrians, a wanted level and police who respond to it, missions and a
+story, combat, a HUD with a minimap, a start screen and a save. It runs
+from plain static files under `game/` — no build step, no network request.
 
-- A sun-soaked coastal city to explore on foot and by car: beach, marina,
-  palm boulevards, traffic and pedestrians with real activities
-- Steal and drive cars, lose the cops, build your wanted level and survive it
-- Missions with stages, a fixer who talks to you, a crew with abilities
-  (swap plates, quick fix, eyes out), weapons, respect ranks, a save
-- A full HUD: minimap with GPS route, police dispatch, health and armor,
-  radio, cash and wanted stars
+## The job
+
+Dante "Dusk" Reyes, wheelman for Vera "The Velvet" Castillo, is running
+JOB 7/8 — THE EMBER RUN: lose the ABPD heat, then deliver the DORADO GT
+to Vera at the Gilded Quay. Six ABPD units are on the street (FALCON-2,
+OSPREY-7, HERON-4, KITE-9, the AIR-3 helicopter and a roadblock), the
+wanted level is four stars, and the garage is three minutes away.
 
 ## Play it
 
-Serve `game/` with any static HTTP server and open `game/index.html` in
-desktop Chrome. No network request, no build step.
+```sh
+node serve.ts
+# open http://localhost:8080
+```
+
+Or serve `game/` with any static HTTP server and open `index.html`.
+
+## Controls
 
 | Key | Action |
-|-----|--------|
-| WASD / arrows | Drive / walk |
-| E | Enter / exit car |
-| Shift | Run |
-| Space | Handbrake |
-| R | Radio |
-| M | City map |
-| F | Action |
+| --- | --- |
+| W / S | Accelerate / brake |
+| A / D | Steer |
+| SPACE | Handbrake |
+| E | Enter / exit the car |
+| SHIFT | Run (on foot) |
+| M | City map (Esc closes it) |
+| R | Radio station |
 | N | Mute |
 | Mouse drag | Look around |
 
-## How it is built
+Progress (money, rep, stage) saves to the browser automatically; CONTINUE
+on the title screen picks it up again.
 
-Plain static files under `game/` — `index.html` plus one clear job per
-script: `util.js` (seeded random, canvas helpers), `faces.js` (painted face
-textures and portraits), `people.js` (rounded people with activities),
-`vehicles.js` (curved cars and the police helicopter), `city.js` (the city),
-`hud.js` (HUD and minimap), `shots.js` (staged screenshot scenes),
-`main.js` (game loop, driving, wanted system, missions, save). Three.js is
-vendored as `game/vendor/three.min.js`.
+## What is in the world
 
-## License
+- **Ember Strand**: Sunset Mile with textured asphalt, crosswalks,
+  sidewalks, flush rows of buildings with shopfronts, signs and striped
+  awnings, palms, power lines, billboards and a distant skyline.
+- **The marina**: beach, water, a plank pier, sailboats and the six-person
+  crew at the Gilded Quay.
+- **Vehicles**: the hero DORADO GT (a sculpted sports sedan — bezier side
+  profile, glasshouse, spoked wheels, wing spoiler, LED tail bar), four
+  ABPD cruisers with light bars, parked cars, and the AIR-3 helicopter
+  with a spotlight cone.
+- **People**: 36 pedestrians with real proportions and faces, walking,
+  talking, phoning, carrying and waving on both sidewalks.
+- **Systems**: wanted level, police pursuit, dispatch feed, weapons,
+  crew cards, minimap, full city map with 9 districts, radio, engine
+  sound, save / continue.
 
-MIT — see `LICENSE`.
+## Tech
+
+Three.js (vendored as `game/vendor/three.min.js`, r186) with procedural
+canvas textures throughout — asphalt, facades, awnings, pavers, sand,
+water, pier planks, signs and billboards are all generated in code, so
+the game needs no image files. The source is split into files with one
+clear job each under `game/src/`: `util`, `textures`, `sky`, `vehicles`,
+`people`, `faces`, `city`, `hud`, `shots`, `main`.
+
+## Screenshots
+
+`screenshots/` holds four renders of the game itself: the chase (cover),
+the title screen, the city map and the marina crew.
 
 <sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

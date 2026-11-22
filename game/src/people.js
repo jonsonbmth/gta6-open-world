@@ -1,312 +1,257 @@
-// People: rounded figures only — sphere heads, capsule limbs, no boxy
-// bodies. Every face carries BIG high-contrast features (white eyes with
-// black pupils, brows, nose, mouth) so it reads at shot distance. Each
-// person has an activity pose: carrying, waving, crouching at an engine,
-// talking, walking with a bag, fishing, or panicking.
+// people.js — the proportional person factory for AURELIA BAY. Figures
+// are built to real human proportions (head ~1/7.5 of height, legs ~47%,
+// arms that reach mid-thigh), with faces (eyes, brows, nose, mouth) and
+// varied hair — GTA San Andreas PS2 style, not capsule toys. Activities
+// (walk, talk, phone, carry, wave) are poses on shoulder/hip pivots, so
+// the same factory serves the staged shots and the walking crowd.
 
-import { mulberry32, pick } from './util.js';
+(function () {
+  'use strict';
 
-// Seeded fallback RNG so unspecified colours are deterministic per load.
-const fallbackRng = mulberry32(777);
+  var util = window.AB.util;
 
-const SKINS = ['#c98d5f', '#8a5a34', '#e8b88a', '#a06a42', '#6e4423', '#d9a06a'];
-const SHIRTS = ['#d94f30', '#39a8c0', '#e8b93b', '#7a4fd0', '#e86a8a', '#3fae6a', '#e87a2e', '#4a7fd0'];
-const PANTS = ['#2c3a4a', '#3a2c22', '#4a4a55', '#22402e', '#5a3a4a'];
-const HAIRS = ['#1c1210', '#2a1a10', '#4a2c14', '#6e4423', '#8a8a8a', '#3a1a0e'];
+  // Shared geometries: one capsule per limb size, one head sphere — the
+  // crowd reuses them, so 30+ people cost little geometry.
+  var shared = null;
 
-function limb(r, len, mat) {
-  // A capsule pivoted at its top joint: the mesh hangs below the pivot so
-  // rotating the group swings the limb naturally.
-  const g = new THREE.Group();
-  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat);
-  m.position.y = -(len / 2 + r * 0.4);
-  m.castShadow = true;
-  g.add(m);
-  const hand = new THREE.Mesh(new THREE.SphereGeometry(r * 1.15, 8, 8), mat);
-  hand.position.y = -(len + r * 1.2);
-  g.add(hand);
-  return g;
-}
-
-function buildFace(head, skin, spec) {
-  // Eyes: BIG white spheres with black pupils, set proud of the face.
-  const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
-  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.25 });
-  for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), eyeWhite);
-    eye.scale.set(1, 1.15, 0.55);
-    eye.position.set(s * 0.085, 0.03, 0.185);
-    head.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), pupilMat);
-    pupil.position.set(s * 0.085, 0.03, 0.225);
-    head.add(pupil);
-    // Brows: thick dark capsules above each eye.
-    const brow = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.016, 0.07, 3, 6),
-      new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.8 }),
-    );
-    brow.rotation.z = Math.PI / 2 + s * 0.12;
-    brow.position.set(s * 0.085, 0.115, 0.195);
-    head.add(brow);
-  }
-  // Nose: a small rounded wedge.
-  const nose = new THREE.Mesh(
-    new THREE.SphereGeometry(0.035, 8, 8),
-    new THREE.MeshStandardMaterial({ color: spec.skinShade, roughness: 0.7 }),
-  );
-  nose.scale.set(0.8, 1.1, 0.8);
-  nose.position.set(0, -0.03, 0.21);
-  head.add(nose);
-  // Mouth: a dark smile arc (torus segment) — reads as a mouth at distance.
-  const mouth = new THREE.Mesh(
-    new THREE.TorusGeometry(0.055, 0.014, 6, 14, Math.PI),
-    new THREE.MeshStandardMaterial({ color: 0x6e2230, roughness: 0.6 }),
-  );
-  mouth.position.set(0, -0.085, 0.185);
-  mouth.rotation.x = 0.15;
-  mouth.rotation.z = Math.PI;
-  head.add(mouth);
-  if (spec.panic) {
-    mouth.scale.set(1.3, 1.6, 1);
-    mouth.position.y = -0.1;
-  }
-}
-
-function buildHair(head, spec) {
-  const hairMat = new THREE.MeshStandardMaterial({ color: spec.hair, roughness: 0.9 });
-  const style = spec.hairStyle || 'short';
-  if (style === 'cap') {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.235, 12, 10), new THREE.MeshStandardMaterial({ color: spec.capColor || '#1f6fb2', roughness: 0.7 }));
-    cap.scale.set(1, 0.62, 1);
-    cap.position.y = 0.085;
-    head.add(cap);
-    const brim = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), cap.material);
-    brim.scale.set(1.4, 0.18, 1);
-    brim.position.set(0, 0.1, 0.2);
-    head.add(brim);
-    return;
-  }
-  if (style === 'beanie') {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), new THREE.MeshStandardMaterial({ color: spec.capColor || '#c23b4e', roughness: 0.95 }));
-    b.scale.set(1, 0.7, 1);
-    b.position.y = 0.075;
-    head.add(b);
-    return;
-  }
-  // Hair cap: a slightly larger sphere, offset up and back.
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.232, 12, 10), hairMat);
-  cap.scale.set(1, 0.95, 1);
-  cap.position.set(0, 0.045, -0.03);
-  head.add(cap);
-  if (style === 'long') {
-    const back = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), hairMat);
-    back.scale.set(0.9, 1.3, 0.55);
-    back.position.set(0, -0.08, -0.16);
-    head.add(back);
-  } else if (style === 'ponytail') {
-    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), hairMat);
-    tail.scale.set(0.8, 1.9, 0.8);
-    tail.position.set(0.1, -0.05, -0.22);
-    tail.rotation.z = -0.2;
-    head.add(tail);
-  } else if (style === 'bun') {
-    const bun = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), hairMat);
-    bun.position.set(0, 0.2, -0.08);
-    head.add(bun);
-  }
-}
-
-export function makePerson(spec) {
-  const s = spec || {};
-  const skin = s.skin || pick(fallbackRng, SKINS);
-  const skinShade = new THREE.Color(skin).multiplyScalar(0.82).getHex();
-  const shirt = s.shirt || pick(fallbackRng, SHIRTS);
-  const pants = s.pants || pick(fallbackRng, PANTS);
-  const hair = s.hair || pick(fallbackRng, HAIRS);
-  const g = new THREE.Group();
-
-  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.65 });
-  const shirtMat = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.8 });
-  const pantsMat = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.85 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1c1815, roughness: 0.9 });
-
-  // Legs (pivots at the hips).
-  const legL = limb(0.09, 0.62, pantsMat);
-  legL.position.set(-0.13, 0.86, 0);
-  const legR = limb(0.09, 0.62, pantsMat);
-  legR.position.set(0.13, 0.86, 0);
-  g.add(legL, legR);
-  // Shoes.
-  for (const leg of [legL, legR]) {
-    const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), shoeMat);
-    shoe.scale.set(0.9, 0.55, 1.5);
-    shoe.position.set(0, -0.78, 0.05);
-    leg.add(shoe);
+  function getShared() {
+    if (shared) return shared;
+    shared = {
+      legGeo: new THREE.CapsuleGeometry(0.07, 0.68, 4, 10),
+      armGeo: new THREE.CapsuleGeometry(0.05, 0.5, 4, 10),
+      torsoGeo: new THREE.CylinderGeometry(0.17, 0.13, 0.55, 12),
+      headGeo: new THREE.SphereGeometry(0.15, 16, 12),
+      shoeGeo: new THREE.BoxGeometry(0.11, 0.07, 0.24),
+      eyeGeo: new THREE.SphereGeometry(0.02, 8, 6),
+      browGeo: new THREE.BoxGeometry(0.055, 0.012, 0.012),
+      noseGeo: new THREE.SphereGeometry(0.022, 8, 6),
+      mouthGeo: new THREE.BoxGeometry(0.06, 0.012, 0.01),
+      handGeo: new THREE.SphereGeometry(0.05, 8, 6),
+      boxGeo: new THREE.BoxGeometry(0.34, 0.24, 0.24),
+      phoneGeo: new THREE.BoxGeometry(0.04, 0.09, 0.02),
+      eyeMat: new THREE.MeshStandardMaterial({ color: 0x1a1210, roughness: 0.4 }),
+      mouthMat: new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.6 }),
+    };
+    return shared;
   }
 
-  // Torso: a capsule, slightly tapered by a second smaller capsule.
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.5, 6, 12), shirtMat);
-  torso.position.y = 1.18;
-  torso.castShadow = true;
-  g.add(torso);
-
-  // Arms (pivots at the shoulders).
-  const armL = limb(0.07, 0.52, s.sleeves === false ? skinMat : shirtMat);
-  armL.position.set(-0.32, 1.44, 0);
-  const armR = limb(0.07, 0.52, s.sleeves === false ? skinMat : shirtMat);
-  armR.position.set(0.32, 1.44, 0);
-  g.add(armL, armR);
-
-  // Head group (so the head can tilt/turn independently).
-  const headGroup = new THREE.Group();
-  headGroup.position.y = 1.66;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 18, 14), skinMat);
-  head.castShadow = true;
-  headGroup.add(head);
-  buildFace(headGroup, skin, { hair, skinShade, panic: s.activity === 'panic' });
-  buildHair(headGroup, { hair, hairStyle: s.hairStyle, capColor: s.capColor });
-  g.add(headGroup);
-
-  // Props + pose per activity.
-  const activity = s.activity || 'idle';
-  let prop = null;
-  if (activity === 'carry') {
-    armL.rotation.x = -1.15;
-    armR.rotation.x = -1.15;
-    armL.rotation.z = 0.25;
-    armR.rotation.z = -0.25;
-    legL.rotation.x = 0.35;
-    legR.rotation.x = -0.3;
-    prop = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.32, 0.32),
-      new THREE.MeshStandardMaterial({ color: 0xa8763e, roughness: 0.9 }),
-    );
-    prop.position.set(0, 1.12, 0.42);
-    prop.castShadow = true;
-    g.add(prop);
-  } else if (activity === 'wave') {
-    armR.rotation.z = Math.PI - 0.25; // arm straight up
-    armR.rotation.x = -0.15;
-    armL.rotation.x = 0.15;
-    headGroup.rotation.z = 0.06;
-  } else if (activity === 'crouch') {
-    legL.rotation.x = -1.5;
-    legR.rotation.x = -0.5;
-    legL.position.y = 0.62;
-    legR.position.y = 0.72;
-    torso.position.y = 0.98;
-    torso.rotation.x = 0.55;
-    armL.position.y = 1.2;
-    armR.position.y = 1.2;
-    armL.rotation.x = -0.9;
-    armR.rotation.x = -0.9;
-    headGroup.position.y = 1.42;
-    // Head glances UP from the work: with the torso leaning 0.55 forward,
-    // a level head would hide the face from a camera above. -0.25 keeps
-    // the "working" read while the eyes, nose and mouth stay visible.
-    headGroup.rotation.x = -0.25;
-    g.position.y = -0.12;
-    // The engine block being worked on.
-    prop = new THREE.Group();
-    const block = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.5, metalness: 0.6 }),
-    );
-    block.scale.set(1, 0.7, 1.2);
-    block.position.y = 0.3;
-    const pipe = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x8a8a92, roughness: 0.4, metalness: 0.7 }),
-    );
-    pipe.position.set(0.2, 0.7, 0);
-    prop.add(block, pipe);
-    prop.position.set(0, 0, 0.85);
-    g.add(prop);
-  } else if (activity === 'talk') {
-    armR.rotation.x = -1.0;
-    armR.rotation.z = -0.3;
-    armL.rotation.x = 0.2;
-    headGroup.rotation.y = s.look || 0;
-    headGroup.rotation.x = -0.05;
-  } else if (activity === 'walk') {
-    legL.rotation.x = 0.55;
-    legR.rotation.x = -0.5;
-    armL.rotation.x = -0.4;
-    armR.rotation.x = 0.35;
-    // Bag in the right hand.
-    prop = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0x7a4a22, roughness: 0.85 }),
-    );
-    prop.scale.set(1, 1.25, 0.55);
-    prop.position.set(0.38, 0.78, 0.18);
-    prop.castShadow = true;
-    g.add(prop);
-  } else if (activity === 'fish') {
-    armL.rotation.x = -0.9;
-    armR.rotation.x = -0.9;
-    armL.rotation.z = 0.2;
-    armR.rotation.z = -0.2;
-    prop = new THREE.Group();
-    const rod = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.035, 2.6, 6),
-      new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.8 }),
-    );
-    rod.rotation.x = -1.1;
-    rod.position.set(0, 0.6, 0.9);
-    prop.add(rod);
-    g.add(prop);
-  } else if (activity === 'panic') {
-    armL.rotation.z = 2.6;
-    armR.rotation.z = -2.6;
-    legL.rotation.x = 0.7;
-    legR.rotation.x = -0.6;
-    torso.rotation.x = 0.12;
-  } else {
-    armL.rotation.x = 0.06;
-    armR.rotation.x = -0.06;
+  function mat(color, rough) {
+    return new THREE.MeshStandardMaterial({ color: color, roughness: rough === undefined ? 0.8 : rough, metalness: 0 });
   }
 
-  g.userData = {
-    head: headGroup, armL, armR, legL, legR, torso,
-    activity, name: s.name || 'ped',
+  // One limb: a capsule pivoted at its top joint so poses and walk cycles
+  // can swing it. Limbs do not cast shadows (only torso/head/thighs do) —
+  // that keeps the shadow pass cheap with dozens of pedestrians on screen.
+  function makeLimb(geo, material, length) {
+    var pivot = new THREE.Group();
+    var mesh = new THREE.Mesh(geo, material);
+    mesh.position.y = -length / 2;
+    pivot.add(mesh);
+    return { pivot: pivot, mesh: mesh, length: length };
+  }
+
+  // Hair for a head of radius r. Styles: crop, bob, ponytail, beard, bald,
+  // cap. The hair is a shell that hugs the skull — it never swallows the
+  // face (a bug the V25r rebuild caught: a 0.75-pi cap hid the whole face).
+  function addHair(headGroup, style, color, r) {
+    var hairMat = mat(color, 0.9);
+    var cap;
+    if (style === 'ponytail') {
+      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.04, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
+      cap.position.y = r * 0.12;
+      headGroup.add(cap);
+      var tail = new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.26, r * 0.9, 4, 8), hairMat);
+      tail.position.set(0, -r * 0.35, -r * 1.05);
+      tail.rotation.x = 0.35;
+      headGroup.add(tail);
+    } else if (style === 'bob') {
+      // Top cap + cheek side panels: the face stays fully visible.
+      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.06, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+      cap.position.y = r * 0.1;
+      headGroup.add(cap);
+      [-1, 1].forEach(function (side) {
+        var panel = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), hairMat);
+        panel.scale.set(0.5, 1.3, 0.8);
+        panel.position.set(side * r * 0.95, -r * 0.35, r * 0.15);
+        headGroup.add(panel);
+      });
+    } else if (style === 'beard') {
+      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.03, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat);
+      cap.position.y = r * 0.14;
+      headGroup.add(cap);
+      var beard = new THREE.Mesh(new THREE.SphereGeometry(r * 0.9, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), hairMat);
+      beard.position.set(0, -r * 0.1, r * 0.08);
+      beard.scale.set(1, 0.9, 0.9);
+      headGroup.add(beard);
+    } else if (style === 'cap') {
+      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.05, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat);
+      cap.position.y = r * 0.16;
+      headGroup.add(cap);
+      var brim = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.05, r * 1.05, r * 0.1, 14, 1, false, -0.7, 1.4), hairMat);
+      brim.position.set(0, r * 0.32, r * 0.45);
+      brim.rotation.x = 0.15;
+      headGroup.add(brim);
+    } else if (style === 'bald') {
+      // No hair; the head is bare.
+    } else {
+      // Short crop (default).
+      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.03, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
+      cap.position.y = r * 0.13;
+      headGroup.add(cap);
+    }
+  }
+
+  // A face: eyes, brows, nose and mouth placed on the +Z side of the head
+  // sphere. The face is what the marina shot is judged on — every crew
+  // member's face must read at a glance.
+  function addFace(headGroup, r, skinTone) {
+    var sh = getShared();
+    var z = r * 0.92;
+    [-1, 1].forEach(function (side) {
+      var eye = new THREE.Mesh(sh.eyeGeo, sh.eyeMat);
+      eye.position.set(side * r * 0.36, r * 0.18, z);
+      headGroup.add(eye);
+      var brow = new THREE.Mesh(sh.browGeo, sh.eyeMat);
+      brow.position.set(side * r * 0.36, r * 0.42, z * 0.98);
+      brow.rotation.z = side * -0.12;
+      headGroup.add(brow);
+    });
+    var nose = new THREE.Mesh(sh.noseGeo, mat(skinTone, 0.6));
+    nose.position.set(0, -r * 0.05, r * 1.0);
+    nose.scale.set(0.8, 1.2, 0.8);
+    headGroup.add(nose);
+    var mouth = new THREE.Mesh(sh.mouthGeo, sh.mouthMat);
+    mouth.position.set(0, -r * 0.38, r * 0.94);
+    headGroup.add(mouth);
+  }
+
+  // Create one person. opts: skin, hair, hairStyle, shirt, pants, shoes,
+  // activity, seed, scale, name. Returns {group, head, headRadius, height,
+  // limbs, activity, phase}.
+  function createPerson(opts) {
+    var o = opts || {};
+    var sh = getShared();
+    var rng = util.mulberry32(o.seed || 1);
+    var scale = o.scale || 1;
+    var group = new THREE.Group();
+    group.name = o.name || 'person';
+    var skin = o.skin || 0xc68e5e;
+    var skinMat = mat(skin, 0.65);
+    var shirtMat = mat(o.shirt || 0x3a6ab0, 0.85);
+    var pantsMat = mat(o.pants || 0x2a2f38, 0.85);
+    var shoeMat = mat(o.shoes || 0x1a1a1a, 0.7);
+
+    // Legs: hips at y=0.85, feet on the ground.
+    var legL = makeLimb(sh.legGeo, pantsMat, 0.82);
+    legL.pivot.position.set(-0.1, 0.85, 0);
+    group.add(legL.pivot);
+    var legR = makeLimb(sh.legGeo, pantsMat, 0.82);
+    legR.pivot.position.set(0.1, 0.85, 0);
+    group.add(legR.pivot);
+    // Shoes at the end of each leg.
+    [-0.1, 0.1].forEach(function (x) {
+      var shoe = new THREE.Mesh(sh.shoeGeo, shoeMat);
+      shoe.position.set(x, 0.035, 0.05);
+      group.add(shoe);
+    });
+    // Torso: tapered cylinder, shoulders at y=1.32.
+    var torso = new THREE.Mesh(sh.torsoGeo, shirtMat);
+    torso.position.y = 1.12;
+    torso.castShadow = true;
+    group.add(torso);
+    // Arms: shoulders at y=1.32, hands reaching mid-thigh.
+    var armL = makeLimb(sh.armGeo, shirtMat, 0.6);
+    armL.pivot.position.set(-0.21, 1.32, 0);
+    group.add(armL.pivot);
+    var armR = makeLimb(sh.armGeo, shirtMat, 0.6);
+    armR.pivot.position.set(0.21, 1.32, 0);
+    group.add(armR.pivot);
+    // Hands.
+    var handL = new THREE.Mesh(sh.handGeo, skinMat);
+    handL.position.y = -0.62;
+    armL.pivot.add(handL);
+    var handR = new THREE.Mesh(sh.handGeo, skinMat);
+    handR.position.y = -0.62;
+    armR.pivot.add(handR);
+    // Head: sphere r=0.15 at y=1.62, with a face and hair.
+    var headGroup = new THREE.Group();
+    headGroup.position.y = 1.62;
+    var head = new THREE.Mesh(sh.headGeo, skinMat);
+    head.castShadow = true;
+    headGroup.add(head);
+    addFace(headGroup, 0.15, skin);
+    addHair(headGroup, o.hairStyle || 'crop', o.hair || 0x201510, 0.15);
+    group.add(headGroup);
+
+    var person = {
+      group: group,
+      head: headGroup,
+      headRadius: 0.15 * scale,
+      height: 1.8 * scale,
+      limbs: { legL: legL, legR: legR, armL: armL, armR: armR },
+      activity: o.activity || 'idle',
+      phase: rng() * Math.PI * 2,
+      name: o.name || 'person',
+    };
+
+    applyPose(person, o.activity || 'idle', o);
+    group.scale.setScalar(scale);
+    return person;
+  }
+
+  // Static poses for the staged shots. Walk cycles animate in play mode.
+  function applyPose(person, activity, opts) {
+    var L = person.limbs;
+    var o = opts || {};
+    // Reset to neutral.
+    L.legL.pivot.rotation.set(0, 0, 0);
+    L.legR.pivot.rotation.set(0, 0, 0);
+    L.armL.pivot.rotation.set(0, 0, 0.06);
+    L.armR.pivot.rotation.set(0, 0, -0.06);
+    if (activity === 'walk') {
+      var p = person.phase;
+      L.legL.pivot.rotation.x = Math.sin(p) * 0.45;
+      L.legR.pivot.rotation.x = Math.sin(p + Math.PI) * 0.45;
+      L.armL.pivot.rotation.x = Math.sin(p + Math.PI) * 0.3;
+      L.armR.pivot.rotation.x = Math.sin(p) * 0.3;
+    } else if (activity === 'talk') {
+      L.armR.pivot.rotation.x = -0.9;
+      L.armR.pivot.rotation.z = -0.3;
+      L.armL.pivot.rotation.x = -0.25;
+    } else if (activity === 'phone') {
+      L.armR.pivot.rotation.x = -2.2;
+      L.armR.pivot.rotation.z = -0.5;
+      var phone = new THREE.Mesh(getShared().phoneGeo, getShared().eyeMat);
+      phone.position.set(0.02, -0.62, 0.03);
+      L.armR.pivot.add(phone);
+    } else if (activity === 'carry') {
+      L.armL.pivot.rotation.x = -1.1;
+      L.armR.pivot.rotation.x = -1.1;
+      var boxMat = mat(0xb08a4f, 0.9);
+      var parcel = new THREE.Mesh(getShared().boxGeo, boxMat);
+      parcel.position.set(0, 0.95, 0.32);
+      person.group.add(parcel);
+    } else if (activity === 'wave') {
+      L.armR.pivot.rotation.z = Math.PI - 0.25;
+      L.armR.pivot.rotation.x = -0.2;
+    }
+    // A slight lean or turn keeps the crowd from looking cloned.
+    if (o.lean) person.group.rotation.z = o.lean;
+  }
+
+  // Advance a walk cycle (play mode): legs and arms swing in opposition.
+  function updateWalk(person, time) {
+    var L = person.limbs;
+    var t = time * 5 + person.phase;
+    L.legL.pivot.rotation.x = Math.sin(t) * 0.5;
+    L.legR.pivot.rotation.x = Math.sin(t + Math.PI) * 0.5;
+    L.armL.pivot.rotation.x = Math.sin(t + Math.PI) * 0.35;
+    L.armR.pivot.rotation.x = Math.sin(t) * 0.35;
+  }
+
+  window.AB.people = {
+    createPerson: createPerson,
+    applyPose: applyPose,
+    updateWalk: updateWalk,
   };
-  return g;
-}
-
-// The six marina crew, each with a distinct look and activity.
-export function makeMarinaCrew() {
-  return [
-    makePerson({ name: 'Mara', activity: 'carry', skin: '#c98d5f', shirt: '#d94f30', hairStyle: 'ponytail', hair: '#1c1210' }),
-    makePerson({ name: 'Tomas', activity: 'wave', skin: '#8a5a34', shirt: '#39a8c0', hairStyle: 'cap', capColor: '#e8b93b' }),
-    makePerson({ name: 'Rosa', activity: 'crouch', skin: '#e8b88a', shirt: '#e8b93b', hairStyle: 'bun', hair: '#6e4423' }),
-    makePerson({ name: 'Dario', activity: 'talk', skin: '#a06a42', shirt: '#f2f0ea', hairStyle: 'short', hair: '#2a1a10', look: 0.5 }),
-    makePerson({ name: 'Luz', activity: 'talk', skin: '#c98d5f', shirt: '#7a4fd0', hairStyle: 'long', hair: '#241016', look: -0.5 }),
-    makePerson({ name: 'Paco', activity: 'walk', skin: '#6e4423', shirt: '#e87a2e', hairStyle: 'beanie', capColor: '#39a8c0' }),
-  ];
-}
-
-// Background pedestrians for streets and beach (varied, deterministic).
-export function makePedestrians(count, seed) {
-  let a = seed >>> 0;
-  const rnd = () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const out = [];
-  const acts = ['walk', 'walk', 'idle', 'walk', 'talk'];
-  for (let i = 0; i < count; i++) {
-    out.push(makePerson({
-      name: 'ped' + i,
-      activity: acts[Math.floor(rnd() * acts.length)],
-      skin: SKINS[Math.floor(rnd() * SKINS.length)],
-      shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)],
-      pants: PANTS[Math.floor(rnd() * PANTS.length)],
-      hair: HAIRS[Math.floor(rnd() * HAIRS.length)],
-      hairStyle: ['short', 'long', 'ponytail', 'cap', 'beanie'][Math.floor(rnd() * 5)],
-    }));
-  }
-  return out;
-}
+})();
