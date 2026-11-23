@@ -4,360 +4,156 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>AURELIA BAY — Open World</title>
+<title>AURELIA BAY — Open-World Crime Game</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e14; font-family: Arial, Helvetica, sans-serif; color: #fff; }
-  #game-container { position: fixed; inset: 0; }
-  #game-container canvas { display: block; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1218; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #f2f2ee; }
+  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: absolute; inset: 0; pointer-events: none; }
+  .panel {
+    background: rgba(16, 20, 26, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    padding: 10px 12px;
+    backdrop-filter: blur(2px);
+  }
   .hidden { display: none !important; }
-  .panel { background: rgba(10, 14, 20, 0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; backdrop-filter: blur(2px); }
 
-  /* ---------- HUD ---------- */
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; font-size: 13px; }
-  #hud .clickable { pointer-events: auto; }
+  /* Mission card, top-left */
+  #mission-card { position: absolute; top: 14px; left: 14px; width: 348px; }
+  .mission-job { color: #ffd21f; font-weight: bold; font-size: 13px; letter-spacing: 0.5px; }
+  .mission-title { font-size: 22px; font-weight: bold; margin: 2px 0 4px; }
+  .mission-brief { font-size: 13px; line-height: 1.4; color: #d8d8d2; }
+  .mission-progress { height: 6px; background: rgba(255,255,255,0.15); border-radius: 3px; margin: 8px 0 6px; }
+  #mission-bar { height: 100%; background: #ffd21f; border-radius: 3px; width: 50%; }
+  .mission-stage { font-size: 12px; color: #ffb0a0; }
+  .mission-next { font-size: 12px; color: #9fd4e8; margin-top: 2px; }
 
-  /* top-left: mission card */
-  #mission-card { position: absolute; top: 12px; left: 12px; width: 330px; padding: 10px 12px; }
-  #mission-title { font-size: 15px; font-weight: bold; color: #ffd94d; letter-spacing: 0.5px; }
-  #mission-objective { font-size: 17px; font-weight: bold; margin-top: 3px; }
-  #mission-brief { font-size: 12px; color: #d8dde3; margin-top: 3px; line-height: 1.35; }
-  .bar { height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; margin-top: 7px; overflow: hidden; }
-  .bar > div { height: 100%; background: #ffd94d; border-radius: 4px; }
-  #mission-stage-text { font-size: 11px; color: #ffd94d; margin-top: 4px; font-weight: bold; }
-  #mission-timer { font-size: 12px; color: #ffb3a7; margin-top: 2px; }
-  #mission-next { font-size: 11px; color: #9fb3c8; margin-top: 3px; }
+  /* Money / stars / clock, top-right */
+  #money-bar { position: absolute; top: 14px; right: 14px; text-align: right; }
+  .money { font-size: 30px; font-weight: bold; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  .stars { font-size: 20px; color: #ffd21f; letter-spacing: 3px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  .clock { font-size: 14px; font-weight: bold; color: #e8e8e8; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  .in-sight { display: none; font-size: 12px; font-weight: bold; color: #ff6b5e; margin-top: 2px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
 
-  /* top-right: money / stars / clock / dispatch */
-  #status-cluster { position: absolute; top: 12px; right: 12px; width: 300px; text-align: right; }
-  #money { font-size: 26px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
-  #stars { font-size: 21px; color: #ffd94d; letter-spacing: 3px; text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
-  #clock { font-size: 14px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
-  #insight { font-size: 11px; color: #ff8c42; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
-  #dispatch { margin-top: 8px; padding: 8px 10px; text-align: left; }
-  .dispatch-head { font-size: 12px; font-weight: bold; color: #ff8c42; margin-bottom: 5px; }
-  .dispatch-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; padding: 1px 0; border-top: 1px solid rgba(255,255,255,0.07); }
-  .dispatch-row .dname { font-weight: bold; }
-  .dispatch-row .dtactic { color: #ffd94d; }
-  .dispatch-row .ddist { color: #9fb3c8; }
-  .dispatch-more { font-size: 11px; color: #9fb3c8; margin-top: 4px; }
-
-  /* left: weapons */
-  #weapons { position: absolute; left: 12px; top: 218px; display: flex; flex-direction: column; gap: 4px; width: 196px; }
-  .weapon { display: flex; align-items: center; gap: 8px; background: rgba(10,14,20,0.66); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
-  .weapon.selected { border-color: #ffd94d; background: rgba(60,48,8,0.78); }
-  .weapon.locked { opacity: 0.45; }
-  .wkey { background: #ffd94d; color: #141414; font-weight: bold; border-radius: 3px; padding: 1px 6px; font-size: 11px; }
+  /* Weapons, left */
+  #weapons { position: absolute; top: 196px; left: 14px; width: 188px; padding: 6px; }
+  .weapon { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; }
+  .weapon.selected { background: rgba(255, 210, 31, 0.22); outline: 1px solid #ffd21f; }
+  .wkey { background: #ffd21f; color: #111; font-weight: bold; font-size: 11px; border-radius: 4px; padding: 2px 6px; }
   .wname { flex: 1; font-weight: bold; }
-  .wammo { color: #ffd94d; font-weight: bold; }
+  .wammo { color: #ffd21f; font-weight: bold; }
 
-  /* right: crew + vera */
-  #crew-column { position: absolute; right: 12px; top: 248px; width: 268px; display: flex; flex-direction: column; gap: 6px; }
-  #vera-card { display: flex; gap: 10px; padding: 8px 10px; align-items: center; }
-  #vera-portrait { width: 46px; height: 46px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25); flex-shrink: 0; }
-  #vera-card .vname { font-weight: bold; font-size: 13px; color: #ffd94d; }
-  #vera-text { font-size: 12px; color: #d8dde3; line-height: 1.3; font-style: italic; }
-  .ability { display: flex; align-items: center; gap: 8px; background: rgba(10,14,20,0.66); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 5px 8px; }
-  .ability.cooling { opacity: 0.55; }
-  .aportrait { width: 34px; height: 34px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.25); flex-shrink: 0; }
-  .abody { flex: 1; min-width: 0; }
-  .aname { font-weight: bold; font-size: 12px; }
-  .awho { font-size: 11px; color: #ffd94d; }
-  .arole { font-size: 10px; color: #9fb3c8; }
-  .akey { background: #ffd94d; color: #141414; font-weight: bold; border-radius: 3px; padding: 2px 7px; font-size: 11px; }
-  .acool { font-size: 10px; color: #7ee787; font-weight: bold; width: 38px; text-align: right; }
-  .ability.cooling .acool { color: #ff8c42; }
+  /* Dispatch + crew, right */
+  #dispatch { position: absolute; top: 108px; right: 14px; width: 300px; }
+  .dispatch-head { display: flex; justify-content: space-between; color: #ff8a7a; font-weight: bold; font-size: 13px; margin-bottom: 6px; }
+  .dispatch-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .dispatch-row .role { color: #ffd21f; }
+  .dispatch-foot { font-size: 11px; color: #9fd4e8; margin-top: 5px; }
+  #vera-card { position: absolute; top: 218px; right: 14px; width: 300px; display: flex; gap: 10px; align-items: center; }
+  .crew-card img { width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; }
+  .crew-name { color: #ffd21f; font-weight: bold; font-size: 13px; }
+  .crew-quote { font-size: 12px; font-style: italic; color: #d8d8d2; line-height: 1.35; }
+  #crew-cards { position: absolute; top: 296px; right: 14px; width: 300px; display: flex; flex-direction: column; gap: 6px; }
+  #crew-cards .crew-card { display: flex; gap: 10px; align-items: center; position: relative; }
+  .crew-body { flex: 1; }
+  .crew-desc { font-size: 11px; color: #c8c8c2; line-height: 1.3; }
+  .crew-key { background: #ffd21f; color: #111; font-weight: bold; font-size: 11px; border-radius: 4px; padding: 2px 6px; }
+  .crew-ready { font-size: 10px; font-weight: bold; color: #7fe07f; }
+  .crew-ready.cooling { color: #ff8a7a; }
 
-  /* bottom-left: minimap + location */
-  #minimap-wrap { position: absolute; left: 12px; bottom: 12px; }
-  #minimap { width: 168px; height: 168px; border-radius: 50%; background: rgba(10,14,20,0.6); }
-  #location-card { margin-top: 6px; padding: 7px 10px; width: 200px; }
-  #location-name { font-size: 15px; font-weight: bold; }
-  #location-street { font-size: 12px; color: #9fb3c8; }
-  #district-stand { font-size: 11px; color: #ffd94d; margin-top: 3px; font-weight: bold; }
+  /* Minimap, bottom-left */
+  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; }
+  #minimap { border-radius: 50%; box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+  #district-label { margin-top: 6px; width: 220px; }
+  .district-name { font-weight: bold; font-size: 15px; }
+  .district-street { font-size: 12px; color: #c8c8c2; }
+  .district-rep { font-size: 11px; color: #ffd21f; font-weight: bold; margin-top: 3px; }
+  .district-bar { height: 5px; background: rgba(255,255,255,0.15); border-radius: 3px; margin-top: 4px; }
+  #district-bar-fill { height: 100%; background: #ffd21f; border-radius: 3px; }
 
-  /* bottom-right: speed / car / vitals */
-  #drive-cluster { position: absolute; right: 12px; bottom: 12px; width: 250px; text-align: right; }
-  #vitals { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-  .vital-row { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: bold; }
-  .vital-row .vlabel { width: 52px; text-align: left; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-  .vital-row .bar { flex: 1; margin-top: 0; }
-  .vital-row .vnum { width: 26px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-  #health-bar { background: #7ee787; }
-  #armour-bar { background: #6cb6ff; }
-  #rep-bar { background: #ffd94d; }
-  #rep-rank { font-size: 11px; color: #ffd94d; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-  #speed { font-size: 44px; font-weight: bold; line-height: 1; text-shadow: 0 3px 6px rgba(0,0,0,0.8); }
-  #speed-unit { font-size: 12px; color: #d8dde3; }
-  #car-name { font-size: 15px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
-  #car-condition { font-size: 11px; color: #9fb3c8; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-  #car-condition-bar { background: #ff8c42; }
-  #radio-line { font-size: 12px; color: #ffd94d; margin-top: 5px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+  /* Stats, bottom-right */
+  #stats { position: absolute; right: 14px; bottom: 14px; width: 250px; text-align: right; }
+  .stat-row { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: bold; margin-bottom: 3px; }
+  .stat-row span { width: 58px; text-align: right; color: #d8d8d2; }
+  .stat-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
+  .stat-bar .fill { height: 100%; border-radius: 4px; }
+  .fill.health { background: #5fd06a; }
+  .fill.armour { background: #4fa8e0; }
+  .fill.rep { background: #ffd21f; }
+  .stat-row b { width: 34px; }
+  .rep-level { font-size: 11px; font-weight: bold; color: #ffd21f; margin: 2px 0; }
+  .speed { font-size: 44px; font-weight: bold; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  .speed span { font-size: 14px; margin-left: 4px; }
+  .car-name { font-size: 15px; font-weight: bold; }
+  .car-condition { font-size: 11px; color: #9fd4e8; }
+  .radio { font-size: 12px; color: #ffd21f; margin-top: 4px; }
 
-  /* bottom-center: dialogue + controls */
-  #dialogue { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: 460px; display: flex; gap: 10px; padding: 9px 12px; align-items: center; }
-  #dialogue-portrait { width: 46px; height: 46px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.25); flex-shrink: 0; }
-  #dialogue-name { font-size: 12px; font-weight: bold; color: #ffd94d; }
-  #dialogue-text { font-size: 13px; line-height: 1.35; }
-  #controls-hint { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.75); text-shadow: 0 1px 3px rgba(0,0,0,0.9); white-space: nowrap; }
+  /* Dialogue, bottom-center */
+  #dialogue { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 460px; display: flex; gap: 10px; align-items: center; }
+  #dialogue img { width: 44px; height: 44px; border-radius: 8px; }
+  .dialogue-from { color: #ffd21f; font-weight: bold; font-size: 12px; }
+  .dialogue-text { font-size: 13px; line-height: 1.35; }
 
-  /* center popups + toast */
-  #popup { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); text-align: center; }
-  .popup-main { font-size: 34px; font-weight: bold; color: #ffd94d; text-shadow: 0 3px 8px rgba(0,0,0,0.9); letter-spacing: 1px; }
-  .popup-sub { font-size: 15px; font-weight: bold; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
-  #toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); background: rgba(10,14,20,0.8); border: 1px solid rgba(255,217,77,0.5); border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: bold; }
-  #damage-vignette { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 90px 40px rgba(200,20,20,0.55); opacity: 0; transition: opacity 0.3s; }
+  /* Score popup, center */
+  #popup { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; opacity: 0; }
+  #popup.pop { animation: popfade 2.2s ease-out forwards; }
+  #popup.pinned { opacity: 1 !important; animation: none !important; }
+  .popup-main { font-size: 44px; font-weight: bold; color: #ffd21f; text-shadow: 0 3px 10px rgba(0,0,0,0.7); }
+  .popup-sub { font-size: 18px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+  @keyframes popfade { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 20% { transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
 
-  /* ---------- title screen ---------- */
-  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; }
-  #title-screen { background: linear-gradient(180deg, rgba(6,10,18,0.25) 0%, rgba(6,10,18,0.55) 55%, rgba(6,10,18,0.92) 100%); }
-  .title-box { text-align: center; max-width: 640px; padding: 20px; }
-  .title-kicker { font-size: 13px; letter-spacing: 6px; color: #ffd94d; font-weight: bold; }
-  .title-main { font-size: 72px; font-weight: bold; letter-spacing: 4px; line-height: 1; text-shadow: 0 4px 18px rgba(0,0,0,0.8); margin-top: 6px; }
-  .title-sub { font-size: 17px; color: #d8dde3; margin-top: 8px; }
-  .title-crew { display: flex; align-items: center; gap: 14px; background: rgba(10,14,20,0.7); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 12px 16px; margin: 20px auto 0; text-align: left; }
-  #title-portrait { width: 64px; height: 64px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); }
-  .title-crew b { font-size: 15px; }
-  .title-crew p { font-size: 13px; color: #d8dde3; margin-top: 2px; line-height: 1.4; }
-  .title-buttons { margin-top: 22px; display: flex; gap: 10px; justify-content: center; }
-  .big-btn { pointer-events: auto; cursor: pointer; background: #ffd94d; color: #141414; border: none; border-radius: 8px; padding: 13px 26px; font-size: 15px; font-weight: bold; }
-  .big-btn:hover { background: #ffe680; }
-  .big-btn.secondary { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
-  .big-btn.secondary:hover { background: rgba(255,255,255,0.24); }
-  .title-foot { margin-top: 18px; font-size: 12px; color: #9fb3c8; line-height: 1.6; }
+  .prompt { display: none; position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%); background: rgba(16,20,26,0.9); border: 1px solid #ffd21f; border-radius: 8px; padding: 8px 16px; font-weight: bold; font-size: 14px; }
+  .hint { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.75); text-shadow: 0 1px 4px rgba(0,0,0,0.8); white-space: nowrap; }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,0.28) 100%); }
 
-  /* ---------- help / wasted ---------- */
-  #help-screen { background: rgba(6,10,18,0.88); }
-  .help-box { background: #141a24; border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 26px 30px; max-width: 520px; }
-  .help-box h2 { font-size: 22px; color: #ffd94d; margin-bottom: 12px; }
-  .help-box table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  .help-box td { padding: 5px 8px; border-top: 1px solid rgba(255,255,255,0.08); }
-  .help-box td:first-child { font-weight: bold; color: #ffd94d; white-space: nowrap; }
-  #wasted-screen { background: rgba(80,0,0,0.55); }
-  .wasted-box { text-align: center; }
-  .wasted-box h1 { font-size: 84px; letter-spacing: 8px; color: #ff5252; text-shadow: 0 4px 20px rgba(0,0,0,0.9); }
+  /* Start screen */
+  #start-screen { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,14,20,0.55) 0%, rgba(10,14,20,0.25) 45%, rgba(10,14,20,0.75) 100%); display: flex; flex-direction: column; justify-content: center; padding: 0 8%; pointer-events: auto; }
+  .title-block { margin-bottom: 30px; }
+  .game-title { font-size: 84px; font-weight: bold; letter-spacing: 2px; background: linear-gradient(180deg, #ffe9a8, #ff7a3d); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 4px 24px rgba(0,0,0,0.35); line-height: 1; }
+  .game-sub { font-size: 17px; font-weight: bold; letter-spacing: 6px; color: #7fd4e8; margin-top: 6px; }
+  .start-menu { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 28px; }
+  .menu-item { background: none; border: none; color: #fff; font-family: inherit; font-size: 26px; font-weight: bold; letter-spacing: 1px; padding: 4px 14px; cursor: pointer; border-radius: 6px; }
+  .menu-item.selected, .menu-item:hover { background: #ff7a3d; }
+  .start-saves { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
+  .save-slot { background: rgba(16,20,26,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 14px; }
+  .save-slot b { font-size: 14px; }
+  .save-slot span { display: block; font-size: 12px; color: #c8c8c2; margin-top: 2px; }
+  .save-slot.empty { opacity: 0.65; }
+  .start-foot { position: absolute; bottom: 18px; left: 8%; font-size: 12px; color: rgba(255,255,255,0.7); }
 
-  /* ---------- pause menu ---------- */
-  #pause-menu { background: rgba(6,10,18,0.9); }
-  .pause-box { width: 1020px; max-width: 96vw; height: 640px; max-height: 94vh; background: #141a24; border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
-  .pause-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-  .pause-head h2 { font-size: 20px; }
-  .pause-head h2 span { color: #ffd94d; }
-  .pause-tabs { display: flex; gap: 6px; padding: 10px 18px 0; }
-  .pause-tab { pointer-events: auto; cursor: pointer; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #d8dde3; border-radius: 6px 6px 0 0; padding: 8px 16px; font-size: 13px; font-weight: bold; }
-  .pause-tab.active { background: #ffd94d; color: #141414; border-color: #ffd94d; }
-  .pause-body { flex: 1; padding: 14px 18px 18px; overflow-y: auto; }
-  #pause-map { width: 640px; height: 440px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); float: left; }
-  .map-side { margin-left: 660px; }
-  .map-side h3 { color: #ffd94d; font-size: 15px; margin-bottom: 8px; }
-  .map-side p { font-size: 13px; color: #d8dde3; line-height: 1.5; margin-bottom: 10px; }
-  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
-  .legend-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 16px; }
-  .stat-card h3 { color: #ffd94d; font-size: 14px; margin-bottom: 10px; }
-  .stat-ring { font-size: 40px; font-weight: bold; text-align: center; padding: 10px 0; }
-  .stat-ring span { display: block; font-size: 11px; color: #9fb3c8; letter-spacing: 2px; }
-  .check-row, .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.07); }
-  .check-row b, .stat-row b { color: #ffd94d; }
-  .story-intro { font-size: 13px; color: #d8dde3; line-height: 1.55; margin-bottom: 12px; }
-  .job-row { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.08); }
-  .job-row.done { opacity: 0.6; }
-  .job-row.locked { opacity: 0.45; }
-  .job-num { background: #ffd94d; color: #141414; font-weight: bold; border-radius: 50%; width: 26px; height: 26px; line-height: 26px; text-align: center; flex-shrink: 0; font-size: 13px; }
-  .job-row p { font-size: 12px; color: #9fb3c8; margin-top: 2px; }
-  .job-reward { color: #7ee787; margin-left: auto; white-space: nowrap; }
-  .crew-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  .crew-member { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center; }
-  .crew-member img { width: 72px; height: 72px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }
-  .crew-member b { display: block; margin-top: 6px; font-size: 13px; }
-  .crew-member span { font-size: 12px; color: #9fb3c8; }
-  .save-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.08); }
-  .save-row div { flex: 1; }
-  .save-row span { display: block; font-size: 12px; color: #9fb3c8; margin-top: 2px; }
-  .save-btn { pointer-events: auto; cursor: pointer; background: #ffd94d; color: #141414; border: none; border-radius: 6px; padding: 8px 16px; font-weight: bold; font-size: 12px; }
-  .save-btn.load { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
-  .save-note { font-size: 12px; color: #9fb3c8; margin-top: 10px; }
-  .pause-foot { padding: 12px 18px; border-top: 1px solid rgba(255,255,255,0.1); text-align: right; }
+  /* Pause menu */
+  #pause-menu { position: absolute; inset: 0; background: rgba(8, 10, 14, 0.88); display: flex; flex-direction: column; align-items: center; padding: 26px; pointer-events: auto; }
+  .pause-head { width: 1020px; display: flex; justify-content: space-between; align-items: center; font-size: 22px; font-weight: bold; margin-bottom: 14px; }
+  .pause-head b { color: #ffd21f; }
+  #pause-clock { font-size: 13px; font-weight: normal; color: #d8d8d2; }
+  .pause-tabs { width: 1020px; display: flex; gap: 8px; margin-bottom: 12px; }
+  .pause-tab { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-family: inherit; font-size: 14px; font-weight: bold; padding: 8px 18px; border-radius: 6px; cursor: pointer; }
+  .pause-tab.selected { background: #ffd21f; color: #111; }
+  .pause-body { width: 1020px; display: flex; gap: 16px; background: rgba(16,20,26,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 16px; }
+  .pause-map-col { flex-shrink: 0; }
+  #pause-map { border-radius: 8px; display: block; }
+  .pause-map-foot { font-size: 11px; color: #9a9a92; margin-top: 8px; text-align: center; }
+  .pause-side { flex: 1; }
+  .pause-side-title { color: #ffd21f; font-weight: bold; font-size: 15px; margin-bottom: 8px; }
+  .pause-side-text { font-size: 13px; line-height: 1.5; color: #d8d8d2; }
+  .legend { margin: 14px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  .legend .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+  .dot.yellow { background: #ffd21f; } .dot.white { background: #fff; } .dot.red { background: #ff3b30; }
+  .dot.orange { background: #ff9500; } .dot.green { background: #7fb069; } .dot.coral { background: #ff8a7a; }
+  .pause-tip { font-size: 12px; color: #9fd4e8; line-height: 1.45; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
+  .pause-stats { display: flex; gap: 18px; margin-top: 16px; }
+  .pause-stats div { text-align: center; }
+  .pause-stats b { display: block; font-size: 20px; color: #ffd21f; }
+  .pause-stats span { font-size: 10px; color: #9a9a92; }
+  .resume-btn { margin-top: 16px; background: #ffd21f; border: none; color: #111; font-family: inherit; font-size: 16px; font-weight: bold; padding: 12px 42px; border-radius: 8px; cursor: pointer; }
 </style>
 </head>
 <body>
-<div id="game-container"></div>
-
-<div id="hud" class="hidden">
-  <div id="mission-card" class="panel">
-    <div id="mission-title">JOB 7/8 · THE EMBER RUN</div>
-    <div id="mission-objective">LOSE THE HEAT</div>
-    <div id="mission-brief">Vera set the run. Six guns and a chopper say otherwise.</div>
-    <div class="bar"><div id="mission-stage-bar" style="width:50%"></div></div>
-    <div id="mission-stage-text">STAGE 2/4</div>
-    <div id="mission-timer">03:12 — reach the garage in time</div>
-    <div id="mission-next">NEXT  Reach the Ember Garage</div>
-  </div>
-
-  <div id="status-cluster">
-    <div id="money">$27,850</div>
-    <div id="stars">★★★★☆</div>
-    <div id="clock">FRI 13:42</div>
-    <div id="insight">IN SIGHT · AIR-3</div>
-    <div id="dispatch" class="panel"></div>
-  </div>
-
-  <div id="weapons"></div>
-
-  <div id="crew-column">
-    <div id="vera-card" class="panel">
-      <img id="vera-portrait" alt="">
-      <div>
-        <div class="vname">VERA “THE VELVET” CASTILLO</div>
-        <div id="vera-text">“Six guns and a chopper, Dante — lose the lights or lose the car.”</div>
-      </div>
-    </div>
-    <div id="crew-cards"></div>
-  </div>
-
-  <div id="minimap-wrap">
-    <canvas id="minimap" width="168" height="168"></canvas>
-    <div id="location-card" class="panel">
-      <div id="location-name">SUNSET MILE</div>
-      <div id="location-street">Sunset Mile · Lantern Way</div>
-      <div id="district-stand">NEUTRAL · 58</div>
-      <div class="bar"><div id="district-stand-bar" style="width:58%"></div></div>
-    </div>
-  </div>
-
-  <div id="drive-cluster">
-    <div id="vitals">
-      <div class="vital-row"><span class="vlabel">HEALTH</span><div class="bar"><div id="health-bar" style="width:78%"></div></div><span class="vnum" id="health-num">78</span></div>
-      <div class="vital-row"><span class="vlabel">ARMOUR</span><div class="bar"><div id="armour-bar" style="width:61%"></div></div><span class="vnum" id="armour-num">61</span></div>
-      <div class="vital-row"><span class="vlabel">REP</span><div class="bar"><div id="rep-bar" style="width:62%"></div></div><span class="vnum" id="rep-num">2310</span></div>
-    </div>
-    <div id="rep-rank">REP 6 · FIXER</div>
-    <div><span id="speed">0</span> <span id="speed-unit">KM/H</span></div>
-    <div id="car-name">DORADO GT</div>
-    <div id="car-condition">CONDITION 71% · SPORTS · TUNE 2</div>
-    <div class="bar"><div id="car-condition-bar" style="width:71%"></div></div>
-    <div id="radio-line">♪ SOL FM 101.3 — Midnight Palms</div>
-  </div>
-
-  <div id="dialogue" class="panel">
-    <img id="dialogue-portrait" alt="">
-    <div>
-      <div id="dialogue-name">VERA · FIXER</div>
-      <div id="dialogue-text">Lose the lights, Dante. The garage door is open.</div>
-    </div>
-  </div>
-  <div id="controls-hint">WASD drive · E enter &amp; exit car · SPACE handbrake · M city map · R radio · N mute</div>
-
-  <div id="popup" class="hidden"></div>
-  <div id="toast" class="hidden"></div>
-  <div id="damage-vignette"></div>
-</div>
-
-<div id="title-screen" class="overlay">
-  <div class="title-box">
-    <div class="title-kicker">OPEN WORLD · ONE CITY · EIGHT JOBS</div>
-    <div class="title-main">AURELIA BAY</div>
-    <div class="title-sub">Sun, salt and sirens. Dante “Dusk” Reyes is back in the city that made him — and the ABPD is watching every street.</div>
-    <div class="title-crew">
-      <img id="title-portrait" alt="">
-      <div>
-        <b>DANTE “DUSK” REYES — driver, wheelman, problem</b>
-        <p id="title-job">Job 7 of 8 · The Ember Run · Lose the heat, reach the garage.</p>
-      </div>
-    </div>
-    <div class="title-buttons">
-      <button id="btn-continue" class="big-btn">CONTINUE</button>
-      <button id="btn-new" class="big-btn secondary">NEW GAME</button>
-      <button id="btn-help" class="big-btn secondary">HOW TO PLAY</button>
-    </div>
-    <div class="title-foot">WASD drive &amp; walk · E enter &amp; exit car · SPACE handbrake · SHIFT run · CLICK shoot · M city map · R radio<br>Best played with sound on. No downloads — the whole city runs in this page.</div>
-  </div>
-</div>
-
-<div id="help-screen" class="overlay hidden">
-  <div class="help-box">
-    <h2>HOW TO PLAY</h2>
-    <table>
-      <tr><td>W / S</td><td>Drive forward / brake &amp; reverse · walk forward / back</td></tr>
-      <tr><td>A / D</td><td>Steer · strafe on foot</td></tr>
-      <tr><td>SPACE</td><td>Handbrake — drift through corners</td></tr>
-      <tr><td>SHIFT</td><td>Run on foot</td></tr>
-      <tr><td>E</td><td>Enter or exit a car — steal any car on the street</td></tr>
-      <tr><td>CLICK</td><td>Shoot the selected weapon (on foot)</td></tr>
-      <tr><td>1 – 6</td><td>Choose a weapon</td></tr>
-      <tr><td>Z / X / C</td><td>Crew abilities: swap plates · quick fix · eyes out</td></tr>
-      <tr><td>M or ESC</td><td>City map, story, stats, crew, saves</td></tr>
-      <tr><td>R / N</td><td>Change radio station / mute sound</td></tr>
-      <tr><td>MOUSE</td><td>Drag to look around on foot</td></tr>
-    </table>
-    <div class="title-buttons">
-      <button id="btn-help-close" class="big-btn">GOT IT</button>
-    </div>
-  </div>
-</div>
-
-<div id="pause-menu" class="overlay hidden">
-  <div class="pause-box">
-    <div class="pause-head">
-      <h2>AURELIA BAY <span>· PAUSED</span></h2>
-      <span style="font-size:13px;color:#9fb3c8">FRI 13:42 · JOB 7/8 · $27,850 · ★★★★☆</span>
-    </div>
-    <div class="pause-tabs">
-      <button id="tab-map" class="pause-tab active">MAP</button>
-      <button id="tab-story" class="pause-tab">STORY</button>
-      <button id="tab-stats" class="pause-tab">STATS</button>
-      <button id="tab-crew" class="pause-tab">CREW</button>
-      <button id="tab-save" class="pause-tab">SAVE</button>
-    </div>
-    <div class="pause-body">
-      <div id="panel-map">
-        <canvas id="pause-map" width="640" height="440"></canvas>
-        <div class="map-side">
-          <h3>CITY MAP</h3>
-          <p>Nine districts, one coastline. The yellow line is your GPS route to the Ember Garage — follow the roads, not the crow.</p>
-          <div class="legend-row"><span class="legend-dot" style="background:#ffd94d"></span> Mission target</div>
-          <div class="legend-row"><span class="legend-dot" style="background:#ffffff"></span> You</div>
-          <div class="legend-row"><span class="legend-dot" style="background:#ff3b30"></span> Police unit</div>
-          <div class="legend-row"><span class="legend-dot" style="background:#ff8c42"></span> Police helicopter</div>
-          <div class="legend-row"><span class="legend-dot" style="background:#7fb069"></span> Safehouse</div>
-          <div class="legend-row"><span class="legend-dot" style="background:#e07856"></span> Job start</div>
-          <p style="margin-top:12px">TIP: cut through Vidrio Dunes to shake a tail — the alleys are too tight for cruisers.</p>
-        </div>
-      </div>
-      <div id="panel-story" class="hidden"><div id="story-panel"></div></div>
-      <div id="panel-stats" class="hidden"><div id="stats-panel"></div></div>
-      <div id="panel-crew" class="hidden"><div id="crew-panel"></div></div>
-      <div id="panel-save" class="hidden"><div id="save-panel"></div></div>
-    </div>
-    <div class="pause-foot">
-      <button id="btn-resume" class="big-btn">RESUME</button>
-    </div>
-  </div>
-</div>
-
-<div id="wasted-screen" class="overlay hidden">
-  <div class="wasted-box">
-    <h1>WASTED</h1>
-    <p style="font-size:16px;margin:10px 0 22px">The bay keeps what it takes. Vera posts your bail — this time.</p>
-    <button id="btn-wasted" class="big-btn">RESPAWN AT THE SAFEHOUSE</button>
-  </div>
-</div>
-
+<div id="app"></div>
+<div id="hud"></div>
 <script src="vendor/three.min.js"></script>
-<script src="src/util.js"></script>
-<script src="src/textures.js"></script>
-<script src="src/sky.js"></script>
-<script src="src/city.js"></script>
-<script src="src/vehicles.js"></script>
-<script src="src/people.js"></script>
-<script src="src/police.js"></script>
-<script src="src/missions.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/faces.js"></script>
-<script src="src/hud.js"></script>
-<script src="src/shots.js"></script>
-<script src="src/main.js"></script>
-<script>window.AB.main.boot();</script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

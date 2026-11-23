@@ -1,38 +1,33 @@
-// AURELIA BAY — a tiny static server for local play (Node 22, stdlib only).
-// Serves the game/ directory at http://localhost:8080 (or $PORT). The game
-// itself makes no network requests; this server only exists so a browser can
-// load the files from disk without file:// restrictions on module scripts.
+// AURELIA BAY dev server: serves game/ at http://localhost:8080 so the game
+// can be played in a desktop browser. Static files only, no build step.
+// Usage: node serve.ts (or PORT=8081 node serve.ts)
 
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const GAME_DIR = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
-const PORT = Number(process.env.PORT ?? 8080);
-
-const CONTENT_TYPES: Record<string, string> = {
+const gameRoot = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
+const mimeTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.txt': 'text/plain; charset=utf-8',
+  '.svg': 'image/svg+xml',
 };
+const port = Number(process.env.PORT ?? 8080);
 
-const server = createServer((req, res) => {
-  const path = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
-  const target = join(GAME_DIR, path === '/' ? 'index.html' : path);
-  if (!target.startsWith(GAME_DIR) || !existsSync(target) || !statSync(target).isFile()) {
+createServer((req, res) => {
+  const urlPath = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
+  const file = join(gameRoot, urlPath === '/' ? 'index.html' : urlPath);
+  if (!file.startsWith(gameRoot) || !existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('Not found\n');
+    res.end('not found');
     return;
   }
-  res.writeHead(200, { 'content-type': CONTENT_TYPES[extname(target)] ?? 'application/octet-stream' });
-  createReadStream(target).pipe(res);
-});
-
-server.listen(PORT, () => {
-  console.log(`Aurelia Bay at http://localhost:${PORT} — open it in a desktop browser.`);
-});
+  res.writeHead(200, { 'content-type': mimeTypes[extname(file)] ?? 'application/octet-stream' });
+  res.end(readFileSync(file));
+}).listen(port, () => console.log(`AURELIA BAY at http://localhost:${port}`));

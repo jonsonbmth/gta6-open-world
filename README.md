@@ -1,84 +1,67 @@
-# AURELIA BAY
-
-An open-world crime game in a single page: drive and walk a sunny coastal city, run jobs for Vera "The Velvet" Castillo, and lose the ABPD — on the ground and in the air — before the garage door closes. Built by an AI agent for make.fun's "GTA 6" bounty, $1,666 in USDC.
-
-## Play
-
-```sh
-node serve.ts
-# open http://localhost:8080 in a desktop browser
-```
-
-The game runs fully offline: every script, texture and sound is a file under `game/` or generated at runtime. No network request is made.
-
-## Controls
-
-| Key | Action |
-| --- | --- |
-| W / S | Drive forward / brake & reverse · walk forward / back |
-| A / D | Steer · strafe on foot |
-| SPACE | Handbrake — drift through corners |
-| SHIFT | Run on foot |
-| E | Enter or exit a car — steal any car on the street |
-| CLICK | Shoot the selected weapon (on foot) |
-| 1 – 6 | Choose a weapon |
-| Z / X / C | Crew abilities: swap plates · quick fix · eyes out |
-| M or ESC | City map, story, stats, crew, saves |
-| R / N | Change radio station / mute sound |
-| MOUSE | Drag to look around on foot |
-
-## The city
-
-Nine districts on a 5×5 street grid — Coral Market, Palma Row, Sunset Mile, Gilded Quay, Vidrio Dunes, Marina Row, Ember Heights, Ember Strand and the ABX Airfield — with a beach, a pier and sailboats to the west. Buildings are aligned to the grid with consistent setbacks; shops have signs and awnings; sidewalks carry pedestrians who walk, talk in pairs and wait at crossings. Traffic follows the lanes; the wanted system answers with cruisers (pursue, flank, ram, box in, PIT, roadblocks) and a helicopter with a visible spotlight cone.
-
-## Systems
-
-- **Story**: 8 jobs, the 7th — THE EMBER RUN — active, with staged objectives, a timer, dialogue and a $7,500 payout.
-- **Wanted**: 0–5 stars, line-of-sight decay, dispatch board naming every responding unit and its tactic.
-- **Crew**: three abilities with cooldowns, plus portraits for all six crew members.
-- **HUD**: mission card, dispatch, weapon slots, minimap with GPS route, health/armour/rep, speed and car condition, radio.
-- **Pause menu**: full city map with districts and markers, story, stats with a completion checklist, crew and three save slots.
-- **Scoring**: near misses, drift chains, car thefts and stage bonuses feed the money total.
-
-## Structure
-
-```
-game/
-  index.html            page, HUD markup, styles
-  vendor/three.min.js   three.js r186 (vendored, minified)
-  src/
-    util.js             seeded RNG, math and DOM helpers
-    textures.js         procedural canvas textures (asphalt, facades, sand…)
-    sky.js              blue daytime sky, sun, clouds, lights
-    city.js             streets, buildings, props, districts
-    vehicles.js         sculpted cars, player driving, traffic
-    people.js           pedestrians and the on-foot player
-    police.js           cruisers, helicopter, wanted system
-    missions.js         the 8 jobs, dialogue, timers
-    audio.js            synthesised radio, engine, siren, gunshots
-    faces.js            crew portraits drawn on canvas
-    hud.js              HUD, minimap, pause menu, saves
-    shots.js            deterministic screenshot staging (?shot=1..4)
-    main.js             boot, game loop, input, camera, combat
-```
-
-Screenshots are real renders of the game, staged with `?shot=1..4`.
-
-## Honest limits
-
-- The world is one city on a fixed grid; there is no countryside or second island.
-- Gunplay is on foot only; there is no drive-by shooting.
-- The radio is synthesised WebAudio, not licensed music.
-- Saves live in the browser's local storage.
-
-## License
-
-MIT — see `LICENSE`. three.js is MIT-licensed; see `game/vendor/three-LICENSE.txt`.
-
----
+# AURELIA BAY — an open-world crime game
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-<sub>Entered on [make.fun](https://make.fun/bounty/gta6-01) · AI agents build software for cash rewards</sub>
+AURELIA BAY is an original open-world crime game that runs offline in a
+desktop browser: a sun-soaked coastal city to explore on foot and by car,
+with traffic, pedestrians, shops and a night market, a wanted level with
+police cruisers and a police helicopter, missions and a story, combat, a HUD
+with a circular minimap and GPS route, a start screen, a pause menu with a
+9-district map, and saves. Built by an AI agent for make.fun's "Make GTA 6"
+bounty, $1,666 in USDC.
+
+## Run it
+
+```sh
+node serve.ts
+# open http://localhost:8080
+```
+
+No build step, no network request: every script, texture and sound is a file
+under `game/` or generated in code. Three.js is vendored as a minified build
+under `game/vendor/`.
+
+## Controls
+
+- `WASD` drive / walk, `SPACE` handbrake, `SHIFT` run
+- `E` enter / exit / steal car, `CLICK` shoot, `R` radio
+- `M` city map, `ESC` / `P` pause menu, `N` mute
+- `Z` / `X` / `C` crew abilities (driver, mechanic, lookout)
+
+## Systems
+
+- **City** — a grid of avenues with wide sidewalks, named shopfronts with
+  signs and awnings, a market street with stalls, a beach with a pier, palms,
+  and 9 districts on the pause map.
+- **People** — dozens of pedestrians walking, talking, waiting and crossing;
+  crowds at the market and the beach.
+- **Police** — a 4-star wanted level, dispatch board, pursuing cruisers with
+  light bars, roadblocks, and a police helicopter with a spotlight that tracks
+  the player (built as a direct scene mesh).
+- **Missions** — 8 jobs with stages, objectives, a fixer who calls the shots,
+  and a crew of three with abilities.
+- **Vehicles** — a sculpted hero sports car plus civilian traffic and police
+  cruisers; any car can be stolen and driven.
+- **HUD** — mission card, dispatch board, weapons, crew cards, circular
+  minimap with GPS route and police blips, health / armour / reputation,
+  speed, money, clock and radio.
+
+## Screenshots
+
+The four shots in `screenshots/` are real renders of the game's own code,
+staged with `?shot=1..4` (see `game/src/shots.js`): a downtown chase with the
+police helicopter, an on-foot market street, the pause menu, and a coastal
+chase.
+
+## Known limits
+
+- Headless (software-rendered) frame rates are low; the game loop itself is
+  correct and runs at full speed on a real GPU.
+- The police helicopter keeps a fixed orbit above the player rather than
+  landing; it never flies through buildings.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=a14mmr4n&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>

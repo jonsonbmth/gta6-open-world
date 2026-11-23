@@ -1,142 +1,127 @@
-// Aurelia Bay — jobs and story. Eight staged jobs with named contacts,
-// objectives, timers and dialogue. The active job (7/8, THE EMBER RUN) is
-// the one the screenshots show: steal the car, lose the heat, reach the
-// garage, deliver to Vera. Each stage has a GPS target the minimap routes
-// to, and completing a stage pays out and advances the story.
-(function () {
-  'use strict';
-  var U = window.AB.util;
+// Missions and story: 8 jobs for the fixer Vera "The Velvet" Castillo, each
+// with stages, a timer, a target, and dialogue. The player progresses by
+// reaching objectives; finishing a job pays out and unlocks the next. The
+// crew of three (driver, mechanic, lookout) grant abilities on cooldown.
 
-  var JOBS = [
-    { id: 1, name: 'FIRST LIGHT', contact: 'Vera "The Velvet" Castillo', role: 'FIXER',
-      brief: 'Prove you can drive. Take the coupe from Coral Market to the Gilded Quay garage without a scratch.',
-      stages: ['Take the coupe', 'Drive to the garage', 'Park it clean'], reward: 1200, done: true },
-    { id: 2, name: 'SALT AND STATIC', contact: 'Lena "Luz" Mora', role: 'DRIVER',
-      brief: 'Lena needs a wheelman for a midnight pickup on Marina Row. Keep it quiet, keep it quick.',
-      stages: ['Meet Lena at the pier', 'Drive the pickup route', 'Drop the package'], reward: 2400, done: true },
-    { id: 3, name: 'THE LONG WAY HOME', contact: 'Hugo "Wrench" Salas', role: 'MECHANIC',
-      brief: 'A client car is impounded at the ABX lot. Hugo has the keys; you have the nerve.',
-      stages: ['Reach the impound lot', 'Take the Strada', 'Lose the patrol'], reward: 3100, done: true },
-    { id: 4, name: 'PAPER LANTERNS', contact: 'Nina "Hawk" Duarte', role: 'LOOKOUT',
-      brief: 'Nina spotted the courier. Tail him through Palma Row and lift the ledger when he stops.',
-      stages: ['Tail the courier', 'Lift the ledger', 'Vanish'], reward: 4800, done: true },
-    { id: 5, name: 'HIGH WATER', contact: 'Vera "The Velvet" Castillo', role: 'FIXER',
-      brief: 'The tide brings a boatload of trouble to Ember Strand. Meet it, move it, make it gone.',
-      stages: ['Meet the boat', 'Load the cargo', 'Deliver to the warehouse'], reward: 6500, done: true },
-    { id: 6, name: 'STATIC ON THE LINE', contact: 'Kiki "Switch" Okafor', role: 'HACKER',
-      brief: 'Kiki jammed the ABPD dispatch for six minutes. That is your whole window. Use it.',
-      stages: ['Reach the relay', 'Hold the signal', 'Get clear'], reward: 8200, done: true },
-    { id: 7, name: 'THE EMBER RUN', contact: 'Vera "The Velvet" Castillo', role: 'FIXER',
-      brief: 'Six guns and a chopper, Dante — lose the lights or lose the car. Shake the ABPD, then reach the garage.',
-      stages: ['Steal the Dorado GT', 'Lose the heat', 'Reach the garage', 'Deliver the car to Vera'],
-      reward: 12500, done: false },
-    { id: 8, name: 'GILDED TIDE', contact: 'Marco "The Tide" Reyes', role: 'SMUGGLER',
-      brief: 'The last boat out of Aurelia Bay leaves at dawn. Be on it, or be the reason it never sails.',
-      stages: ['Reach the marina', 'Hold the dock', 'Board the boat'], reward: 20000, done: false, locked: true }
-  ];
+export const CREW = [
+  { key: 'Z', name: 'Lena "Luz" Mora', role: 'Driver', ability: 'SWAP PLATES', desc: 'Lose one wanted star', cooldown: 45 },
+  { key: 'X', name: 'Hugo "Wrench" Salas', role: 'Mechanic', ability: 'QUICK FIX', desc: 'Repair the car to full', cooldown: 60 },
+  { key: 'C', name: 'Nina "Hawk" Duarte', role: 'Lookout', ability: 'EYES OUT', desc: 'Mark all police for 20 s', cooldown: 50 },
+];
 
-  var DIALOGUE = {
-    start: [
-      { who: 'VERA', text: 'Six guns and a chopper, Dante — lose the lights or lose the car.' },
-      { who: 'DANTE', text: 'Relax, Vera. The Dorado does the talking.' }
-    ],
-    heat: [
-      { who: 'LENA', text: 'Falcon-2 is on your tail. Cut through Coral Market, lose them in the stalls.' },
-      { who: 'HUGO', text: 'Engine sounds fine from here. Keep it that way.' }
-    ],
-    garage: [
-      { who: 'VERA', text: 'Garage is open. Bring her in slow — I want this one clean.' },
-      { who: 'NINA', text: 'Eyes out: two cruisers on Palma Row. You are clear on Sunset Mile.' }
-    ],
-    done: [
-      { who: 'VERA', text: 'Beautiful. The Velvet pays on delivery — twelve-five, as promised.' },
-      { who: 'DANTE', text: 'Tell Marco the tide is turning. I am ready for the last run.' }
-    ]
+export const JOBS = [
+  {
+    id: 1, name: 'FIRST LIGHT', client: 'Vera "The Velvet" Castillo',
+    brief: 'A courier van is waiting at Gilded Quay. Take it, lose the tail, bring it to the garage.',
+    stages: ['Steal the courier van', 'Lose the police tail', 'Deliver to the Ember Garage'],
+    payout: 1200,
+  },
+  {
+    id: 2, name: 'SALT IN THE WOUND', client: 'Vera "The Velvet" Castillo',
+    brief: 'The Harbor Boys moved our crates. Get them back from the pier warehouse.',
+    stages: ['Reach the pier warehouse', 'Take the crates', 'Return to the safehouse'],
+    payout: 1800,
+  },
+  {
+    id: 3, name: 'GOLDEN GECKO', client: 'Tomas Reyes',
+    brief: 'A gold-painted coupe is parked at Vidrio Dunes. It belongs to us now.',
+    stages: ['Find the golden coupe', 'Steal it without a scratch', 'Park it at the showroom'],
+    payout: 2400,
+  },
+  {
+    id: 4, name: 'MARKET SQUEEZE', client: 'Vera "The Velvet" Castillo',
+    brief: 'The Kerono Boys run the night market stalls. Clear them out, quietly.',
+    stages: ['Enter Coral Market', 'Clear the Kerono Boys (5)', 'Melt away'],
+    payout: 3000,
+  },
+  {
+    id: 5, name: 'HIGH TIDE', client: 'Tia Rosa',
+    brief: 'Sterling Vasko is making a run for it at the marina. Stop him.',
+    stages: ['Reach the marina', 'Stop Vasko\u2019s guards (6)', 'Take Vasko alive'],
+    payout: 4200,
+  },
+  {
+    id: 6, name: 'ORU\u2019S FALL', client: 'Mira Kesang',
+    brief: 'Oru\u2019s Regent is heading for Kumala Pier. Wreck it before it reaches the water.',
+    stages: ['Chase the Regent', 'Wreck the Regent', 'Vanish'],
+    payout: 5500,
+  },
+  {
+    id: 7, name: 'THE LONG WAY HOME', client: 'Vera "The Velvet" Castillo',
+    brief: 'A convoy crosses Ember Heights at dusk. Hit the middle truck and get out.',
+    stages: ['Find the convoy', 'Hit the middle truck', 'Lose the heat'],
+    payout: 6800,
+  },
+  {
+    id: 8, name: 'THE EMBER RUN', client: 'Vera "The Velvet" Castillo',
+    brief: 'Six guns and a chopper, Dante — lose the lights or lose the car. Shake the ABPD, then reach the garage.',
+    stages: ['Shake the first cruisers', 'Lose the helicopter', 'Reach the Ember Garage', 'Deliver the ledger'],
+    payout: 9000,
+  },
+];
+
+export const DIALOGUE = [
+  { from: 'VERA · FIXER', text: 'Six guns and a chopper, Dante — lose the lights or lose the car.' },
+  { from: 'VERA · FIXER', text: 'The garage door is open. Do not bring the whole city with you.' },
+  { from: 'LENA · DRIVER', text: 'Plates swapped. They are looking for a ghost now.' },
+  { from: 'HUGO · MECHANIC', text: 'Engine sounds sweet again. Try not to bend it this time.' },
+  { from: 'NINA · LOOKOUT', text: 'Two cruisers on Sunset Mile, one on the bridge. Eyes up.' },
+  { from: 'VERA · FIXER', text: 'The ledger is worth more than the car. Get it home.' },
+];
+
+export function createMissions() {
+  const state = {
+    jobIndex: 7, // The Ember Run is the active job (8/8).
+    stageIndex: 1, // "Lose the helicopter" — the chase is on.
+    timer: 191, // 03:11 on the clock.
+    money: 27850,
+    rep: 2310,
+    repLevel: 6,
+    completed: 7,
+    crewCooldowns: { Z: 0, X: 0, C: 0 },
+    dialogueIndex: 0,
   };
-
-  // GPS targets per stage of the active job (world coordinates).
-  var STAGE_TARGETS = [
-    { x: -52, z: -48, label: 'Dorado GT' },
-    { x: 0, z: 0, label: 'Lose the heat' },
-    { x: -28, z: 96, label: 'Gilded Quay garage' },
-    { x: -28, z: 96, label: 'Vera at the garage' }
-  ];
-
-  function makeMissions() {
-    var activeId = 7;
-    var stage = 1; // 0-based index into the active job's stages; start at 1 (Lose the heat) for the chase shot
-    var timer = 192; // 3:12 on the clock
-    var dialogIdx = 0;
-    var dialogQueue = DIALOGUE.start.slice();
-    var completedCount = 6;
-
-    function activeJob() {
-      return JOBS[activeId - 1];
-    }
-
-    function currentStageText() {
-      return activeJob().stages[stage];
-    }
-
-    function nextStageText() {
-      var stages = activeJob().stages;
-      return stage + 1 < stages.length ? stages[stage + 1] : 'Job complete';
-    }
-
-    function target() {
-      return STAGE_TARGETS[Math.min(stage, STAGE_TARGETS.length - 1)];
-    }
-
-    function advance() {
-      stage++;
-      if (stage >= activeJob().stages.length) {
-        // job complete
-        activeJob().done = true;
-        completedCount++;
-        dialogQueue = DIALOGUE.done.slice();
-        dialogIdx = 0;
-        return { completed: true, reward: activeJob().reward };
+  return {
+    state,
+    currentJob() {
+      return JOBS[state.jobIndex];
+    },
+    currentStage() {
+      const job = JOBS[state.jobIndex];
+      return job.stages[state.stageIndex];
+    },
+    advanceStage() {
+      const job = JOBS[state.jobIndex];
+      if (state.stageIndex < job.stages.length - 1) {
+        state.stageIndex += 1;
+      } else {
+        state.money += job.payout;
+        state.completed += 1;
+        state.rep += 240;
+        if (state.jobIndex < JOBS.length - 1) {
+          state.jobIndex += 1;
+          state.stageIndex = 0;
+          state.timer = 300;
+        }
       }
-      if (stage === 2) dialogQueue = DIALOGUE.garage.slice();
-      else if (stage === 1) dialogQueue = DIALOGUE.heat.slice();
-      dialogIdx = 0;
-      return { completed: false };
-    }
-
-    function currentDialogue() {
-      return dialogQueue[dialogIdx] || dialogQueue[dialogQueue.length - 1];
-    }
-
-    function nextDialogue() {
-      if (dialogIdx < dialogQueue.length - 1) dialogIdx++;
-      return currentDialogue();
-    }
-
-    return {
-      jobs: JOBS,
-      get activeId() { return activeId; },
-      get stage() { return stage; },
-      get timer() { return timer; },
-      get completedCount() { return completedCount; },
-      activeJob: activeJob,
-      currentStageText: currentStageText,
-      nextStageText: nextStageText,
-      target: target,
-      advance: advance,
-      currentDialogue: currentDialogue,
-      nextDialogue: nextDialogue,
-      tickTimer: function (dt) {
-        timer = Math.max(0, timer - dt);
-        return timer;
-      },
-      setStage: function (s) { stage = U.clamp(s, 0, activeJob().stages.length - 1); },
-      setTimer: function (t) { timer = t; },
-      completionPercent: function () {
-        var done = JOBS.filter(function (j) { return j.done; }).length;
-        return Math.round((done / JOBS.length) * 100);
+    },
+    nextDialogue() {
+      const line = DIALOGUE[state.dialogueIndex % DIALOGUE.length];
+      state.dialogueIndex += 1;
+      return line;
+    },
+    useAbility(key) {
+      if (state.crewCooldowns[key] > 0) return null;
+      const crew = CREW.find((c) => c.key === key);
+      if (!crew) return null;
+      state.crewCooldowns[key] = crew.cooldown;
+      return crew;
+    },
+    update(dt) {
+      state.timer = Math.max(0, state.timer - dt);
+      for (const key of Object.keys(state.crewCooldowns)) {
+        state.crewCooldowns[key] = Math.max(0, state.crewCooldowns[key] - dt);
       }
-    };
-  }
-
-  window.AB.missions = { makeMissions: makeMissions, JOBS: JOBS };
-})();
+    },
+  };
+}
