@@ -1,33 +1,43 @@
-// AURELIA BAY dev server: serves game/ at http://localhost:8080 so the game
-// can be played in a desktop browser. Static files only, no build step.
-// Usage: node serve.ts (or PORT=8081 node serve.ts)
+// SPDX-License-Identifier: MIT
+// Local static server for AURELIA BAY (Node 22, standard library only).
+// Serves game/ on http://localhost:8080 so the game can be playtested in a
+// desktop browser. Usage: node serve.ts (PORT env overrides the port).
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { createServer } from 'node:http';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const gameRoot = join(fileURLToPath(new URL('.', import.meta.url)), 'game');
-const mimeTypes: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-};
+const root = fileURLToPath(new URL("./game", import.meta.url));
 const port = Number(process.env.PORT ?? 8080);
 
-createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
-  const file = join(gameRoot, urlPath === '/' ? 'index.html' : urlPath);
-  if (!file.startsWith(gameRoot) || !existsSync(file) || !statSync(file).isFile()) {
-    res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('not found');
-    return;
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+};
+
+const server = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    let path = normalize(join(root, decodeURIComponent(url.pathname)));
+    if (!path.startsWith(root)) {
+      res.writeHead(403);
+      res.end("forbidden");
+      return;
+    }
+    if (url.pathname.endsWith("/")) path = join(path, "index.html");
+    const data = await readFile(path);
+    res.writeHead(200, { "content-type": TYPES[extname(path)] ?? "application/octet-stream" });
+    res.end(data);
+  } catch {
+    res.writeHead(404, { "content-type": "text/plain" });
+    res.end("not found");
   }
-  res.writeHead(200, { 'content-type': mimeTypes[extname(file)] ?? 'application/octet-stream' });
-  res.end(readFileSync(file));
-}).listen(port, () => console.log(`AURELIA BAY at http://localhost:${port}`));
+});
+
+server.listen(port, () => console.log(`AURELIA BAY at http://localhost:${port}`));

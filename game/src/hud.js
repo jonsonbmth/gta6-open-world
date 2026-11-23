@@ -1,425 +1,325 @@
-// HUD: every 2D interface element — mission card, dispatch board, weapons,
-// crew cards, circular minimap with GPS route, health/armour/reputation,
-// speed, dialogue, score popups, the start screen and the pause menu with
-// its 9-district map. All DOM + canvas 2D; the 3D scene stays in main.js.
+// HUD, minimap, pause menu and start screen for AURELIA BAY. All DOM — the
+// 3D canvas stays clean and the interface reads like a real open-world game:
+// mission card, dispatch board, crew cards, bars, circular minimap with a
+// GPS route, speedometer, radio line, dialogue bar and score popups.
+(function () {
+  const AB = window.AB || (window.AB = {});
+  const U = AB.Util;
 
-import { el, formatMoney, formatClock } from './util.js';
-import { DISTRICTS, AVENUES, STREETS } from './city.js';
-import { CREW } from './missions.js';
+  const WEAPONS = [
+    { name: 'PISTOL', ammo: '∞' },
+    { name: 'SMG', ammo: '240' },
+    { name: 'SHOTGUN', ammo: '32' },
+    { name: 'RIFLE', ammo: '90' },
+  ];
 
-const WEAPONS = [
-  { key: '1', name: 'FISTS', ammo: '\u221e' },
-  { key: '2', name: 'P9', ammo: 96 },
-  { key: '3', name: 'VIPER SMG', ammo: 140 },
-  { key: '4', name: '12G SHOTGUN', ammo: 24 },
-  { key: '5', name: 'AR-8', ammo: 'LOCKED' },
-  { key: '6', name: 'RPG', ammo: 'LOCKED' },
-];
-
-const RADIO_STATIONS = [
-  'SOL FM 101.3 — "Blue Skies"',
-  'SOL FM 101.3 — "Midnight Palms"',
-  'BAY FM 98.6 — "Neon Tideline"',
-  'PIER FM 104.1 — "Golden Hour"',
-];
-
-function starsHtml(n) {
-  let s = '';
-  for (let i = 0; i < 5; i++) s += i < n ? '\u2605' : '\u2606';
-  return s;
-}
-
-export function buildHUD(portraits) {
-  const hud = el('hud');
-
-  hud.innerHTML = `
-    <div id="mission-card" class="panel">
-      <div id="mission-job" class="mission-job"></div>
-      <div id="mission-title" class="mission-title"></div>
-      <div id="mission-brief" class="mission-brief"></div>
-      <div class="mission-progress"><div id="mission-bar"></div></div>
-      <div id="mission-stage" class="mission-stage"></div>
-      <div id="mission-next" class="mission-next"></div>
-    </div>
-    <div id="money-bar">
-      <div id="money" class="money"></div>
-      <div id="stars" class="stars"></div>
-      <div id="clock" class="clock"></div>
-      <div id="in-sight" class="in-sight">IN SIGHT · AIR-3</div>
-    </div>
-    <div id="weapons" class="panel"></div>
-    <div id="dispatch" class="panel">
-      <div class="dispatch-head"><span>ABPD DISPATCH</span><span id="dispatch-count"></span></div>
-      <div id="dispatch-rows"></div>
-      <div id="dispatch-foot" class="dispatch-foot"></div>
-    </div>
-    <div id="vera-card" class="panel crew-card">
-      <img id="vera-img" alt="">
-      <div><div class="crew-name">VERA "THE VELVET" CASTILLO</div><div id="vera-quote" class="crew-quote"></div></div>
-    </div>
-    <div id="crew-cards"></div>
-    <div id="minimap-wrap">
-      <canvas id="minimap" width="220" height="220"></canvas>
-      <div id="district-label" class="panel">
-        <div id="district-name" class="district-name"></div>
-        <div id="district-street" class="district-street"></div>
-        <div id="district-rep" class="district-rep"></div>
-        <div class="district-bar"><div id="district-bar-fill"></div></div>
-      </div>
-    </div>
-    <div id="stats">
-      <div class="stat-row"><span>HEALTH</span><div class="stat-bar"><div id="health-fill" class="fill health"></div></div><b id="health-num"></b></div>
-      <div class="stat-row"><span>ARMOUR</span><div class="stat-bar"><div id="armour-fill" class="fill armour"></div></div><b id="armour-num"></b></div>
-      <div class="stat-row"><span>REP</span><div class="stat-bar"><div id="rep-fill" class="fill rep"></div></div><b id="rep-num"></b></div>
-      <div id="rep-level" class="rep-level"></div>
-      <div id="speed" class="speed"></div>
-      <div id="car-name" class="car-name"></div>
-      <div id="car-condition" class="car-condition"></div>
-      <div id="radio" class="radio"></div>
-    </div>
-    <div id="dialogue" class="panel">
-      <img id="dialogue-img" alt="">
-      <div><div id="dialogue-from" class="dialogue-from"></div><div id="dialogue-text" class="dialogue-text"></div></div>
-    </div>
-    <div id="popup"></div>
-    <div id="prompt" class="prompt"></div>
-    <div id="hint" class="hint"></div>
-    <div id="vignette"></div>
-  `;
-
-  el('vera-img').src = portraits.vera;
-  el('dialogue-img').src = portraits.vera;
-
-  // Weapons list.
-  el('weapons').innerHTML = WEAPONS.map((w, i) => `
-    <div class="weapon ${i === 1 ? 'selected' : ''}"><span class="wkey">${w.key}</span><span class="wname">${w.name}</span><span class="wammo">${w.ammo}</span></div>
-  `).join('');
-
-  // Crew ability cards.
-  el('crew-cards').innerHTML = CREW.map((c) => `
-    <div class="panel crew-card" id="crew-${c.key}">
-      <img src="${portraits[c.key === 'Z' ? 'lena' : c.key === 'X' ? 'hugo' : 'nina']}" alt="">
-      <div class="crew-body">
-        <div class="crew-name">${c.ability}</div>
-        <div class="crew-desc">${c.name.split(' ')[0]} · ${c.role} — ${c.desc}</div>
-      </div>
-      <span class="crew-key">${c.key}</span>
-      <span class="crew-ready" id="crew-ready-${c.key}">READY</span>
-    </div>
-  `).join('');
-
-  // Start screen.
-  const start = document.createElement('div');
-  start.id = 'start-screen';
-  start.innerHTML = `
-    <div class="title-block">
-      <div class="game-title">AURELIA BAY</div>
-      <div class="game-sub">ISLE OF EMBERS · AN OPEN-WORLD CRIME STORY</div>
-    </div>
-    <div class="start-menu">
-      <button class="menu-item selected" data-action="continue">CONTINUE</button>
-      <button class="menu-item" data-action="new">NEW GAME</button>
-      <button class="menu-item" data-action="load">LOAD GAME</button>
-      <button class="menu-item" data-action="settings">SETTINGS</button>
-    </div>
-    <div class="start-saves">
-      <div class="save-slot"><b>SLOT 1 · ACT III — THE EMBER RUN</b><span>66.1% complete · 7/8 jobs · Sunset Mile · $27,850 · 13:42</span></div>
-      <div class="save-slot"><b>SLOT 2 · ACT II — MARKET SQUEEZE</b><span>32.8% complete · 3/8 jobs · Coral Market · $12,650 · 18:23</span></div>
-      <div class="save-slot empty"><b>SLOT 3 · EMPTY</b><span>Save at the Ember Garage or from the pause menu</span></div>
-    </div>
-    <div class="start-foot">An original open-world crime story on an island that never existed · Keyboard &amp; mouse</div>
-  `;
-  document.body.appendChild(start);
-
-  // Pause menu.
-  const pause = document.createElement('div');
-  pause.id = 'pause-menu';
-  pause.classList.add('hidden');
-  pause.innerHTML = `
-    <div class="pause-head"><span>AURELIA BAY · <b>PAUSED</b></span><span id="pause-clock"></span></div>
-    <div class="pause-tabs">
-      <button class="pause-tab selected" data-tab="map">MAP</button>
-      <button class="pause-tab" data-tab="story">STORY</button>
-      <button class="pause-tab" data-tab="stats">STATS</button>
-      <button class="pause-tab" data-tab="crew">CREW</button>
-      <button class="pause-tab" data-tab="save">SAVE</button>
-    </div>
-    <div class="pause-body">
-      <div class="pause-map-col">
-        <canvas id="pause-map" width="640" height="460"></canvas>
-        <div class="pause-map-foot">Click the map to set a waypoint · ESC resume</div>
-      </div>
-      <div class="pause-side">
-        <div class="pause-side-title">CITY MAP</div>
-        <div class="pause-side-text">Nine districts, one coastline. The yellow line is your GPS route to the Ember Garage — follow the roads, not the crow.</div>
-        <div class="legend">
-          <div><span class="dot yellow"></span>Mission target</div>
-          <div><span class="dot white"></span>You</div>
-          <div><span class="dot red"></span>Police unit</div>
-          <div><span class="dot orange"></span>Police helicopter</div>
-          <div><span class="dot green"></span>Safehouse</div>
-          <div><span class="dot coral"></span>Job start</div>
-        </div>
-        <div class="pause-tip">TIP: cut through Vidrio Dunes to shake a tail — the alleys are too tight for cruisers.</div>
-        <div class="pause-stats">
-          <div><b>66.1%</b><span>COMPLETE</span></div>
-          <div><b>7/8</b><span>JOBS DONE</span></div>
-          <div><b>41</b><span>CARS STOLEN</span></div>
-          <div><b>12</b><span>COPS ESCAPED</span></div>
-        </div>
-      </div>
-    </div>
-    <button id="resume-btn" class="resume-btn">RESUME</button>
-  `;
-  document.body.appendChild(pause);
-
-  const minimap = el('minimap');
-  const mmCtx = minimap.getContext('2d');
-  const pauseMap = el('pause-map');
-  const pmCtx = pauseMap.getContext('2d');
-
-  function worldToMini(x, z, w, h = w) {
-    return [((x + 180) / 360) * w, ((z + 180) / 360) * h];
-  }
-
-  function drawMinimap(state) {
-    const s = 220;
-    mmCtx.clearRect(0, 0, s, s);
-    mmCtx.save();
-    mmCtx.beginPath();
-    mmCtx.arc(s / 2, s / 2, s / 2 - 2, 0, Math.PI * 2);
-    mmCtx.clip();
-    // Sea + land.
-    mmCtx.fillStyle = '#2e7ba6';
-    mmCtx.fillRect(0, 0, s, s);
-    mmCtx.fillStyle = '#4a7a52';
-    mmCtx.fillRect(60, 0, s - 60, s);
-    // Sand strip.
-    mmCtx.fillStyle = '#e8d5a8';
-    mmCtx.fillRect(52, 0, 10, s);
-    // Roads.
-    mmCtx.strokeStyle = '#d8d8d8';
-    mmCtx.lineWidth = 3;
-    for (const ax of AVENUES) {
-      const [mx] = worldToMini(ax, 0, s);
-      mmCtx.beginPath(); mmCtx.moveTo(mx, 0); mmCtx.lineTo(mx, s); mmCtx.stroke();
-    }
-    for (const sz of STREETS) {
-      const [, mz] = worldToMini(0, sz, s);
-      mmCtx.beginPath(); mmCtx.moveTo(0, mz); mmCtx.lineTo(s, mz); mmCtx.stroke();
-    }
-    // GPS route: player to the Ember Garage (0, -120).
-    const [px, pz] = worldToMini(state.player.x, state.player.z, s);
-    const [gx, gz] = worldToMini(0, -120, s);
-    mmCtx.strokeStyle = '#ffd21f';
-    mmCtx.lineWidth = 3;
-    mmCtx.setLineDash([6, 4]);
-    mmCtx.beginPath();
-    mmCtx.moveTo(px, pz);
-    mmCtx.lineTo(px, gz);
-    mmCtx.lineTo(gx, gz);
-    mmCtx.stroke();
-    mmCtx.setLineDash([]);
-    // Mission target.
-    mmCtx.fillStyle = '#ffd21f';
-    mmCtx.beginPath(); mmCtx.arc(gx, gz, 5, 0, Math.PI * 2); mmCtx.fill();
-    // Police blips.
-    mmCtx.fillStyle = '#ff3b30';
-    for (const c of state.police) {
-      const [cx, cz] = worldToMini(c.x, c.z, s);
-      mmCtx.beginPath(); mmCtx.arc(cx, cz, 3.5, 0, Math.PI * 2); mmCtx.fill();
-    }
-    // Heli blip.
-    if (state.heli) {
-      const [hx, hz] = worldToMini(state.heli.x, state.heli.z, s);
-      mmCtx.fillStyle = '#ff9500';
-      mmCtx.beginPath(); mmCtx.arc(hx, hz, 4, 0, Math.PI * 2); mmCtx.fill();
-    }
-    // Player arrow.
-    mmCtx.save();
-    mmCtx.translate(px, pz);
-    mmCtx.rotate(state.heading);
-    mmCtx.fillStyle = '#ffffff';
-    mmCtx.strokeStyle = '#111111';
-    mmCtx.lineWidth = 1.5;
-    mmCtx.beginPath();
-    mmCtx.moveTo(0, -9);
-    mmCtx.lineTo(6, 7);
-    mmCtx.lineTo(-6, 7);
-    mmCtx.closePath();
-    mmCtx.fill();
-    mmCtx.stroke();
-    mmCtx.restore();
-    mmCtx.restore();
-    // Rim + north marker.
-    mmCtx.strokeStyle = '#f2f2ee';
-    mmCtx.lineWidth = 3;
-    mmCtx.beginPath();
-    mmCtx.arc(s / 2, s / 2, s / 2 - 2, 0, Math.PI * 2);
-    mmCtx.stroke();
-    mmCtx.fillStyle = '#ffffff';
-    mmCtx.font = 'bold 13px Arial';
-    mmCtx.textAlign = 'center';
-    mmCtx.fillText('N', s / 2, 16);
-  }
-
-  function drawPauseMap(state) {
-    const w = 640;
-    const h = 460;
-    pmCtx.clearRect(0, 0, w, h);
-    // Ocean.
-    pmCtx.fillStyle = '#2e8fb8';
-    pmCtx.fillRect(0, 0, w, h);
-    // Districts as colored blocks on the land.
-    const landX = 120;
-    for (const d of DISTRICTS) {
-      const [dx, dz] = worldToMini(d.x, d.z, w, h);
-      const [dx2] = worldToMini(d.x + 60, d.z, w, h);
-      pmCtx.fillStyle = d.color;
-      pmCtx.globalAlpha = 0.85;
-      pmCtx.fillRect(Math.max(landX, dx - 30), dz - 34, Math.max(60, dx2 - dx - 10), 68);
-      pmCtx.globalAlpha = 1;
-      pmCtx.fillStyle = '#ffffff';
-      pmCtx.font = 'bold 13px Arial';
-      pmCtx.textAlign = 'center';
-      pmCtx.fillText(d.name.toUpperCase(), Math.max(landX + 40, dx), dz - 40);
-    }
-    // Roads.
-    pmCtx.strokeStyle = '#f2f2ee';
-    pmCtx.lineWidth = 2;
-    for (const ax of AVENUES) {
-      const [mx] = worldToMini(ax, 0, w, h);
-      pmCtx.beginPath(); pmCtx.moveTo(mx, 0); pmCtx.lineTo(mx, h); pmCtx.stroke();
-    }
-    for (const sz of STREETS) {
-      const [, mz] = worldToMini(0, sz, w, h);
-      pmCtx.beginPath(); pmCtx.moveTo(landX, mz); pmCtx.lineTo(w, mz); pmCtx.stroke();
-    }
-    // GPS route.
-    const [px, pz] = worldToMini(state.player.x, state.player.z, w, h);
-    const [gx, gz] = worldToMini(0, -120, w, h);
-    pmCtx.strokeStyle = '#ffd21f';
-    pmCtx.lineWidth = 4;
-    pmCtx.beginPath();
-    pmCtx.moveTo(px, pz);
-    pmCtx.lineTo(px, gz);
-    pmCtx.lineTo(gx, gz);
-    pmCtx.stroke();
-    // Markers.
-    const marker = (x, z, color, label) => {
-      const [mx, mz] = worldToMini(x, z, w, h);
-      pmCtx.fillStyle = color;
-      pmCtx.beginPath(); pmCtx.arc(mx, mz, 8, 0, Math.PI * 2); pmCtx.fill();
-      pmCtx.fillStyle = '#111111';
-      pmCtx.font = 'bold 11px Arial';
-      pmCtx.textAlign = 'center';
-      pmCtx.fillText(label, mx, mz + 4);
+  function createHUD(game) {
+    const H = {
+      weaponIdx: 0, dialogueIdx: 0, dialogueTimer: 0,
+      portraits: AB.Faces.portraits(),
+      minimapCtx: null, mapCtx: null, paused: false, started: false,
     };
-    marker(0, -120, '#ffd21f', 'G');
-    marker(state.player.x, state.player.z, '#ffffff', '');
-    marker(-60, 60, '#7fb069', 'H');
-    marker(60, -40, '#ff8a7a', 'J');
-    marker(-120, -40, '#ff8a7a', 'J');
-    if (state.heli) marker(state.heli.x, state.heli.z, '#ff9500', '');
+    H.minimapCtx = U.$('#minimap-canvas').getContext('2d');
+    H.mapCtx = U.$('#pause-map-canvas').getContext('2d');
+
+    // --- Static panels ---
+    function fillCrew() {
+      const wrap = U.$('#crew-cards');
+      wrap.innerHTML = '';
+      AB.Faces.CREW.slice(0, 4).forEach(function (c) {
+        const card = U.el('div', 'crew-card', wrap);
+        const img = U.el('img', 'crew-face', card);
+        img.src = H.portraits[c.name];
+        img.alt = c.name;
+        const info = U.el('div', 'crew-info', card);
+        U.el('div', 'crew-name', info).textContent = c.name;
+        U.el('div', 'crew-role', info).textContent = c.role;
+      });
+    }
+    function fillDispatch() {
+      const wrap = U.$('#dispatch-list');
+      wrap.innerHTML = '';
+      AB.Police.DISPATCH_UNITS.forEach(function (u) {
+        const row = U.el('div', 'dispatch-row', wrap);
+        U.el('span', 'dispatch-id', row).textContent = u.id;
+        U.el('span', 'dispatch-area', row).textContent = u.area;
+        const st = U.el('span', 'dispatch-status', row);
+        st.textContent = u.status;
+        st.dataset.unit = u.id;
+      });
+    }
+    function fillWeapons() {
+      const wrap = U.$('#weapon-list');
+      wrap.innerHTML = '';
+      WEAPONS.forEach(function (w, i) {
+        const row = U.el('div', 'weapon-row', wrap);
+        row.dataset.idx = i;
+        U.el('span', 'weapon-name', row).textContent = w.name;
+        U.el('span', 'weapon-ammo', row).textContent = w.ammo;
+      });
+      selectWeapon(0);
+    }
+    function selectWeapon(i) {
+      H.weaponIdx = i;
+      document.querySelectorAll('.weapon-row').forEach(function (r) {
+        r.classList.toggle('active', Number(r.dataset.idx) === i);
+      });
+    }
+    function fillStory() {
+      const wrap = U.$('#story-list');
+      wrap.innerHTML = '';
+      AB.Missions.JOBS.forEach(function (j) {
+        const row = U.el('div', 'job-row', wrap);
+        if (j.id === game.mission.currentJob) row.classList.add('current');
+        if (j.id < game.mission.currentJob) row.classList.add('done');
+        U.el('span', 'job-id', row).textContent = 'JOB ' + j.id;
+        const mid = U.el('div', 'job-mid', row);
+        U.el('div', 'job-title', mid).textContent = j.title;
+        U.el('div', 'job-brief', mid).textContent = j.brief;
+        U.el('span', 'job-reward', row).textContent = '$' + j.reward.toLocaleString();
+      });
+    }
+    fillCrew(); fillDispatch(); fillWeapons(); fillStory();
+
+    // --- Minimap + pause map drawing ---
+    function drawMap(ctx, size, opts) {
+      const o = opts || {};
+      const W = size, scale = W / 400;
+      const px = function (x) { return (x + 200) * scale; };
+      const pz = function (z) { return (z + 200) * scale; };
+      ctx.clearRect(0, 0, W, W);
+      ctx.fillStyle = '#1d2b33';
+      ctx.fillRect(0, 0, W, W);
+      // Ocean + sand (west).
+      ctx.fillStyle = '#2f7fb8';
+      ctx.fillRect(0, 0, px(-190), W);
+      ctx.fillStyle = '#dcc691';
+      ctx.fillRect(px(-190), 0, px(-86) - px(-190), W);
+      // City ground.
+      ctx.fillStyle = '#2b2f33';
+      ctx.fillRect(px(-150), pz(-170), px(170) - px(-150), pz(170) - pz(-170));
+      // Blocks.
+      ctx.fillStyle = '#4a4f45';
+      AB.City.BLOCKS.forEach(function (b) {
+        ctx.fillRect(px(b[0]), pz(b[2]), (b[1] - b[0]) * scale, (b[3] - b[2]) * scale);
+      });
+      // Streets (bright lines over the blocks).
+      ctx.strokeStyle = '#7d838a';
+      ctx.lineWidth = Math.max(1.5, 14 * scale);
+      ctx.beginPath(); ctx.moveTo(px(0), pz(-170)); ctx.lineTo(px(0), pz(170)); ctx.stroke();
+      ctx.lineWidth = Math.max(1.5, 12 * scale);
+      ctx.beginPath(); ctx.moveTo(px(-150), pz(0)); ctx.lineTo(px(170), pz(0)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px(-71), pz(-170)); ctx.lineTo(px(-71), pz(170)); ctx.stroke();
+      ctx.lineWidth = Math.max(1, 10 * scale);
+      [-80, 80].forEach(function (z) { ctx.beginPath(); ctx.moveTo(px(-150), pz(z)); ctx.lineTo(px(170), pz(z)); ctx.stroke(); });
+      [60, -120].forEach(function (x) { ctx.beginPath(); ctx.moveTo(px(x), pz(-170)); ctx.lineTo(px(x), pz(170)); ctx.stroke(); });
+      // GPS route (Manhattan path via the nearest east-west street).
+      const p = game.playerPos, b = game.mission.beacon ? game.mission.beacon.position : null;
+      if (b && o.route) {
+        const ez = [0, -80, 80].reduce(function (best, z) {
+          return Math.abs(z - (p.z + b.z) / 2) < Math.abs(best - (p.z + b.z) / 2) ? z : best;
+        }, 0);
+        ctx.strokeStyle = '#37e0ff';
+        ctx.lineWidth = Math.max(2, 3 * scale);
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(px(p.x), pz(p.z));
+        ctx.lineTo(px(p.x), pz(ez));
+        ctx.lineTo(px(b.x), pz(ez));
+        ctx.lineTo(px(b.x), pz(b.z));
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Objective beacon.
+      if (b) {
+        ctx.fillStyle = '#f1c40f';
+        ctx.beginPath();
+        ctx.moveTo(px(b.x), pz(b.z) - 6); ctx.lineTo(px(b.x) + 5, pz(b.z));
+        ctx.lineTo(px(b.x), pz(b.z) + 6); ctx.lineTo(px(b.x) - 5, pz(b.z));
+        ctx.fill();
+      }
+      // Police blips + heli.
+      ctx.fillStyle = '#4aa8ff';
+      game.police.cruisers.forEach(function (c) {
+        ctx.beginPath(); ctx.arc(px(c.position.x), pz(c.position.z), 3, 0, 7); ctx.fill();
+      });
+      if (game.police.wanted >= 3) {
+        ctx.fillStyle = '#ffe066';
+        ctx.beginPath(); ctx.arc(px(game.heli.position.x), pz(game.heli.position.z), 4, 0, 7); ctx.fill();
+      }
+      // Player arrow.
+      ctx.save();
+      ctx.translate(px(p.x), pz(p.z));
+      ctx.rotate(-game.heading + Math.PI);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#111111'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
+      // District labels (pause map only), at their spread-out label points.
+      if (o.labels) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'center';
+        AB.Missions.DISTRICTS.forEach(function (d) {
+          ctx.fillText(d.name, px(d.lx !== undefined ? d.lx : d.x), pz(d.lz !== undefined ? d.lz : d.z));
+        });
+      }
+    }
+
+    function update(dt, t) {
+      const g = game;
+      // Mission card.
+      const job = AB.Missions.JOBS[g.mission.currentJob - 1];
+      U.$('#mission-title').textContent = 'JOB ' + job.id + ' / 8 — ' + job.title;
+      U.$('#mission-objective').textContent = g.mission.beacon
+        ? g.mission.stages[g.mission.stage].text
+        : 'JOB COMPLETE — AURELIA BAY IS YOURS';
+      U.$('#mission-reward').textContent = 'REWARD $' + job.reward.toLocaleString();
+      // Bars.
+      U.$('#bar-health').style.width = g.health + '%';
+      U.$('#bar-armour').style.width = g.armour + '%';
+      U.$('#bar-rep').style.width = g.mission.rep + '%';
+      // Money + stars.
+      U.$('#money').textContent = '$' + Math.floor(g.mission.money).toLocaleString();
+      let stars = '';
+      for (let i = 0; i < 5; i++) stars += i < g.police.wanted ? '★' : '☆';
+      U.$('#stars').textContent = stars;
+      U.$('#stars').className = g.police.wanted > 0 ? 'wanted-hot' : '';
+      // Speed.
+      const kmh = Math.round(Math.abs(g.speed) * 3.6);
+      U.$('#speed-num').textContent = kmh;
+      U.$('#speed-gear').textContent = g.inCar ? (g.speed < 0.5 ? 'P' : g.speed < 8 ? '1' : g.speed < 16 ? '2' : g.speed < 26 ? '3' : '4') : 'ON FOOT';
+      U.$('#speed-mode').textContent = g.inCar ? 'COUPE — AURELIA GT' : 'ON FOOT';
+      // District: street-based zones first (the main streets own their strips).
+      // At the central intersection the nearer street centerline wins.
+      const px = g.playerPos.x, pz = g.playerPos.z;
+      let best;
+      if (Math.abs(pz) < Math.abs(px) && Math.abs(pz) < 8) best = AB.Missions.DISTRICTS[1];
+      else if (Math.abs(px) < 10) best = AB.Missions.DISTRICTS[0];
+      else if (px < -60 && px > -88) best = AB.Missions.DISTRICTS[2];
+      else if (px <= -88) best = AB.Missions.DISTRICTS[4];
+      else {
+        best = AB.Missions.DISTRICTS[0];
+        let bd = 1e9;
+        AB.Missions.DISTRICTS.forEach(function (d) {
+          const dd = Math.hypot(px - d.x, pz - d.z);
+          if (dd < bd) { bd = dd; best = d; }
+        });
+      }
+      U.$('#district').textContent = best.name;
+      U.$('#district-sub').textContent = best.desc;
+      // Radio.
+      U.$('#radio-line').textContent = '♪ ' + g.audio.stationName();
+      // Minimap.
+      drawMap(H.minimapCtx, 200, { route: true });
+      // Dialogue rotation.
+      H.dialogueTimer -= dt;
+      if (H.dialogueTimer <= 0) {
+        H.dialogueTimer = 7;
+        const d = AB.Missions.DIALOGUE[H.dialogueIdx % AB.Missions.DIALOGUE.length];
+        H.dialogueIdx++;
+        U.$('#dialogue-who').textContent = d.who;
+        U.$('#dialogue-line').textContent = d.line;
+      }
+      // Dispatch statuses react to the wanted level.
+      document.querySelectorAll('.dispatch-status').forEach(function (el) {
+        if (g.police.wanted === 0) {
+          el.textContent = el.dataset.unit === 'AIR 1' ? 'GROUNDED' : 'PATROL';
+          el.classList.remove('hot');
+        } else if (el.dataset.unit === 'AIR 1') {
+          el.textContent = g.police.wanted >= 3 ? 'AIRBORNE' : 'STANDBY';
+          el.classList.toggle('hot', g.police.wanted >= 3);
+        } else {
+          el.textContent = 'PURSUIT';
+          el.classList.add('hot');
+        }
+      });
+    }
+
+    function showToast(text, sub) {
+      const toast = U.$('#toast');
+      U.$('#toast-main').textContent = text;
+      U.$('#toast-sub').textContent = sub || '';
+      toast.classList.remove('show');
+      void toast.offsetWidth; // restart the animation
+      toast.classList.add('show');
+      // In a staged shot the toast must still be there when the frame is
+      // captured, so it stays up instead of fading out.
+      if (game.shotMode) { toast.style.animation = 'none'; toast.style.opacity = '1'; }
+    }
+
+    function addScore(text, kind) {
+      const wrap = U.$('#score-popups');
+      const d = U.el('div', 'score-pop ' + (kind || ''), wrap);
+      d.textContent = text;
+      if (game.shotMode) { d.style.animation = 'none'; d.style.opacity = '1'; }
+      else setTimeout(function () { d.remove(); }, 2200);
+    }
+
+    function setPaused(on) {
+      H.paused = on;
+      U.$('#pause-menu').classList.toggle('open', on);
+      if (on) {
+        drawMap(H.mapCtx, 520, { route: true, labels: true });
+        fillStats();
+      }
+    }
+    function fillStats() {
+      const g = game;
+      const rows = [
+        ['MONEY', '$' + Math.floor(g.mission.money).toLocaleString()],
+        ['REPUTATION', g.mission.rep + '%'],
+        ['JOBS COMPLETE', (g.mission.currentJob - 1) + ' / 8'],
+        ['TOP SPEED', Math.round(g.topSpeed * 3.6) + ' KM/H'],
+        ['DISTANCE DRIVEN', (g.distance / 1000).toFixed(1) + ' KM'],
+        ['NEAR MISSES', String(g.nearMisses)],
+        ['WANTED LEVEL', g.police.wanted + ' / 5'],
+        ['TIME IN CITY', Math.floor(g.elapsed / 60) + ' MIN'],
+      ];
+      const wrap = U.$('#stats-list');
+      wrap.innerHTML = '';
+      rows.forEach(function (r) {
+        const row = U.el('div', 'stat-row', wrap);
+        U.el('span', 'stat-k', row).textContent = r[0];
+        U.el('span', 'stat-v', row).textContent = r[1];
+      });
+    }
+
+    function hideStart() {
+      H.started = true;
+      U.$('#start-screen').classList.add('hidden');
+    }
+
+    // Pause menu tabs.
+    document.querySelectorAll('.pause-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.pause-tab').forEach(function (x) { x.classList.remove('active'); });
+        document.querySelectorAll('.pause-panel').forEach(function (x) { x.classList.remove('active'); });
+        tab.classList.add('active');
+        U.$('#panel-' + tab.dataset.tab).classList.add('active');
+        if (tab.dataset.tab === 'map') drawMap(H.mapCtx, 520, { route: true, labels: true });
+        if (tab.dataset.tab === 'stats') fillStats();
+        if (tab.dataset.tab === 'story') fillStory();
+      });
+    });
+    // Save slots.
+    document.querySelectorAll('.save-slot').forEach(function (slot) {
+      slot.addEventListener('click', function () {
+        const data = {
+          money: game.mission.money, rep: game.mission.rep,
+          job: game.mission.currentJob, stage: game.mission.stage,
+          x: game.playerPos.x, z: game.playerPos.z, when: new Date().toISOString(),
+        };
+        try { localStorage.setItem('aurelia-save-' + slot.dataset.slot, JSON.stringify(data)); } catch (e) {}
+        slot.querySelector('.save-info').textContent = 'SAVED — JOB ' + data.job + ' · $' + Math.floor(data.money).toLocaleString();
+        showToast('GAME SAVED', 'SLOT ' + slot.dataset.slot);
+      });
+    });
+
+    H.update = update; H.showToast = showToast; H.addScore = addScore;
+    H.setPaused = setPaused; H.hideStart = hideStart; H.selectWeapon = selectWeapon;
+    return H;
   }
 
-  let lastPopup = 0;
-  // Main HUD panels that must hide behind the pause menu, or their text
-  // bleeds through the overlay and collides with the pause title.
-  const HUD_PANELS = ['mission-card', 'money-bar', 'weapons', 'dispatch', 'vera-card',
-    'crew-cards', 'minimap-wrap', 'stats', 'dialogue', 'hint', 'prompt', 'popup'];
-  return {
-    drawMinimap,
-    drawPauseMap,
-    showStart() {
-      el('start-screen').classList.remove('hidden');
-    },
-    hideStart() {
-      el('start-screen').classList.add('hidden');
-    },
-    showPause() {
-      el('pause-menu').classList.remove('hidden');
-      for (const id of HUD_PANELS) el(id).classList.add('hidden');
-    },
-    hidePause() {
-      el('pause-menu').classList.add('hidden');
-      for (const id of HUD_PANELS) el(id).classList.remove('hidden');
-    },
-    isPauseVisible() {
-      return !el('pause-menu').classList.contains('hidden');
-    },
-    popup(main, sub) {
-      const now = performance.now();
-      if (now - lastPopup < 900) return;
-      lastPopup = now;
-      const p = el('popup');
-      p.innerHTML = `<div class="popup-main">${main}</div><div class="popup-sub">${sub}</div>`;
-      p.classList.remove('pop');
-      void p.offsetWidth;
-      p.classList.add('pop');
-    },
-    setPrompt(text) {
-      el('prompt').textContent = text || '';
-      el('prompt').style.display = text ? 'block' : 'none';
-    },
-    setDialogue(from, text, img) {
-      el('dialogue-from').textContent = from;
-      el('dialogue-text').textContent = text;
-      if (img) el('dialogue-img').src = img;
-    },
-    setRadio(index) {
-      el('radio').textContent = '\u266A ' + RADIO_STATIONS[index % RADIO_STATIONS.length];
-    },
-    update(s) {
-      const job = s.job;
-      el('mission-job').textContent = `JOB ${job.id}/8 · ${job.name}`;
-      el('mission-title').textContent = s.stageTitle;
-      el('mission-brief').textContent = job.brief;
-      el('mission-bar').style.width = `${((s.stageIndex + 1) / job.stages.length) * 100}%`;
-      const mm = String(Math.floor(s.timer / 60)).padStart(2, '0');
-      const ss = String(Math.floor(s.timer % 60)).padStart(2, '0');
-      el('mission-stage').textContent = `STAGE ${s.stageIndex + 1}/${job.stages.length} · ${mm}:${ss} — ${s.stage}`;
-      el('mission-next').textContent = 'NEXT ' + (job.stages[s.stageIndex + 1] || 'Finish the job');
-      el('money').textContent = formatMoney(s.money);
-      el('stars').innerHTML = starsHtml(s.stars);
-      el('clock').textContent = 'FRI ' + formatClock(s.clockMinutes);
-      el('in-sight').style.display = s.heliActive ? 'block' : 'none';
-      el('dispatch-count').textContent = `${s.units.length} UNITS · CODE ${s.stars}`;
-      el('dispatch-rows').innerHTML = s.units.slice(0, 4).map((u) => `
-        <div class="dispatch-row"><span>${u.name}</span><span class="role">${u.role}</span><span>${u.dist} m</span></div>
-      `).join('');
-      el('dispatch-foot').textContent = s.units.length > 4
-        ? `+${s.units.length - 4} more units · roadblock ahead on Sunset Mile`
-        : s.stars > 0 ? 'All units responding' : 'No units responding';
-      el('vera-quote').textContent = '\u201C' + job.brief.split('.')[0] + '.\u201D';
-      for (const c of CREW) {
-        const cd = s.cooldowns[c.key];
-        const ready = el(`crew-ready-${c.key}`);
-        ready.textContent = cd > 0 ? `${Math.ceil(cd)}s` : 'READY';
-        ready.classList.toggle('cooling', cd > 0);
-      }
-      el('district-name').textContent = s.district.toUpperCase();
-      el('district-street').textContent = s.street;
-      el('district-rep').textContent = `${s.districtStanding} · ${s.districtRep}`;
-      el('district-bar-fill').style.width = `${s.districtRep}%`;
-      el('health-num').textContent = Math.round(s.health);
-      el('health-fill').style.width = `${s.health}%`;
-      el('armour-num').textContent = Math.round(s.armour);
-      el('armour-fill').style.width = `${s.armour}%`;
-      el('rep-num').textContent = s.rep;
-      el('rep-fill').style.width = `${Math.min(100, s.rep % 100)}%`;
-      el('rep-level').textContent = `REP ${s.repLevel} · FIXER`;
-      el('speed').textContent = s.inCar ? `${Math.round(Math.abs(s.speed) * 3.2)}` : '0';
-      el('speed').innerHTML += '<span>KM/H</span>';
-      el('car-name').textContent = s.inCar ? 'DORADO GT' : 'ON FOOT';
-      el('car-condition').textContent = s.inCar
-        ? `CONDITION ${Math.round(s.condition)}% · SPORTS · TUNE 2`
-        : 'CONDITION 100% · SPORTS · TUNE 2';
-      el('hint').textContent = s.inCar
-        ? 'WASD drive · E enter & exit car · SPACE handbrake · SHIFT run · M city map · R radio · F action · N mute'
-        : 'WASD walk · SHIFT run · E enter car · CLICK shoot · M city map · R radio · N mute';
-      el('pause-clock').textContent = `FRI ${formatClock(s.clockMinutes)} · JOB ${job.id}/8 · ${formatMoney(s.money)} · ${starsHtml(s.stars)}`;
-      drawMinimap(s);
-    },
-  };
-}
+  AB.HUD = { createHUD: createHUD };
+})();

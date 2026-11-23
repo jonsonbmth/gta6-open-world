@@ -6,154 +6,265 @@
 <link rel="icon" href="data:,">
 <title>AURELIA BAY — Open-World Crime Game</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1218; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #f2f2ee; }
-  #app, #app canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #hud { position: absolute; inset: 0; pointer-events: none; }
-  .panel {
-    background: rgba(16, 20, 26, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 10px;
-    padding: 10px 12px;
-    backdrop-filter: blur(2px);
-  }
-  .hidden { display: none !important; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a1016;
+    font-family: Arial, Helvetica, sans-serif; color: #fff; }
+  #game-root, #game-root canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel { background: rgba(8, 14, 20, 0.72); border: 1px solid rgba(241, 196, 15, 0.35);
+    border-radius: 8px; padding: 10px 12px; backdrop-filter: blur(3px); }
+  .hud { position: fixed; z-index: 10; pointer-events: none; }
+  .label { font-size: 10px; letter-spacing: 2px; color: #f1c40f; font-weight: bold; }
 
-  /* Mission card, top-left */
-  #mission-card { position: absolute; top: 14px; left: 14px; width: 348px; }
-  .mission-job { color: #ffd21f; font-weight: bold; font-size: 13px; letter-spacing: 0.5px; }
-  .mission-title { font-size: 22px; font-weight: bold; margin: 2px 0 4px; }
-  .mission-brief { font-size: 13px; line-height: 1.4; color: #d8d8d2; }
-  .mission-progress { height: 6px; background: rgba(255,255,255,0.15); border-radius: 3px; margin: 8px 0 6px; }
-  #mission-bar { height: 100%; background: #ffd21f; border-radius: 3px; width: 50%; }
-  .mission-stage { font-size: 12px; color: #ffb0a0; }
-  .mission-next { font-size: 12px; color: #9fd4e8; margin-top: 2px; }
+  /* Top-left: mission + weapons */
+  #mission-card { top: 14px; left: 14px; width: 300px; }
+  #mission-title { font-size: 15px; font-weight: bold; letter-spacing: 1px; margin: 3px 0 4px; }
+  #mission-objective { font-size: 12px; color: #dfe8ee; line-height: 1.4; }
+  #mission-reward { font-size: 11px; color: #f1c40f; margin-top: 5px; font-weight: bold; }
+  #weapons { top: 128px; left: 14px; width: 190px; }
+  .weapon-row { display: flex; justify-content: space-between; font-size: 12px;
+    padding: 3px 6px; border-radius: 4px; color: #c8d2da; }
+  .weapon-row.active { background: rgba(241, 196, 15, 0.25); color: #fff; font-weight: bold; }
 
-  /* Money / stars / clock, top-right */
-  #money-bar { position: absolute; top: 14px; right: 14px; text-align: right; }
-  .money { font-size: 30px; font-weight: bold; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
-  .stars { font-size: 20px; color: #ffd21f; letter-spacing: 3px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
-  .clock { font-size: 14px; font-weight: bold; color: #e8e8e8; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
-  .in-sight { display: none; font-size: 12px; font-weight: bold; color: #ff6b5e; margin-top: 2px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+  /* Top-right: money + dispatch */
+  #money-box { top: 14px; right: 14px; text-align: right; min-width: 170px; }
+  #money { font-size: 22px; font-weight: bold; color: #7ee787; }
+  #stars { font-size: 18px; letter-spacing: 3px; color: #ffd700; margin-top: 2px; }
+  #stars.wanted-hot { color: #ff4444; animation: blink 0.8s infinite; }
+  @keyframes blink { 50% { opacity: 0.45; } }
+  #dispatch { top: 92px; right: 14px; width: 240px; }
+  .dispatch-row { display: flex; justify-content: space-between; font-size: 11px;
+    padding: 2px 0; color: #c8d2da; }
+  .dispatch-id { color: #fff; font-weight: bold; }
+  .dispatch-status { color: #7ee787; }
+  .dispatch-status.hot { color: #ff6666; font-weight: bold; }
 
-  /* Weapons, left */
-  #weapons { position: absolute; top: 196px; left: 14px; width: 188px; padding: 6px; }
-  .weapon { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 13px; }
-  .weapon.selected { background: rgba(255, 210, 31, 0.22); outline: 1px solid #ffd21f; }
-  .wkey { background: #ffd21f; color: #111; font-weight: bold; font-size: 11px; border-radius: 4px; padding: 2px 6px; }
-  .wname { flex: 1; font-weight: bold; }
-  .wammo { color: #ffd21f; font-weight: bold; }
+  /* Right-middle: crew */
+  #crew-cards { top: 268px; right: 14px; width: 240px; }
+  .crew-card { display: flex; gap: 8px; align-items: center; padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .crew-card:last-child { border-bottom: none; }
+  .crew-face { width: 38px; height: 38px; border-radius: 50%; border: 2px solid rgba(241,196,15,0.6); }
+  .crew-name { font-size: 12px; font-weight: bold; }
+  .crew-role { font-size: 10px; color: #f1c40f; letter-spacing: 1px; }
 
-  /* Dispatch + crew, right */
-  #dispatch { position: absolute; top: 108px; right: 14px; width: 300px; }
-  .dispatch-head { display: flex; justify-content: space-between; color: #ff8a7a; font-weight: bold; font-size: 13px; margin-bottom: 6px; }
-  .dispatch-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
-  .dispatch-row .role { color: #ffd21f; }
-  .dispatch-foot { font-size: 11px; color: #9fd4e8; margin-top: 5px; }
-  #vera-card { position: absolute; top: 218px; right: 14px; width: 300px; display: flex; gap: 10px; align-items: center; }
-  .crew-card img { width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; }
-  .crew-name { color: #ffd21f; font-weight: bold; font-size: 13px; }
-  .crew-quote { font-size: 12px; font-style: italic; color: #d8d8d2; line-height: 1.35; }
-  #crew-cards { position: absolute; top: 296px; right: 14px; width: 300px; display: flex; flex-direction: column; gap: 6px; }
-  #crew-cards .crew-card { display: flex; gap: 10px; align-items: center; position: relative; }
-  .crew-body { flex: 1; }
-  .crew-desc { font-size: 11px; color: #c8c8c2; line-height: 1.3; }
-  .crew-key { background: #ffd21f; color: #111; font-weight: bold; font-size: 11px; border-radius: 4px; padding: 2px 6px; }
-  .crew-ready { font-size: 10px; font-weight: bold; color: #7fe07f; }
-  .crew-ready.cooling { color: #ff8a7a; }
+  /* Top-center: district */
+  #district-box { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #district { font-size: 20px; font-weight: bold; letter-spacing: 3px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  #district-sub { font-size: 11px; color: #dfe8ee; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
 
-  /* Minimap, bottom-left */
-  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; }
-  #minimap { border-radius: 50%; box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
-  #district-label { margin-top: 6px; width: 220px; }
-  .district-name { font-weight: bold; font-size: 15px; }
-  .district-street { font-size: 12px; color: #c8c8c2; }
-  .district-rep { font-size: 11px; color: #ffd21f; font-weight: bold; margin-top: 3px; }
-  .district-bar { height: 5px; background: rgba(255,255,255,0.15); border-radius: 3px; margin-top: 4px; }
-  #district-bar-fill { height: 100%; background: #ffd21f; border-radius: 3px; }
+  /* Bottom-left: bars + minimap */
+  #bars { left: 14px; bottom: 232px; width: 200px; }
+  .bar-row { display: flex; align-items: center; gap: 6px; font-size: 10px;
+    letter-spacing: 1px; margin: 3px 0; }
+  .bar-track { flex: 1; height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  #bar-health { background: #2ecc71; width: 100%; }
+  #bar-armour { background: #3498db; width: 60%; }
+  #bar-rep { background: #f1c40f; width: 62%; }
+  #minimap-wrap { left: 14px; bottom: 14px; width: 204px; height: 204px; }
+  #minimap-canvas { width: 200px; height: 200px; border-radius: 50%;
+    border: 3px solid rgba(241, 196, 15, 0.7); box-shadow: 0 0 0 2px rgba(0,0,0,0.5); }
 
-  /* Stats, bottom-right */
-  #stats { position: absolute; right: 14px; bottom: 14px; width: 250px; text-align: right; }
-  .stat-row { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: bold; margin-bottom: 3px; }
-  .stat-row span { width: 58px; text-align: right; color: #d8d8d2; }
-  .stat-bar { flex: 1; height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; }
-  .stat-bar .fill { height: 100%; border-radius: 4px; }
-  .fill.health { background: #5fd06a; }
-  .fill.armour { background: #4fa8e0; }
-  .fill.rep { background: #ffd21f; }
-  .stat-row b { width: 34px; }
-  .rep-level { font-size: 11px; font-weight: bold; color: #ffd21f; margin: 2px 0; }
-  .speed { font-size: 44px; font-weight: bold; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
-  .speed span { font-size: 14px; margin-left: 4px; }
-  .car-name { font-size: 15px; font-weight: bold; }
-  .car-condition { font-size: 11px; color: #9fd4e8; }
-  .radio { font-size: 12px; color: #ffd21f; margin-top: 4px; }
+  /* Bottom-right: speed + radio + hints */
+  #speed-box { right: 14px; bottom: 14px; text-align: right; }
+  #speed-num { font-size: 44px; font-weight: bold; line-height: 1;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+  #speed-unit { font-size: 12px; color: #dfe8ee; }
+  #speed-gear { font-size: 13px; color: #f1c40f; font-weight: bold; }
+  #speed-mode { font-size: 11px; color: #c8d2da; letter-spacing: 1px; }
+  #radio-line { right: 14px; bottom: 118px; font-size: 12px; color: #ffd98a; }
+  #controls-hint { right: 14px; bottom: 142px; font-size: 10px; color: rgba(255,255,255,0.75);
+    text-align: right; line-height: 1.5; }
 
-  /* Dialogue, bottom-center */
-  #dialogue { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 460px; display: flex; gap: 10px; align-items: center; }
-  #dialogue img { width: 44px; height: 44px; border-radius: 8px; }
-  .dialogue-from { color: #ffd21f; font-weight: bold; font-size: 12px; }
-  .dialogue-text { font-size: 13px; line-height: 1.35; }
+  /* Bottom-center: dialogue */
+  #dialogue { bottom: 18px; left: 50%; transform: translateX(-50%); width: 460px; text-align: center; }
+  #dialogue-who { font-size: 11px; color: #f1c40f; font-weight: bold; letter-spacing: 2px; }
+  #dialogue-line { font-size: 14px; font-style: italic; color: #eef4f8; margin-top: 2px; }
 
-  /* Score popup, center */
-  #popup { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; opacity: 0; }
-  #popup.pop { animation: popfade 2.2s ease-out forwards; }
-  #popup.pinned { opacity: 1 !important; animation: none !important; }
-  .popup-main { font-size: 44px; font-weight: bold; color: #ffd21f; text-shadow: 0 3px 10px rgba(0,0,0,0.7); }
-  .popup-sub { font-size: 18px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
-  @keyframes popfade { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 20% { transform: translate(-50%, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; } }
-
-  .prompt { display: none; position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%); background: rgba(16,20,26,0.9); border: 1px solid #ffd21f; border-radius: 8px; padding: 8px 16px; font-weight: bold; font-size: 14px; }
-  .hint { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.75); text-shadow: 0 1px 4px rgba(0,0,0,0.8); white-space: nowrap; }
-  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,0.28) 100%); }
+  /* Toast + score popups */
+  #toast { top: 18%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; }
+  #toast.show { animation: toastIn 3.2s ease-out forwards; }
+  @keyframes toastIn { 0% { opacity: 0; transform: translateX(-50%) scale(0.92); }
+    8% { opacity: 1; transform: translateX(-50%) scale(1); } 80% { opacity: 1; }
+    100% { opacity: 0; } }
+  #toast-main { font-size: 34px; font-weight: bold; letter-spacing: 4px;
+    text-shadow: 0 3px 14px rgba(0,0,0,0.9); }
+  #toast-sub { font-size: 14px; color: #ffd98a; letter-spacing: 1px; margin-top: 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
+  #score-popups { top: 40%; right: 270px; text-align: right; }
+  .score-pop { font-size: 18px; font-weight: bold; color: #fff; margin: 4px 0;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.9); animation: popUp 2.2s ease-out forwards; }
+  .score-pop.gold { color: #f1c40f; font-size: 21px; }
+  @keyframes popUp { 0% { opacity: 0; transform: translateY(10px); }
+    15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-14px); } }
 
   /* Start screen */
-  #start-screen { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,14,20,0.55) 0%, rgba(10,14,20,0.25) 45%, rgba(10,14,20,0.75) 100%); display: flex; flex-direction: column; justify-content: center; padding: 0 8%; pointer-events: auto; }
-  .title-block { margin-bottom: 30px; }
-  .game-title { font-size: 84px; font-weight: bold; letter-spacing: 2px; background: linear-gradient(180deg, #ffe9a8, #ff7a3d); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 4px 24px rgba(0,0,0,0.35); line-height: 1; }
-  .game-sub { font-size: 17px; font-weight: bold; letter-spacing: 6px; color: #7fd4e8; margin-top: 6px; }
-  .start-menu { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin-bottom: 28px; }
-  .menu-item { background: none; border: none; color: #fff; font-family: inherit; font-size: 26px; font-weight: bold; letter-spacing: 1px; padding: 4px 14px; cursor: pointer; border-radius: 6px; }
-  .menu-item.selected, .menu-item:hover { background: #ff7a3d; }
-  .start-saves { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
-  .save-slot { background: rgba(16,20,26,0.8); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 14px; }
-  .save-slot b { font-size: 14px; }
-  .save-slot span { display: block; font-size: 12px; color: #c8c8c2; margin-top: 2px; }
-  .save-slot.empty { opacity: 0.65; }
-  .start-foot { position: absolute; bottom: 18px; left: 8%; font-size: 12px; color: rgba(255,255,255,0.7); }
+  #start-screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(10,20,32,0.55) 0%, rgba(10,20,32,0.25) 45%, rgba(10,20,32,0.75) 100%); }
+  #start-screen.hidden { display: none; }
+  #start-title { font-size: 72px; font-weight: bold; letter-spacing: 10px;
+    text-shadow: 0 4px 24px rgba(0,0,0,0.9); }
+  #start-sub { font-size: 16px; letter-spacing: 5px; color: #f1c40f; margin: 6px 0 26px; }
+  #start-play { font-size: 18px; font-weight: bold; letter-spacing: 2px; padding: 12px 28px;
+    border: 2px solid #f1c40f; border-radius: 6px; animation: blink 1.6s infinite; }
+  #start-controls { margin-top: 26px; font-size: 12px; color: #dfe8ee; line-height: 1.9;
+    background: rgba(8,14,20,0.6); padding: 12px 22px; border-radius: 8px; }
+  #start-foot { margin-top: 18px; font-size: 11px; color: rgba(255,255,255,0.6); }
 
   /* Pause menu */
-  #pause-menu { position: absolute; inset: 0; background: rgba(8, 10, 14, 0.88); display: flex; flex-direction: column; align-items: center; padding: 26px; pointer-events: auto; }
-  .pause-head { width: 1020px; display: flex; justify-content: space-between; align-items: center; font-size: 22px; font-weight: bold; margin-bottom: 14px; }
-  .pause-head b { color: #ffd21f; }
-  #pause-clock { font-size: 13px; font-weight: normal; color: #d8d8d2; }
-  .pause-tabs { width: 1020px; display: flex; gap: 8px; margin-bottom: 12px; }
-  .pause-tab { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-family: inherit; font-size: 14px; font-weight: bold; padding: 8px 18px; border-radius: 6px; cursor: pointer; }
-  .pause-tab.selected { background: #ffd21f; color: #111; }
-  .pause-body { width: 1020px; display: flex; gap: 16px; background: rgba(16,20,26,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 16px; }
-  .pause-map-col { flex-shrink: 0; }
-  #pause-map { border-radius: 8px; display: block; }
-  .pause-map-foot { font-size: 11px; color: #9a9a92; margin-top: 8px; text-align: center; }
-  .pause-side { flex: 1; }
-  .pause-side-title { color: #ffd21f; font-weight: bold; font-size: 15px; margin-bottom: 8px; }
-  .pause-side-text { font-size: 13px; line-height: 1.5; color: #d8d8d2; }
-  .legend { margin: 14px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-  .legend .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
-  .dot.yellow { background: #ffd21f; } .dot.white { background: #fff; } .dot.red { background: #ff3b30; }
-  .dot.orange { background: #ff9500; } .dot.green { background: #7fb069; } .dot.coral { background: #ff8a7a; }
-  .pause-tip { font-size: 12px; color: #9fd4e8; line-height: 1.45; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
-  .pause-stats { display: flex; gap: 18px; margin-top: 16px; }
-  .pause-stats div { text-align: center; }
-  .pause-stats b { display: block; font-size: 20px; color: #ffd21f; }
-  .pause-stats span { font-size: 10px; color: #9a9a92; }
-  .resume-btn { margin-top: 16px; background: #ffd21f; border: none; color: #111; font-family: inherit; font-size: 16px; font-weight: bold; padding: 12px 42px; border-radius: 8px; cursor: pointer; }
+  #pause-menu { position: fixed; inset: 0; z-index: 20; display: none; align-items: center;
+    justify-content: center; background: rgba(6, 10, 15, 0.72); pointer-events: auto; }
+  #pause-menu.open { display: flex; }
+  #pause-panel { width: 760px; max-height: 92vh; overflow-y: auto; background: #0d1620;
+    border: 1px solid rgba(241,196,15,0.5); border-radius: 10px; padding: 18px 22px; }
+  #pause-title { font-size: 26px; font-weight: bold; letter-spacing: 4px; }
+  #pause-sub { font-size: 12px; color: #f1c40f; letter-spacing: 1px; margin-bottom: 12px; }
+  .pause-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .pause-tab { padding: 7px 16px; font-size: 12px; font-weight: bold; letter-spacing: 1px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 5px; cursor: pointer; color: #c8d2da; }
+  .pause-tab.active { background: rgba(241,196,15,0.25); color: #fff; border-color: #f1c40f; }
+  .pause-panel { display: none; }
+  .pause-panel.active { display: block; }
+  #pause-map-canvas { width: 460px; height: 460px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.2); display: block; margin: 0 auto; }
+  .map-legend { text-align: center; font-size: 11px; color: #c8d2da; margin-top: 8px; }
+  .job-row { display: flex; gap: 12px; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .job-row.current { background: rgba(241,196,15,0.12); border-radius: 5px; }
+  .job-row.done .job-title { color: #7ee787; }
+  .job-id { font-size: 11px; color: #f1c40f; font-weight: bold; min-width: 52px; }
+  .job-title { font-size: 13px; font-weight: bold; }
+  .job-brief { font-size: 12px; color: #c8d2da; }
+  .job-reward { font-size: 12px; color: #7ee787; margin-left: auto; white-space: nowrap; }
+  .stat-row { display: flex; justify-content: space-between; padding: 7px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+  .stat-v { font-weight: bold; color: #f1c40f; }
+  .pause-crew-card { display: flex; gap: 12px; padding: 10px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .pause-crew-card h4 { font-size: 14px; }
+  .pause-crew-card .role { font-size: 11px; color: #f1c40f; letter-spacing: 1px; }
+  .pause-crew-card p { font-size: 12px; color: #c8d2da; margin-top: 3px; }
+  .save-slot { padding: 12px; margin: 8px 0; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; cursor: pointer; }
+  .save-slot:hover { border-color: #f1c40f; }
+  .save-slot b { font-size: 13px; }
+  .save-info { font-size: 12px; color: #c8d2da; margin-top: 3px; }
+  #pause-hint { text-align: center; font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 14px; }
 </style>
 </head>
 <body>
-<div id="app"></div>
-<div id="hud"></div>
+<div id="game-root"></div>
+
+<!-- HUD -->
+<div id="mission-card" class="hud panel">
+  <div class="label">CURRENT JOB</div>
+  <div id="mission-title">JOB 8 / 8 — THE EMBER RUN</div>
+  <div id="mission-objective">REACH THE COUPE ON SUNSET MILE</div>
+  <div id="mission-reward">REWARD $8,500</div>
+</div>
+<div id="weapons" class="hud panel">
+  <div class="label">WEAPONS · 1-4</div>
+  <div id="weapon-list"></div>
+</div>
+<div id="money-box" class="hud panel">
+  <div id="money">$12,840</div>
+  <div id="stars">☆☆☆☆☆</div>
+</div>
+<div id="dispatch" class="hud panel">
+  <div class="label">POLICE DISPATCH</div>
+  <div id="dispatch-list"></div>
+</div>
+<div id="crew-cards" class="hud panel">
+  <div class="label">CREW</div>
+</div>
+<div id="district-box" class="hud">
+  <div id="district">SUNSET MILE</div>
+  <div id="district-sub">Downtown chase corridor</div>
+</div>
+<div id="bars" class="hud panel">
+  <div class="bar-row"><span>HP</span><div class="bar-track"><div id="bar-health" class="bar-fill"></div></div></div>
+  <div class="bar-row"><span>ARMOR</span><div class="bar-track"><div id="bar-armour" class="bar-fill"></div></div></div>
+  <div class="bar-row"><span>REP</span><div class="bar-track"><div id="bar-rep" class="bar-fill"></div></div></div>
+</div>
+<div id="minimap-wrap" class="hud"><canvas id="minimap-canvas" width="200" height="200"></canvas></div>
+<div id="speed-box" class="hud">
+  <div><span id="speed-num">0</span> <span id="speed-unit">KM/H</span></div>
+  <div id="speed-gear">P</div>
+  <div id="speed-mode">COUPE — AURELIA GT</div>
+</div>
+<div id="radio-line" class="hud">♪ AURELIA FM 98.2</div>
+<div id="controls-hint" class="hud">WASD drive &amp; walk · E enter &amp; exit car<br>SPACE handbrake · SHIFT run · M city map<br>R radio · F action · N mute · CLICK shoot</div>
+<div id="dialogue" class="hud panel">
+  <div id="dialogue-who">VERA</div>
+  <div id="dialogue-line">The whole city is watching, Dante. Drive like you mean it.</div>
+</div>
+<div id="toast" class="hud"><div id="toast-main"></div><div id="toast-sub"></div></div>
+<div id="score-popups" class="hud"></div>
+
+<!-- Start screen -->
+<div id="start-screen">
+  <div id="start-title">AURELIA BAY</div>
+  <div id="start-sub">A 3D OPEN-WORLD CRIME GAME</div>
+  <div id="start-play">PRESS ENTER OR CLICK TO PLAY</div>
+  <div id="start-controls">
+    WASD — drive &amp; walk &nbsp;·&nbsp; E — enter &amp; exit car &nbsp;·&nbsp; SPACE — handbrake<br>
+    SHIFT — run &nbsp;·&nbsp; M — city map &nbsp;·&nbsp; R — radio &nbsp;·&nbsp; F — action &nbsp;·&nbsp; N — mute<br>
+    1-4 — weapons &nbsp;·&nbsp; CLICK — shoot on foot
+  </div>
+  <div id="start-foot">Eight jobs. One ledger. Lose the helicopter, reach the safehouse, own the bay.</div>
+</div>
+
+<!-- Pause menu -->
+<div id="pause-menu">
+  <div id="pause-panel">
+    <div id="pause-title">AURELIA BAY</div>
+    <div id="pause-sub">PAUSED — JOB 8 / 8 · THE EMBER RUN</div>
+    <div class="pause-tabs">
+      <div class="pause-tab active" data-tab="map">MAP</div>
+      <div class="pause-tab" data-tab="story">STORY</div>
+      <div class="pause-tab" data-tab="stats">STATS</div>
+      <div class="pause-tab" data-tab="crew">CREW</div>
+      <div class="pause-tab" data-tab="save">SAVE</div>
+    </div>
+    <div id="panel-map" class="pause-panel active">
+      <canvas id="pause-map-canvas" width="520" height="520"></canvas>
+      <div class="map-legend">9 DISTRICTS · CYAN DASH = GPS ROUTE · GOLD = OBJECTIVE · BLUE = POLICE · YELLOW = HELICOPTER</div>
+    </div>
+    <div id="panel-story" class="pause-panel"><div id="story-list"></div></div>
+    <div id="panel-stats" class="pause-panel"><div id="stats-list"></div></div>
+    <div id="panel-crew" class="pause-panel">
+      <div class="pause-crew-card"><div><h4>VERA SOLANO</h4><div class="role">FIXER</div><p>Runs the bay from a deli counter on Sunset Mile. Every job in the city passes through her hands first.</p></div></div>
+      <div class="pause-crew-card"><div><h4>LENA CRUZ</h4><div class="role">DRIVER</div><p>Fastest wheel in Aurelia Bay. If Lena says take the coast road, you take the coast road.</p></div></div>
+      <div class="pause-crew-card"><div><h4>HUGO MARSH</h4><div class="role">MECHANIC</div><p>Keeps the coupe running and the plates clean. His garage on East Ave never closes.</p></div></div>
+      <div class="pause-crew-card"><div><h4>NINA OKAFOR</h4><div class="role">LOOKOUT</div><p>Sees the roadblocks before the police set them. Eyes on every corner of the market.</p></div></div>
+    </div>
+    <div id="panel-save" class="pause-panel">
+      <div class="save-slot" data-slot="1"><b>SLOT 1</b><div class="save-info">EMPTY — CLICK TO SAVE</div></div>
+      <div class="save-slot" data-slot="2"><b>SLOT 2</b><div class="save-info">EMPTY — CLICK TO SAVE</div></div>
+      <div class="save-slot" data-slot="3"><b>SLOT 3</b><div class="save-info">EMPTY — CLICK TO SAVE</div></div>
+    </div>
+    <div id="pause-hint">PRESS M TO RESUME</div>
+  </div>
+</div>
+
 <script src="vendor/three.min.js"></script>
-<script type="module" src="src/main.js"></script>
+<script src="src/util.js"></script>
+<script src="src/textures.js"></script>
+<script src="src/sky.js"></script>
+<script src="src/trees.js"></script>
+<script src="src/city.js"></script>
+<script src="src/vehicles.js"></script>
+<script src="src/people.js"></script>
+<script src="src/heli.js"></script>
+<script src="src/police.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/faces.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/shots.js"></script>
+<script src="src/main.js"></script>
 </body>
 </html>

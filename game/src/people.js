@@ -1,294 +1,259 @@
-// People: proportional pedestrians with walk cycles, plus the player
-// character. The crowd fills the WIDE sidewalks: walkers in both directions,
-// pairs talking, people waiting at crossings, market browsers, beachgoers.
-// Peds are built from simple parts (head, torso, arms, legs) with varied
-// skin tones, clothes and hats so the street reads alive at a glance.
+// People for AURELIA BAY, built to the CJ references: realistic human
+// proportions (head ~1/7 of height), shaped torso with shoulders, arms with
+// elbows, shaped legs, natural poses — not blocky mannequins.
+(function () {
+  const AB = window.AB || (window.AB = {});
+  const U = AB.Util;
 
-import { makeRng, clamp } from './util.js';
-import { AVENUES, STREETS, ROAD_HALF, WALK } from './city.js';
+  const SKIN = [0xc68e5e, 0x8a5a34, 0xe8b88a, 0x6b4423, 0xd9a066];
+  const SHIRTS = [0xe74c3c, 0x2e86c1, 0x27ae60, 0xf1c40f, 0x8e44ad, 0xe67e22, 0xecf0f1, 0x1abc9c, 0x34495e, 0xd35400];
+  const PANTS = [0x2c3e50, 0x3a5a8c, 0x5d4037, 0x7f8c8d, 0x1a1a1a, 0x6e5a3e];
+  const HAIR = [0x1a1a1a, 0x3a2a1a, 0x6b4a2a, 0x8a8a8a, 0x2a1a0a];
 
-const SKIN_TONES = [0xf2c9a0, 0xd9a066, 0xa06a3a, 0x8a5a30, 0xe8b88a, 0x6b4423];
-const SHIRT_COLORS = [
-  0xd94f3d, 0x2f7fd0, 0xe8a020, 0x3d9e5f, 0x8a4fd0, 0xe87ab0,
-  0xf2f2ee, 0x2c3e50, 0x16a085, 0xd35400, 0x7f8c8d, 0xc0392b,
-];
-const PANTS_COLORS = [0x2c3e50, 0x34495e, 0x5d4037, 0x1a1a1a, 0x7f8c8d, 0x4a6b8a];
-const HAIR_COLORS = [0x1a1a1a, 0x4a2c14, 0x8a6a3a, 0xd9d9d9, 0x6b4423];
-
-// A proportional person, ~1.8 units tall: head, hair, torso, arms, legs.
-// Arms and legs swing with a walk phase; the whole figure leans slightly
-// into its stride. Returns { group, parts } for animation.
-export function buildPerson(opts = {}) {
-  const rng = opts.rng || makeRng(Math.floor(Math.random() * 1e9));
-  const skin = opts.skin ?? rng.pick(SKIN_TONES);
-  const shirt = opts.shirt ?? rng.pick(SHIRT_COLORS);
-  const pants = opts.pants ?? rng.pick(PANTS_COLORS);
-  const hair = opts.hair ?? rng.pick(HAIR_COLORS);
-  const scale = opts.scale ?? rng.range(0.94, 1.06);
-
-  const group = new THREE.Group();
-  const skinMat = new THREE.MeshLambertMaterial({ color: skin });
-  const shirtMat = new THREE.MeshLambertMaterial({ color: shirt });
-  const pantsMat = new THREE.MeshLambertMaterial({ color: pants });
-  const hairMat = new THREE.MeshLambertMaterial({ color: hair });
-  const shoeMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
-
-  // Legs (pivot at the hip so they swing).
-  const legGeo = new THREE.BoxGeometry(0.17, 0.8, 0.2);
-  const legL = new THREE.Mesh(legGeo, pantsMat);
-  const legR = new THREE.Mesh(legGeo, pantsMat);
-  legL.position.set(-0.12, 0.4, 0);
-  legR.position.set(0.12, 0.4, 0);
-  legL.geometry.translate(0, -0.4, 0);
-  legR.geometry.translate(0, -0.4, 0);
-  legL.position.y = 0.8;
-  legR.position.y = 0.8;
-  legL.castShadow = true;
-  legR.castShadow = true;
-  group.add(legL, legR);
-  // Shoes.
-  for (const s of [-0.12, 0.12]) {
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.1, 0.34), shoeMat);
-    shoe.position.set(s, 0.05, 0.05);
-    group.add(shoe);
-  }
-  // Torso.
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.62, 0.3), shirtMat);
-  torso.position.y = 1.12;
-  torso.castShadow = true;
-  group.add(torso);
-  // Arms (pivot at the shoulder).
-  const armGeo = new THREE.BoxGeometry(0.13, 0.62, 0.15);
-  armGeo.translate(0, -0.28, 0);
-  const armL = new THREE.Mesh(armGeo, shirtMat);
-  const armR = new THREE.Mesh(armGeo, shirtMat);
-  armL.position.set(-0.34, 1.38, 0);
-  armR.position.set(0.34, 1.38, 0);
-  // Hands.
-  const handGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-  const handL = new THREE.Mesh(handGeo, skinMat);
-  const handR = new THREE.Mesh(handGeo, skinMat);
-  handL.position.set(0, -0.62, 0);
-  handR.position.set(0, -0.62, 0);
-  armL.add(handL);
-  armR.add(handR);
-  group.add(armL, armR);
-  // Head + hair cap.
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.32), skinMat);
-  head.position.y = 1.66;
-  head.castShadow = true;
-  group.add(head);
-  const hairCap = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.34), hairMat);
-  hairCap.position.y = 1.86;
-  group.add(hairCap);
-  // Optional hat.
-  if (opts.hat || rng.chance(0.22)) {
-    const hatMat = new THREE.MeshLambertMaterial({ color: opts.hatColor ?? rng.pick(SHIRT_COLORS) });
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.12, 10), hatMat);
-    hat.position.y = 1.94;
-    group.add(hat);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 10), hatMat);
-    brim.position.y = 1.89;
-    group.add(brim);
-  }
-  group.scale.setScalar(scale);
-  return {
-    group,
-    parts: { legL, legR, armL, armR, torso, head },
-    setWalkPhase(phase, amount) {
-      const swing = Math.sin(phase) * 0.55 * amount;
-      legL.rotation.x = swing;
-      legR.rotation.x = -swing;
-      armL.rotation.x = -swing * 0.8;
-      armR.rotation.x = swing * 0.8;
-      group.position.y = Math.abs(Math.sin(phase)) * 0.04 * amount;
-    },
-    setIdle(breathe) {
-      legL.rotation.x = 0;
-      legR.rotation.x = 0;
-      armL.rotation.x = Math.sin(breathe) * 0.05;
-      armR.rotation.x = -Math.sin(breathe) * 0.05;
-      torso.rotation.y = Math.sin(breathe * 0.5) * 0.06;
-    },
-  };
-}
-
-// The player character, Dante: red jacket, dark jeans, red cap — readable
-// from behind at a glance.
-export function buildPlayer() {
-  const person = buildPerson({
-    skin: 0xd9a066,
-    shirt: 0xc0392b,
-    pants: 0x2c3e50,
-    hair: 0x1a1a1a,
-    hat: true,
-    hatColor: 0xc0392b,
-    scale: 1.02,
-    rng: makeRng(7),
-  });
-  return person;
-}
-
-// The crowd: walkers on every avenue sidewalk (both directions), talkers in
-// pairs, waiters at crossings, market browsers, and beachgoers. Walkers
-// follow straight sidewalk lanes and wrap at the city edge.
-export function createCrowd(scene, seed) {
-  const rng = makeRng(seed);
-  const walkers = [];
-  const idlers = [];
-
-  function addWalker(x, z, axis, dir, speed) {
-    const p = buildPerson({ rng });
-    p.group.position.set(x, 0, z);
-    p.group.rotation.y = axis === 'z' ? (dir > 0 ? 0 : Math.PI) : dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-    scene.add(p.group);
-    walkers.push({ p, x, z, axis, dir, speed, phase: rng.next() * Math.PI * 2 });
+  function capsule(r, len, mat) {
+    const g = new THREE.Group();
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, len, 8), mat);
+    cyl.position.y = -len / 2;
+    cyl.castShadow = true;
+    g.add(cyl);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), mat);
+    g.add(cap);
+    return g;
   }
 
-  // Sidewalk walkers: both sides of every avenue, both directions.
-  for (const ax of AVENUES) {
-    for (const side of [-1, 1]) {
-      const wx = ax + side * (ROAD_HALF + WALK / 2 + rng.range(-1.5, 1.5));
-      for (let i = 0; i < 7; i++) {
-        addWalker(wx, rng.range(-165, 165), 'z', side > 0 ? 1 : -1, rng.range(1.1, 2.1));
-      }
+  // Full articulated person, ~1.8 units tall. opts: skin, shirt, pants, hair,
+  // cap (bool), backpack (bool), tank (bool, sleeveless), female (bool).
+  function makePerson(opts) {
+    const o = opts || {};
+    const skinMat = new THREE.MeshLambertMaterial({ color: o.skin !== undefined ? o.skin : U.pick(SKIN) });
+    const shirtMat = new THREE.MeshLambertMaterial({ color: o.shirt !== undefined ? o.shirt : U.pick(SHIRTS) });
+    const pantsMat = new THREE.MeshLambertMaterial({ color: o.pants !== undefined ? o.pants : U.pick(PANTS) });
+    const hairMat = new THREE.MeshLambertMaterial({ color: o.hair !== undefined ? o.hair : U.pick(HAIR) });
+    const shoeMat = new THREE.MeshLambertMaterial({ color: 0x1f1f22 });
+
+    const person = new THREE.Group();
+    const H = 1.8; // total height; head ~0.26 = 1/7
+
+    // Pelvis + tapered torso with shoulders.
+    const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), pantsMat);
+    pelvis.scale.set(1.25, 0.75, 0.85);
+    pelvis.position.y = 0.98;
+    pelvis.castShadow = true;
+    person.add(pelvis);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.15, 0.52, 10), shirtMat);
+    torso.scale.z = 0.68;
+    torso.position.y = 1.3;
+    torso.castShadow = true;
+    person.add(torso);
+    const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), shirtMat);
+    shoulders.scale.set(1.35, 0.55, 0.75);
+    shoulders.position.y = 1.56;
+    shoulders.castShadow = true;
+    person.add(shoulders);
+
+    // Neck + head (r 0.13 => diameter 0.26, ~1/7 of height).
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 8), skinMat);
+    neck.position.y = 1.62;
+    person.add(neck);
+    const head = new THREE.Group();
+    head.position.y = 1.78;
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), skinMat);
+    skull.scale.set(0.92, 1.05, 0.98);
+    skull.castShadow = true;
+    head.add(skull);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.135, 12, 10, 0, Math.PI * 2, 0, 1.35), hairMat);
+    hair.position.y = 0.02;
+    hair.scale.set(0.95, 1.0, 1.0);
+    head.add(hair);
+    if (o.cap) {
+      const capTop = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.145, 0.07, 10),
+        new THREE.MeshLambertMaterial({ color: o.capColor || 0xc0392b }));
+      capTop.position.y = 0.1;
+      head.add(capTop);
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.14),
+        new THREE.MeshLambertMaterial({ color: o.capColor || 0xc0392b }));
+      brim.position.set(0, 0.08, 0.16);
+      head.add(brim);
     }
-  }
-  // Sidewalk walkers along cross streets.
-  for (const sz of STREETS) {
-    for (const side of [-1, 1]) {
-      const wz = sz + side * (6 + WALK / 2);
-      for (let i = 0; i < 4; i++) {
-        addWalker(rng.range(-165, 165), wz, 'x', side > 0 ? 1 : -1, rng.range(1.1, 2.0));
-      }
+    person.add(head);
+
+    // Arms: shoulder pivot -> upper arm -> elbow pivot -> forearm -> hand.
+    function arm(side) {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(0.26 * side, 1.54, 0);
+      const upper = capsule(0.055, 0.32, o.tank ? skinMat : shirtMat);
+      shoulder.add(upper);
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.32;
+      shoulder.add(elbow);
+      const fore = capsule(0.048, 0.3, skinMat);
+      elbow.add(fore);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), skinMat);
+      hand.position.y = -0.34;
+      hand.scale.set(0.85, 1.15, 0.85);
+      elbow.add(hand);
+      person.add(shoulder);
+      return { shoulder: shoulder, elbow: elbow };
     }
-  }
-  // Zebra crossers: a few peds mid-crossing at junctions.
-  for (const cx of [0, 60, -60]) {
-    for (const cz of [0, 40, -40]) {
-      addWalker(cx + rng.range(-2, 2), cz - 8.5, 'z', 1, 1.4);
-      addWalker(cx + rng.range(-2, 2), cz + 8.5, 'z', -1, 1.4);
+    const armL = arm(-1), armR = arm(1);
+
+    // Legs: hip pivot -> thigh -> knee pivot -> shin -> shoe.
+    function leg(side) {
+      const hip = new THREE.Group();
+      hip.position.set(0.11 * side, 0.96, 0);
+      const thigh = capsule(0.075, 0.44, pantsMat);
+      hip.add(thigh);
+      const knee = new THREE.Group();
+      knee.position.y = -0.44;
+      hip.add(knee);
+      const shin = capsule(0.06, 0.4, pantsMat);
+      knee.add(shin);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.28), shoeMat);
+      shoe.position.set(0, -0.46, 0.05);
+      shoe.castShadow = true;
+      knee.add(shoe);
+      person.add(hip);
+      return { hip: hip, knee: knee };
     }
+    const legL = leg(-1), legR = leg(1);
+
+    if (o.backpack) {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.16),
+        new THREE.MeshLambertMaterial({ color: o.packColor || 0xf1c40f }));
+      pack.position.set(0, 1.32, -0.2);
+      pack.castShadow = true;
+      person.add(pack);
+    }
+
+    person.userData = {
+      armL: armL, armR: armR, legL: legL, legR: legR, head: head,
+      phase: U.rand(0, Math.PI * 2), height: H,
+    };
+    return person;
   }
 
-  function addIdler(x, z, facing, kind) {
-    const p = buildPerson({ rng });
-    p.group.position.set(x, 0, z);
-    p.group.rotation.y = facing;
-    scene.add(p.group);
-    idlers.push({ p, kind, t: rng.next() * 10 });
+  // Walk cycle: legs and arms swing in opposition, hips bob slightly.
+  // The bob rides on the person's base ground height (sidewalk, street, sand).
+  function walkCycle(person, dt, speed) {
+    const u = person.userData;
+    u.phase += dt * (4 + speed * 0.55);
+    const s = Math.sin(u.phase);
+    const amp = 0.5;
+    u.legL.hip.rotation.x = s * amp;
+    u.legR.hip.rotation.x = -s * amp;
+    u.legL.knee.rotation.x = Math.max(0, -s) * 0.7;
+    u.legR.knee.rotation.x = Math.max(0, s) * 0.7;
+    u.armL.shoulder.rotation.x = -s * 0.42;
+    u.armR.shoulder.rotation.x = s * 0.42;
+    u.armL.elbow.rotation.x = -0.25;
+    u.armR.elbow.rotation.x = -0.25;
+    person.position.y = (u.baseY || 0) + Math.abs(Math.cos(u.phase)) * 0.035;
   }
 
-  // Talker pairs outside shops on Sunset Mile and the coastal road.
-  const talkSpots = [
-    [-11.5, -8, 0.6], [11.5, -2, -0.6], [-11.5, 18, 0.9], [11.5, 26, -0.9],
-    [-11.5, 52, 0.4], [11.5, -48, -0.5], [-108.5, -24, 0.7], [-108.5, 16, -0.7],
-    [-131.5, 30, 0.5], [-131.5, -50, -0.5],
+  // Idle: gentle breathing sway + occasional arm gesture.
+  function idleCycle(person, dt, t) {
+    const u = person.userData;
+    u.armL.shoulder.rotation.x = Math.sin(t * 0.8) * 0.05;
+    u.armR.shoulder.rotation.x = -Math.sin(t * 0.8) * 0.05 + Math.sin(t * 0.35) * 0.12;
+    u.armR.elbow.rotation.x = -0.4 - Math.sin(t * 0.5) * 0.15;
+    u.armL.elbow.rotation.x = -0.3;
+    u.legL.hip.rotation.x = 0.02; u.legR.hip.rotation.x = -0.02;
+    u.head.rotation.y = Math.sin(t * 0.4) * 0.25;
+    person.position.y = (u.baseY || 0) + Math.sin(t * 1.4) * 0.008;
+  }
+
+  // Dante, the player character: white tank top, blue jeans, dark hair.
+  function makeDante() {
+    const d = makePerson({ shirt: 0xf5f5f5, pants: 0x3a5a8c, hair: 0x1a1a1a, skin: 0xc68e5e, tank: true });
+    return d;
+  }
+
+  // Sidewalk walker paths: loops along the main street sidewalks, plus a
+  // beach stroll on the sand. Each path carries its ground height.
+  const WALK_PATHS = [
+    { pts: [[-11, -160], [-11, 160]], loop: false },
+    { pts: [[11, 160], [11, -160]], loop: false },
+    { pts: [[-74, -9], [160, -9]], loop: false },
+    { pts: [[160, 9], [-74, 9]], loop: false },
+    { pts: [[-82, -160], [-82, 160]], loop: false },
+    { pts: [[-61.5, 160], [-61.5, -160]], loop: false },
+    { pts: [[57, -160], [57, 160]], loop: false },
+    { pts: [[-100, -160], [-100, 160]], loop: false, y: 0.02 },
   ];
-  for (const [x, z, f] of talkSpots) {
-    addIdler(x, z, f, 'talk');
-    addIdler(x + 0.9, z + 0.4, f + Math.PI, 'talk');
-  }
-  // Waiters at crossings.
-  for (const [x, z, f] of [[-11, -8.5, 0], [11, 31.5, Math.PI], [-11, 71.5, 0], [11, -48.5, Math.PI]]) {
-    addIdler(x, z, f, 'wait');
-  }
-  // Market browsers at the stalls.
-  for (let i = 0; i < 10; i++) {
-    const sx = -55 + i * 12;
-    const sz = 40 + (i % 2 === 0 ? -3.5 : 3.5);
-    addIdler(sx + rng.range(-1, 1), sz + (i % 2 === 0 ? 2.2 : -2.2), i % 2 === 0 ? Math.PI : 0, 'browse');
-    if (i % 2 === 0) addIdler(sx + 2, sz + (i % 2 === 0 ? 2.4 : -2.4), Math.PI / 2, 'browse');
-  }
-  // Market walkers threading between the stalls.
-  for (let i = 0; i < 8; i++) {
-    addWalker(rng.range(-60, 60), 40 + rng.range(-6, 6), 'x', i % 2 === 0 ? 1 : -1, rng.range(0.9, 1.6));
-  }
-  // Beachgoers: walkers on the sand and a few sitting / lying.
-  for (let i = 0; i < 10; i++) {
-    addWalker(-150 + rng.range(-14, 14), rng.range(-150, 150), 'z', i % 2 === 0 ? 1 : -1, rng.range(0.8, 1.5));
-  }
-  for (let i = 0; i < 8; i++) {
-    const p = buildPerson({ rng });
-    const bx = -150 + rng.range(-12, 12);
-    const bz = -140 + i * 36 + rng.range(-6, 6);
-    p.group.position.set(bx, 0.25, bz);
-    p.group.rotation.x = -Math.PI / 2 + 0.25; // lying on a towel
-    p.group.rotation.z = rng.next() * Math.PI;
-    scene.add(p.group);
-    idlers.push({ p, kind: 'sunbathe', t: 0 });
-  }
 
-  return {
-    walkers,
-    idlers,
-    update(dt) {
-      for (const w of walkers) {
-        w.phase += dt * w.speed * 3.2;
-        if (w.axis === 'z') {
-          w.z += w.dir * w.speed * dt;
-          if (w.z > 170) w.z = -170;
-          if (w.z < -170) w.z = 170;
-        } else {
-          w.x += w.dir * w.speed * dt;
-          if (w.x > 170) w.x = -170;
-          if (w.x < -170) w.x = 170;
-        }
-        w.p.group.position.set(w.x, 0, w.z);
-        w.p.setWalkPhase(w.phase, 1);
-      }
-      for (const id of idlers) {
-        id.t += dt;
-        if (id.kind === 'sunbathe') continue;
-        id.p.setIdle(id.t);
-        if (id.kind === 'talk') {
-          id.p.parts.armR.rotation.x = -0.6 + Math.sin(id.t * 1.4) * 0.25;
-        }
-      }
-    },
-  };
-}
-
-// On-foot player controller: WASD walk/run relative to the camera heading,
-// with the walk cycle and a simple bounds check.
-export function createWalker(player, startX, startZ, startHeading) {
-  const state = { x: startX, z: startZ, heading: startHeading, phase: 0, moving: false, running: false };
-  player.group.position.set(state.x, 0, state.z);
-  player.group.rotation.y = state.heading;
-  return {
-    state,
-    update(dt, input, camHeading) {
-      let mx = 0;
-      let mz = 0;
-      if (input.forward) { mz += 1; }
-      if (input.back) { mz -= 1; }
-      if (input.left) { mx -= 1; }
-      if (input.right) { mx += 1; }
-      const len = Math.hypot(mx, mz);
-      state.moving = len > 0;
-      state.running = state.moving && input.run;
-      if (state.moving) {
-        mx /= len;
-        mz /= len;
-        const speed = state.running ? 7.5 : 4;
-        // Move relative to the camera heading.
-        const sin = Math.sin(camHeading);
-        const cos = Math.cos(camHeading);
-        const wx = mx * cos - mz * sin;
-        const wz = mx * sin + mz * cos;
-        const nx = clamp(state.x + wx * speed * dt, -168, 168);
-        const nz = clamp(state.z + wz * speed * dt, -168, 168);
-        state.x = nx;
-        state.z = nz;
-        state.heading = Math.atan2(wx, wz);
-        state.phase += dt * speed * 1.6;
-        player.setWalkPhase(state.phase, 1);
+  function makeCrowd(scene) {
+    const walkers = [];
+    for (let i = 0; i < 110; i++) {
+      const path = WALK_PATHS[i % WALK_PATHS.length];
+      const p = makePerson({
+        cap: U.rng() < 0.25, backpack: U.rng() < 0.2, tank: U.rng() < 0.3,
+      });
+      const t = U.rand(0, 1);
+      const a = path.pts[0], b = path.pts[1];
+      p.position.set(U.lerp(a[0], b[0], t) + U.rand(-0.8, 0.8), path.y || 0.18, U.lerp(a[1], b[1], t));
+      p.userData.baseY = path.y || 0.18;
+      const heading = Math.atan2(b[0] - a[0], b[1] - a[1]);
+      p.rotation.y = heading;
+      p.userData.path = path;
+      p.userData.t = t;
+      p.userData.speed = U.rand(0.9, 1.7);
+      p.userData.walkDir = 1;
+      scene.add(p);
+      walkers.push(p);
+    }
+    // Talker pairs standing on the sidewalks, facing each other.
+    const talkers = [];
+    const spots = [
+      [-11, -30], [11, -55], [-11, 45], [11, 95], [-30, 9.5], [25, 9.5],
+      [-82, -60], [-82, 30], [-61.5, -90], [11, -110], [-11, 130], [57, 40],
+    ];
+    spots.forEach(function (s) {
+      const a = makePerson({}); a.position.set(s[0], 0.18, s[1]); a.rotation.y = U.rand(0, 6.28);
+      a.userData.baseY = 0.18;
+      const b = makePerson({}); b.position.set(s[0] + 0.9, 0.18, s[1] + 0.4); b.rotation.y = a.rotation.y + Math.PI;
+      b.userData.baseY = 0.18;
+      scene.add(a); scene.add(b);
+      talkers.push(a); talkers.push(b);
+    });
+    // Beachgoers: standing + sunbathing on towels.
+    const beach = [];
+    for (let i = 0; i < 14; i++) {
+      const p = makePerson({ tank: true, shirt: U.pick([0xe74c3c, 0x2e86c1, 0xf1c40f, 0x27ae60]) });
+      const bx = U.rand(-135, -95), bz = U.rand(-150, 150);
+      if (i % 3 === 0) {
+        // Sunbather lying on the sand.
+        p.rotation.x = -Math.PI / 2 + 0.08;
+        p.position.set(bx, 0.3, bz);
+        p.rotation.z = U.rand(0, 6.28);
       } else {
-        player.setIdle(performance.now() / 500);
+        p.position.set(bx, 0.02, bz);
+        p.rotation.y = U.rand(0, 6.28);
+        p.userData.baseY = 0.02;
       }
-      player.group.position.set(state.x, 0, state.z);
-      player.group.rotation.y = state.heading;
-      return state;
-    },
-  };
-}
+      scene.add(p);
+      beach.push(p);
+    }
+    return { walkers: walkers, talkers: talkers, beach: beach };
+  }
+
+  function updateCrowd(crowd, dt, t) {
+    crowd.walkers.forEach(function (p) {
+      const u = p.userData;
+      const path = u.path;
+      const a = path.pts[0], b = path.pts[1];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      u.t += (u.speed * dt / len) * u.walkDir;
+      if (u.t >= 1) { u.t = 1; u.walkDir = -1; p.rotation.y += Math.PI; }
+      if (u.t <= 0) { u.t = 0; u.walkDir = 1; p.rotation.y += Math.PI; }
+      p.position.x = U.lerp(a[0], b[0], u.t);
+      p.position.z = U.lerp(a[1], b[1], u.t);
+      walkCycle(p, dt, u.speed);
+    });
+    crowd.talkers.forEach(function (p, i) { idleCycle(p, dt, t + i * 1.7); });
+    crowd.beach.forEach(function (p, i) {
+      if (Math.abs(p.rotation.x) < 0.1) idleCycle(p, dt, t + i * 2.3);
+    });
+  }
+
+  AB.People = { makePerson, makeDante, walkCycle, idleCycle, makeCrowd, updateCrowd };
+})();

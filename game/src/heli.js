@@ -1,171 +1,155 @@
-// The police helicopter — built as a DIRECT scene mesh and nothing else.
-// V26's heli never rendered because its body lived behind an indirection in
-// the police module and never moved with the position it was given. Here the
-// heli is one THREE.Group added straight to the scene by main.js, and only
-// this module's update() ever touches its position. The body is big (rotor
-// ~13 units across), dark with a glass cockpit, skids, a spinning main rotor
-// and tail rotor, and a white spotlight cone that tracks the player.
+// The police helicopter for AURELIA BAY: a direct scene mesh — dark fuselage,
+// glass cockpit, spinning main rotor, tail rotor, landing skids and a visible
+// spotlight cone. It flies high above the rooftops and never clips buildings.
+(function () {
+  const AB = window.AB || (window.AB = {});
+  const U = AB.Util;
 
-import { clamp } from './util.js';
+  const MIN_ALT = 30; // above the tallest rooftop (30) with margin
 
-export function buildHelicopter() {
-  const heli = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x1c2733 });
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x0d1218 });
-  const glassMat = new THREE.MeshLambertMaterial({ color: 0x9fd4e8, transparent: true, opacity: 0.8 });
-  const accentMat = new THREE.MeshLambertMaterial({ color: 0xd94040 });
+  function makeHeli() {
+    const heli = new THREE.Group();
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x22303c });
+    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xe8e8e8 });
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x101c26 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x14181c });
 
-  // Fuselage: a rounded body (box + nose sphere) with a glass cockpit.
-  const fuselage = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.9, 4.6), bodyMat);
-  fuselage.position.y = 0;
-  fuselage.castShadow = true;
-  heli.add(fuselage);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(1.15, 12, 10), bodyMat);
-  nose.scale.set(1, 0.85, 1.1);
-  nose.position.set(0, -0.1, 2.2);
-  heli.add(nose);
-  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.0, 12, 10), glassMat);
-  cockpit.scale.set(0.95, 0.7, 0.9);
-  cockpit.position.set(0, 0.35, 2.0);
-  heli.add(cockpit);
-  // Belly + engine deck.
-  const belly = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 3.6), darkMat);
-  belly.position.y = -1.1;
-  heli.add(belly);
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 2.6), darkMat);
-  deck.position.y = 1.15;
-  heli.add(deck);
-  // Tail boom + fin + tail rotor.
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 5.2, 8), bodyMat);
-  boom.rotation.x = Math.PI / 2;
-  boom.position.set(0, 0.25, -4.6);
-  heli.add(boom);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.5, 1.1), accentMat);
-  fin.position.set(0, 0.9, -6.9);
-  heli.add(fin);
-  const tailRotor = new THREE.Group();
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.9, 0.06), darkMat);
-    blade.rotation.z = a;
-    tailRotor.add(blade);
-  }
-  tailRotor.position.set(0.35, 0.5, -6.9);
-  heli.add(tailRotor);
-  // Landing skids.
-  for (const sx of [-0.95, 0.95]) {
-    const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.6, 6), darkMat);
-    skid.rotation.x = Math.PI / 2;
-    skid.position.set(sx, -1.75, 0.2);
-    heli.add(skid);
-    for (const sz of [-1.2, 1.2]) {
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 6), darkMat);
-      strut.position.set(sx, -1.4, sz);
-      heli.add(strut);
+    // Fuselage: elongated rounded body.
+    const fuselage = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12), bodyMat);
+    fuselage.scale.set(1.9, 1.05, 1.15);
+    fuselage.castShadow = true;
+    heli.add(fuselage);
+    // White belly stripe + side band.
+    const band = new THREE.Mesh(new THREE.SphereGeometry(1.52, 16, 12), whiteMat);
+    band.scale.set(1.88, 0.42, 1.16);
+    band.position.y = -0.45;
+    heli.add(band);
+    // Glass cockpit nose.
+    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 10), glassMat);
+    cockpit.scale.set(1.1, 0.75, 0.95);
+    cockpit.position.set(1.9, 0.15, 0);
+    heli.add(cockpit);
+    // Tail boom + fin + tail rotor.
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.42, 4.2, 8), bodyMat);
+    boom.rotation.z = Math.PI / 2 - 0.06;
+    boom.position.set(-4.4, 0.35, 0);
+    boom.castShadow = true;
+    heli.add(boom);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.12), bodyMat);
+    fin.position.set(-6.2, 0.9, 0);
+    fin.rotation.z = 0.15;
+    heli.add(fin);
+    const tailRotor = new THREE.Group();
+    for (let i = 0; i < 2; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.7, 0.14), darkMat);
+      blade.rotation.x = (i / 2) * Math.PI;
+      tailRotor.add(blade);
     }
-  }
-  // Main rotor: mast + two long blades + a translucent blur disc.
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 8), darkMat);
-  mast.position.y = 1.75;
-  heli.add(mast);
-  const rotor = new THREE.Group();
-  rotor.position.y = 2.2;
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(13, 0.08, 0.5), darkMat);
-    blade.rotation.y = a;
-    rotor.add(blade);
-  }
-  // Red tips so the rotor reads at a glance.
-  for (const [tx, tz] of [[6.2, 0], [-6.2, 0], [0, 6.2], [0, -6.2]]) {
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.09, 0.52), accentMat);
-    tip.position.set(tx, 0, tz);
-    rotor.add(tip);
-  }
-  heli.add(rotor);
-  const blur = new THREE.Mesh(
-    new THREE.CircleGeometry(6.6, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.20, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  blur.rotation.x = -Math.PI / 2;
-  blur.position.y = 2.22;
-  heli.add(blur);
-  // Searchlight housing under the nose.
-  const lamp = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 10, 8),
-    new THREE.MeshBasicMaterial({ color: 0xfff6c8 }),
-  );
-  lamp.position.set(0.6, -1.0, 2.4);
-  heli.add(lamp);
-  // Red anti-collision beacon on the tail.
-  const beacon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 8, 6),
-    new THREE.MeshBasicMaterial({ color: 0xff2222 }),
-  );
-  beacon.position.set(0, 1.1, -6.9);
-  heli.add(beacon);
+    tailRotor.position.set(-6.3, 0.5, 0.25);
+    heli.add(tailRotor);
+    // Main rotor mast + 4 blades + blur disc.
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.8, 6), darkMat);
+    mast.position.y = 1.7;
+    heli.add(mast);
+    const rotor = new THREE.Group();
+    rotor.position.y = 2.15;
+    for (let i = 0; i < 4; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.05, 0.34), darkMat);
+      blade.position.x = 2.9;
+      const holder = new THREE.Group();
+      holder.rotation.y = (i / 4) * Math.PI * 2;
+      holder.add(blade);
+      rotor.add(holder);
+    }
+    const hub = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), darkMat);
+    rotor.add(hub);
+    heli.add(rotor);
+    const blur = new THREE.Mesh(new THREE.CircleGeometry(5.6, 24),
+      new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.12, side: THREE.DoubleSide }));
+    blur.rotation.x = -Math.PI / 2;
+    blur.position.y = 2.18;
+    heli.add(blur);
+    // Landing skids.
+    [-0.95, 0.95].forEach(function (z) {
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.0, 6), darkMat);
+      tube.rotation.z = Math.PI / 2;
+      tube.position.set(0.2, -1.65, z);
+      heli.add(tube);
+      [-1.2, 1.2].forEach(function (x) {
+        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 5), darkMat);
+        strut.position.set(x, -1.25, z);
+        strut.rotation.x = z > 0 ? -0.35 : 0.35;
+        heli.add(strut);
+      });
+    });
+    // Searchlight + visible cone.
+    const lampHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.4, 10), darkMat);
+    lampHousing.rotation.x = Math.PI / 2;
+    lampHousing.position.set(1.6, -1.15, 0);
+    heli.add(lampHousing);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2b0, transparent: true, opacity: 0.12,
+      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(5, 34, 20, 1, true), coneMat);
+    heli.add(cone);
+    // Ground pool where the light lands.
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(5, 20),
+      new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.22, depthWrite: false }));
+    pool.rotation.x = -Math.PI / 2;
+    heli.add(pool);
+    // Blinking beacon.
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+    beacon.position.set(-0.4, 1.65, 0);
+    heli.add(beacon);
 
-  // Spotlight cone: apex at the heli, base on the ground at the target.
-  // Built as a unit cone, rescaled and re-aimed every frame in update().
-  const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xfff8d8,
-    transparent: true,
-    opacity: 0.18,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    fog: false,
-  });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 20, 1, true), coneMat);
-  const coneGroup = new THREE.Group();
-  coneGroup.add(cone);
-  // Ground pool of light where the cone lands.
-  const pool = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 20),
-    new THREE.MeshBasicMaterial({
-      color: 0xfff8d8, transparent: true, opacity: 0.3,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    }),
-  );
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.y = 0.12;
+    heli.userData = { rotor: rotor, tailRotor: tailRotor, cone: cone, pool: pool, beacon: beacon, minAlt: MIN_ALT };
+    return heli;
+  }
 
-  const UP = new THREE.Vector3(0, 1, 0);
-  const tmpDir = new THREE.Vector3();
-  const tmpMid = new THREE.Vector3();
+  // Chase a target point from above, keeping altitude, spotlight on target.
+  function updateHeli(heli, target, dt, t) {
+    const u = heli.userData;
+    u.rotor.rotation.y += dt * 22;
+    u.tailRotor.rotation.z += dt * 34;
+    // Hover offset: trail behind and above the target.
+    const desired = new THREE.Vector3(target.x - 8, Math.max(target.y + 34, MIN_ALT), target.z + 10);
+    heli.position.lerp(desired, 1 - Math.exp(-dt * 0.7));
+    heli.position.y = Math.max(heli.position.y, MIN_ALT);
+    heli.position.y += Math.sin(t * 1.3) * 0.006;
+    // Face the direction of travel / the target.
+    const look = new THREE.Vector3(target.x, heli.position.y, target.z);
+    heli.lookAt(look);
+    heli.rotation.z = Math.sin(t * 0.9) * 0.04; // gentle bank sway
+    // Spotlight cone: from the heli belly down to the target.
+    const belly = new THREE.Vector3(1.6, -1.15, 0).applyMatrix4(heli.matrixWorld);
+    const toTarget = new THREE.Vector3().subVectors(target, belly);
+    const len = toTarget.length();
+    u.cone.position.copy(belly).sub(heli.position);
+    u.cone.position.addScaledVector(toTarget.clone().normalize(), len / 2);
+    u.cone.scale.set(1, len / 34, 1);
+    u.cone.lookAt(target.x - heli.position.x + u.cone.position.x, target.y - heli.position.y + u.cone.position.y, target.z - heli.position.z + u.cone.position.z);
+    // ConeGeometry points +y by default; flip so the apex sits at the heli.
+    u.cone.rotation.x = Math.PI;
+    u.pool.position.set(target.x - heli.position.x, target.y - heli.position.y + 0.06, target.z - heli.position.z);
+    u.beacon.visible = Math.sin(t * 6) > 0;
+  }
 
-  return {
-    group: heli,
-    coneGroup,
-    pool,
-    rotor,
-    tailRotor,
-    beacon,
-    // Orbit above the target at a fixed safe altitude (above every rooftop),
-    // spotlight locked on the target. Only this function moves the heli.
-    // opts: { radius, altitude } — shots pull the heli in front of the
-    // camera (radius ~70, altitude ~38) so it lands upper-center in frame.
-    update(dt, time, target, orbitAngle, opts = {}) {
-      const altitude = opts.altitude ?? 52;
-      const radius = opts.radius ?? 20;
-      const hx = target.x + Math.cos(orbitAngle) * radius;
-      const hz = target.z + Math.sin(orbitAngle) * radius;
-      const hy = altitude + Math.sin(time * 0.7) * 1.5;
-      heli.position.set(hx, hy, hz);
-      // Face the direction of travel, with a slight bank.
-      heli.rotation.y = -orbitAngle;
-      heli.rotation.z = 0.08;
-      heli.rotation.x = 0.04;
-      rotor.rotation.y += dt * 22;
-      tailRotor.rotation.x += dt * 30;
-      beacon.visible = Math.sin(time * 6) > 0;
-      // Aim the cone: apex at the heli, base at the target on the ground.
-      tmpDir.set(target.x - hx, 0 - hy, target.z - hz);
-      const dist = tmpDir.length();
-      tmpMid.set((hx + target.x) / 2, hy / 2, (hz + target.z) / 2);
-      coneGroup.position.copy(tmpMid);
-      coneGroup.quaternion.setFromUnitVectors(UP, tmpDir.normalize().negate());
-      cone.scale.set(6.5, dist, 6.5);
-      pool.position.set(target.x, 0.12, target.z);
-      pool.scale.setScalar(6.5);
-    },
-  };
-}
+  // Stage the heli at an exact spot for a screenshot (no lerp drift).
+  function stageHeli(heli, x, y, z, target) {
+    heli.position.set(x, Math.max(y, MIN_ALT), z);
+    heli.lookAt(target.x, y, target.z);
+    const u = heli.userData;
+    const belly = new THREE.Vector3(1.6, -1.15, 0).applyMatrix4(heli.matrixWorld);
+    const toTarget = new THREE.Vector3().subVectors(target, belly);
+    const len = toTarget.length();
+    u.cone.position.copy(belly).sub(heli.position);
+    u.cone.position.addScaledVector(toTarget.clone().normalize(), len / 2);
+    u.cone.scale.set(1, len / 34, 1);
+    u.cone.rotation.x = Math.PI;
+    u.pool.position.set(target.x - heli.position.x, 0.06, target.z - heli.position.z);
+  }
+
+  AB.Heli = { makeHeli, updateHeli, stageHeli, MIN_ALT: MIN_ALT };
+})();

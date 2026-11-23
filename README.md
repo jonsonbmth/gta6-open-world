@@ -1,67 +1,76 @@
-# AURELIA BAY — an open-world crime game
+# gta6-open-world
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/jonsonbmth/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-AURELIA BAY is an original open-world crime game that runs offline in a
-desktop browser: a sun-soaked coastal city to explore on foot and by car,
-with traffic, pedestrians, shops and a night market, a wanted level with
-police cruisers and a police helicopter, missions and a story, combat, a HUD
-with a circular minimap and GPS route, a start screen, a pause menu with a
-9-district map, and saves. Built by an AI agent for make.fun's "Make GTA 6"
-bounty, $1,666 in USDC.
+**AURELIA BAY** — a 3D open-world crime game in the browser. Drive a sculpted
+GT coupe through a sunlit coastal city, lose the police helicopter, work eight
+jobs for fixer Vera Solano, and own the bay. Built with three.js (vendored
+locally, no network requests) and plain HTML/CSS/JS — no build step.
+
+## The city
+
+- **One continuous street network** — the roads are a single asphalt surface
+  with painted lane markings; sidewalks run only along the building lines,
+  and the boulevard's center divider is a hedge of green bushes.
+- **Downtown, market and coast** — Sunset Mile boulevard, Coral Market street
+  with stalls and string lights, Aurelia Blvd along the beach with palms, a
+  lifeguard tower and umbrellas, plus 9 named districts on the pause map.
+- **Living streets** — 110+ pedestrians with realistic proportions walking the
+  sidewalks, talkers in pairs, beachgoers, 26 ambient traffic cars, and 36
+  named shops with signs, awnings and goods.
+- **Police** — a 5-star wanted system, pursuing cruisers with light bars, and
+  a police helicopter with a visible spotlight cone that tracks you from
+  above the rooftops.
+
+## Play
+
+- **Drive** the red Aurelia GT coupe (WASD, SPACE handbrake for drifts),
+  **walk** as Dante Vale (SHIFT to run, CLICK to shoot), **enter and exit**
+  the car with E.
+- **8 jobs** with objective beacons and a GPS route on the circular minimap;
+  near-miss and drift bonuses pay out in-game cash.
+- **Full HUD** — mission card, police dispatch board, crew cards with
+  portraits, health/armor/reputation bars, speedometer, radio, and dialogue.
+- **Pause menu (M)** — city map with all 9 districts, story, stats, crew,
+  and save slots (localStorage).
+- **Procedural audio** — engine hum, police siren, two chiptune radio
+  stations and effects, all synthesized with WebAudio (N mutes).
 
 ## Run it
 
 ```sh
 node serve.ts
-# open http://localhost:8080
 ```
 
-No build step, no network request: every script, texture and sound is a file
-under `game/` or generated in code. Three.js is vendored as a minified build
-under `game/vendor/`.
+Then open http://localhost:8080. Or publish the entry with:
 
-## Controls
+```sh
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
 
-- `WASD` drive / walk, `SPACE` handbrake, `SHIFT` run
-- `E` enter / exit / steal car, `CLICK` shoot, `R` radio
-- `M` city map, `ESC` / `P` pause menu, `N` mute
-- `Z` / `X` / `C` crew abilities (driver, mechanic, lookout)
+## Layout
 
-## Systems
+- `game/index.html` — page, HUD and pause menu
+- `game/src/` — one file per system: `main` (loop, driving, camera),
+  `city` (streets, blocks, shops, market, beach), `vehicles` (sculpted cars,
+  traffic), `people` (articulated pedestrians, crowds), `heli`, `police`
+  (wanted system, pursuit), `missions` (jobs, dialogue, beacons), `hud`
+  (minimap, pause menu), `faces` (crew portraits), `audio` (WebAudio),
+  `shots` (screenshot staging), `sky`, `trees`, `textures`, `util`
+- `game/vendor/three.min.js` — three.js r186, vendored locally (MIT)
+- `screenshots/` — the 4 dossier screenshots (cover first by name)
+- `main.ts` — publishes game/ + screenshots/ and writes dossier.json
 
-- **City** — a grid of avenues with wide sidewalks, named shopfronts with
-  signs and awnings, a market street with stalls, a beach with a pier, palms,
-  and 9 districts on the pause map.
-- **People** — dozens of pedestrians walking, talking, waiting and crossing;
-  crowds at the market and the beach.
-- **Police** — a 4-star wanted level, dispatch board, pursuing cruisers with
-  light bars, roadblocks, and a police helicopter with a spotlight that tracks
-  the player (built as a direct scene mesh).
-- **Missions** — 8 jobs with stages, objectives, a fixer who calls the shots,
-  and a crew of three with abilities.
-- **Vehicles** — a sculpted hero sports car plus civilian traffic and police
-  cruisers; any car can be stolen and driven.
-- **HUD** — mission card, dispatch board, weapons, crew cards, circular
-  minimap with GPS route and police blips, health / armour / reputation,
-  speed, money, clock and radio.
+## Honest limits
 
-## Screenshots
-
-The four shots in `screenshots/` are real renders of the game's own code,
-staged with `?shot=1..4` (see `game/src/shots.js`): a downtown chase with the
-police helicopter, an on-foot market street, the pause menu, and a coastal
-chase.
-
-## Known limits
-
-- Headless (software-rendered) frame rates are low; the game loop itself is
-  correct and runs at full speed on a real GPU.
-- The police helicopter keeps a fixed orbit above the player rather than
-  landing; it never flies through buildings.
+- Single-player and offline; no multiplayer, no save sync between devices.
+- Traffic follows straight lanes and does not stop at lights; pedestrians
+  walk fixed sidewalk paths.
+- The helicopter is a visual pursuer — it tracks and spotlights you, it does
+  not shoot.
 
 ---
 
-<sub>Entered on [make.fun](https://make.fun/?ref=a14mmr4n&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+<sub>Entered on [make.fun](https://make.fun/?ref=a14mmr4n&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software on make.fun</sub>
