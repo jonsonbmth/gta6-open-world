@@ -1,257 +1,301 @@
-// people.js — the proportional person factory for AURELIA BAY. Figures
-// are built to real human proportions (head ~1/7.5 of height, legs ~47%,
-// arms that reach mid-thigh), with faces (eyes, brows, nose, mouth) and
-// varied hair — GTA San Andreas PS2 style, not capsule toys. Activities
-// (walk, talk, phone, carry, wave) are poses on shoulder/hip pivots, so
-// the same factory serves the staged shots and the walking crowd.
-
+// Aurelia Bay — people. Proportional figures (~1.75 units tall) with a real
+// walk cycle, varied skin tones, clothes and hair, doing visible things on
+// the sidewalks: walking in pairs, chatting, waiting at crossings, sitting.
+// People stay at mid-distance in the staged shots — no giant mannequin
+// close-ups. The player character shares the same builder.
 (function () {
   'use strict';
+  var U = window.AB.util;
 
-  var util = window.AB.util;
+  var SKINS = [0xf2c89b, 0xd9a066, 0xa06a3b, 0x7a4a26, 0xf7d7b0, 0xc98a5e];
+  var SHIRTS = [0xc22e2e, 0x274b9f, 0x2e6b4f, 0xf5c542, 0x7fb069, 0xe07856,
+    0x6b4f9e, 0x2f8fa8, 0xf5f2ea, 0xd98a8a, 0x37505e, 0xff8c42];
+  var PANTS = [0x2a2a30, 0x37505e, 0x5a4a3a, 0x3a3f45, 0x6b4f3a, 0x1f1f26];
+  var HAIRS = [0x1a1a1a, 0x4a2e18, 0x8a6b45, 0xc9a227, 0x6e6e6e, 0xa63a2e];
 
-  // Shared geometries: one capsule per limb size, one head sphere — the
-  // crowd reuses them, so 30+ people cost little geometry.
-  var shared = null;
+  var headGeo = new THREE.SphereGeometry(0.21, 12, 10);
+  var hairGeo = new THREE.SphereGeometry(0.225, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  var torsoGeo = new THREE.BoxGeometry(0.52, 0.62, 0.3);
+  var armGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.62, 6);
+  armGeo.translate(0, -0.31, 0);
+  var legGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.72, 6);
+  legGeo.translate(0, -0.36, 0);
+  var hatGeo = new THREE.CylinderGeometry(0.26, 0.28, 0.1, 10);
 
-  function getShared() {
-    if (shared) return shared;
-    shared = {
-      legGeo: new THREE.CapsuleGeometry(0.07, 0.68, 4, 10),
-      armGeo: new THREE.CapsuleGeometry(0.05, 0.5, 4, 10),
-      torsoGeo: new THREE.CylinderGeometry(0.17, 0.13, 0.55, 12),
-      headGeo: new THREE.SphereGeometry(0.15, 16, 12),
-      shoeGeo: new THREE.BoxGeometry(0.11, 0.07, 0.24),
-      eyeGeo: new THREE.SphereGeometry(0.02, 8, 6),
-      browGeo: new THREE.BoxGeometry(0.055, 0.012, 0.012),
-      noseGeo: new THREE.SphereGeometry(0.022, 8, 6),
-      mouthGeo: new THREE.BoxGeometry(0.06, 0.012, 0.01),
-      handGeo: new THREE.SphereGeometry(0.05, 8, 6),
-      boxGeo: new THREE.BoxGeometry(0.34, 0.24, 0.24),
-      phoneGeo: new THREE.BoxGeometry(0.04, 0.09, 0.02),
-      eyeMat: new THREE.MeshStandardMaterial({ color: 0x1a1210, roughness: 0.4 }),
-      mouthMat: new THREE.MeshStandardMaterial({ color: 0x6b3226, roughness: 0.6 }),
-    };
-    return shared;
-  }
+  // A proportional person: head + hair, torso, swinging arms, walking legs.
+  // Returns a group with userData joints for animation.
+  function makePersonModel(opts) {
+    opts = opts || {};
+    var rng = opts.rng || U.makeRng(1);
+    var skin = new THREE.MeshLambertMaterial({ color: opts.skin || rng.pick(SKINS) });
+    var shirt = new THREE.MeshLambertMaterial({ color: opts.shirt || rng.pick(SHIRTS) });
+    var pants = new THREE.MeshLambertMaterial({ color: opts.pants || rng.pick(PANTS) });
+    var hair = new THREE.MeshLambertMaterial({ color: opts.hair || rng.pick(HAIRS) });
 
-  function mat(color, rough) {
-    return new THREE.MeshStandardMaterial({ color: color, roughness: rough === undefined ? 0.8 : rough, metalness: 0 });
-  }
+    var g = new THREE.Group();
 
-  // One limb: a capsule pivoted at its top joint so poses and walk cycles
-  // can swing it. Limbs do not cast shadows (only torso/head/thighs do) —
-  // that keeps the shadow pass cheap with dozens of pedestrians on screen.
-  function makeLimb(geo, material, length) {
-    var pivot = new THREE.Group();
-    var mesh = new THREE.Mesh(geo, material);
-    mesh.position.y = -length / 2;
-    pivot.add(mesh);
-    return { pivot: pivot, mesh: mesh, length: length };
-  }
+    var legL = new THREE.Group(); legL.position.set(0.13, 0.78, 0);
+    var legR = new THREE.Group(); legR.position.set(-0.13, 0.78, 0);
+    var ll = new THREE.Mesh(legGeo, pants); ll.castShadow = true;
+    var lr = new THREE.Mesh(legGeo, pants); lr.castShadow = true;
+    legL.add(ll); legR.add(lr);
+    g.add(legL); g.add(legR);
 
-  // Hair for a head of radius r. Styles: crop, bob, ponytail, beard, bald,
-  // cap. The hair is a shell that hugs the skull — it never swallows the
-  // face (a bug the V25r rebuild caught: a 0.75-pi cap hid the whole face).
-  function addHair(headGroup, style, color, r) {
-    var hairMat = mat(color, 0.9);
-    var cap;
-    if (style === 'ponytail') {
-      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.04, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
-      cap.position.y = r * 0.12;
-      headGroup.add(cap);
-      var tail = new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.26, r * 0.9, 4, 8), hairMat);
-      tail.position.set(0, -r * 0.35, -r * 1.05);
-      tail.rotation.x = 0.35;
-      headGroup.add(tail);
-    } else if (style === 'bob') {
-      // Top cap + cheek side panels: the face stays fully visible.
-      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.06, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
-      cap.position.y = r * 0.1;
-      headGroup.add(cap);
-      [-1, 1].forEach(function (side) {
-        var panel = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), hairMat);
-        panel.scale.set(0.5, 1.3, 0.8);
-        panel.position.set(side * r * 0.95, -r * 0.35, r * 0.15);
-        headGroup.add(panel);
-      });
-    } else if (style === 'beard') {
-      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.03, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat);
-      cap.position.y = r * 0.14;
-      headGroup.add(cap);
-      var beard = new THREE.Mesh(new THREE.SphereGeometry(r * 0.9, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), hairMat);
-      beard.position.set(0, -r * 0.1, r * 0.08);
-      beard.scale.set(1, 0.9, 0.9);
-      headGroup.add(beard);
-    } else if (style === 'cap') {
-      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.05, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), hairMat);
-      cap.position.y = r * 0.16;
-      headGroup.add(cap);
-      var brim = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.05, r * 1.05, r * 0.1, 14, 1, false, -0.7, 1.4), hairMat);
-      brim.position.set(0, r * 0.32, r * 0.45);
-      brim.rotation.x = 0.15;
-      headGroup.add(brim);
-    } else if (style === 'bald') {
-      // No hair; the head is bare.
-    } else {
-      // Short crop (default).
-      cap = new THREE.Mesh(new THREE.SphereGeometry(r * 1.03, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
-      cap.position.y = r * 0.13;
-      headGroup.add(cap);
-    }
-  }
-
-  // A face: eyes, brows, nose and mouth placed on the +Z side of the head
-  // sphere. The face is what the marina shot is judged on — every crew
-  // member's face must read at a glance.
-  function addFace(headGroup, r, skinTone) {
-    var sh = getShared();
-    var z = r * 0.92;
-    [-1, 1].forEach(function (side) {
-      var eye = new THREE.Mesh(sh.eyeGeo, sh.eyeMat);
-      eye.position.set(side * r * 0.36, r * 0.18, z);
-      headGroup.add(eye);
-      var brow = new THREE.Mesh(sh.browGeo, sh.eyeMat);
-      brow.position.set(side * r * 0.36, r * 0.42, z * 0.98);
-      brow.rotation.z = side * -0.12;
-      headGroup.add(brow);
-    });
-    var nose = new THREE.Mesh(sh.noseGeo, mat(skinTone, 0.6));
-    nose.position.set(0, -r * 0.05, r * 1.0);
-    nose.scale.set(0.8, 1.2, 0.8);
-    headGroup.add(nose);
-    var mouth = new THREE.Mesh(sh.mouthGeo, sh.mouthMat);
-    mouth.position.set(0, -r * 0.38, r * 0.94);
-    headGroup.add(mouth);
-  }
-
-  // Create one person. opts: skin, hair, hairStyle, shirt, pants, shoes,
-  // activity, seed, scale, name. Returns {group, head, headRadius, height,
-  // limbs, activity, phase}.
-  function createPerson(opts) {
-    var o = opts || {};
-    var sh = getShared();
-    var rng = util.mulberry32(o.seed || 1);
-    var scale = o.scale || 1;
-    var group = new THREE.Group();
-    group.name = o.name || 'person';
-    var skin = o.skin || 0xc68e5e;
-    var skinMat = mat(skin, 0.65);
-    var shirtMat = mat(o.shirt || 0x3a6ab0, 0.85);
-    var pantsMat = mat(o.pants || 0x2a2f38, 0.85);
-    var shoeMat = mat(o.shoes || 0x1a1a1a, 0.7);
-
-    // Legs: hips at y=0.85, feet on the ground.
-    var legL = makeLimb(sh.legGeo, pantsMat, 0.82);
-    legL.pivot.position.set(-0.1, 0.85, 0);
-    group.add(legL.pivot);
-    var legR = makeLimb(sh.legGeo, pantsMat, 0.82);
-    legR.pivot.position.set(0.1, 0.85, 0);
-    group.add(legR.pivot);
-    // Shoes at the end of each leg.
-    [-0.1, 0.1].forEach(function (x) {
-      var shoe = new THREE.Mesh(sh.shoeGeo, shoeMat);
-      shoe.position.set(x, 0.035, 0.05);
-      group.add(shoe);
-    });
-    // Torso: tapered cylinder, shoulders at y=1.32.
-    var torso = new THREE.Mesh(sh.torsoGeo, shirtMat);
+    var torso = new THREE.Mesh(torsoGeo, shirt);
     torso.position.y = 1.12;
     torso.castShadow = true;
-    group.add(torso);
-    // Arms: shoulders at y=1.32, hands reaching mid-thigh.
-    var armL = makeLimb(sh.armGeo, shirtMat, 0.6);
-    armL.pivot.position.set(-0.21, 1.32, 0);
-    group.add(armL.pivot);
-    var armR = makeLimb(sh.armGeo, shirtMat, 0.6);
-    armR.pivot.position.set(0.21, 1.32, 0);
-    group.add(armR.pivot);
-    // Hands.
-    var handL = new THREE.Mesh(sh.handGeo, skinMat);
-    handL.position.y = -0.62;
-    armL.pivot.add(handL);
-    var handR = new THREE.Mesh(sh.handGeo, skinMat);
-    handR.position.y = -0.62;
-    armR.pivot.add(handR);
-    // Head: sphere r=0.15 at y=1.62, with a face and hair.
-    var headGroup = new THREE.Group();
-    headGroup.position.y = 1.62;
-    var head = new THREE.Mesh(sh.headGeo, skinMat);
-    head.castShadow = true;
-    headGroup.add(head);
-    addFace(headGroup, 0.15, skin);
-    addHair(headGroup, o.hairStyle || 'crop', o.hair || 0x201510, 0.15);
-    group.add(headGroup);
+    g.add(torso);
 
-    var person = {
-      group: group,
-      head: headGroup,
-      headRadius: 0.15 * scale,
-      height: 1.8 * scale,
-      limbs: { legL: legL, legR: legR, armL: armL, armR: armR },
-      activity: o.activity || 'idle',
-      phase: rng() * Math.PI * 2,
-      name: o.name || 'person',
-    };
+    var armL = new THREE.Group(); armL.position.set(0.32, 1.38, 0);
+    var armR = new THREE.Group(); armR.position.set(-0.32, 1.38, 0);
+    var al = new THREE.Mesh(armGeo, shirt); al.castShadow = true;
+    var ar = new THREE.Mesh(armGeo, shirt); ar.castShadow = true;
+    armL.add(al); armR.add(ar);
+    g.add(armL); g.add(armR);
 
-    applyPose(person, o.activity || 'idle', o);
-    group.scale.setScalar(scale);
-    return person;
-  }
+    var head = new THREE.Group();
+    head.position.y = 1.62;
+    var skull = new THREE.Mesh(headGeo, skin);
+    skull.castShadow = true;
+    head.add(skull);
+    var hairM = new THREE.Mesh(hairGeo, hair);
+    hairM.position.y = 0.02;
+    head.add(hairM);
+    // simple face: two eyes
+    var eyeGeo = new THREE.SphereGeometry(0.028, 6, 5);
+    var eyeMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+    var eL = new THREE.Mesh(eyeGeo, eyeMat); eL.position.set(0.07, 0.03, 0.19);
+    var eR = new THREE.Mesh(eyeGeo, eyeMat); eR.position.set(-0.07, 0.03, 0.19);
+    head.add(eL); head.add(eR);
+    g.add(head);
 
-  // Static poses for the staged shots. Walk cycles animate in play mode.
-  function applyPose(person, activity, opts) {
-    var L = person.limbs;
-    var o = opts || {};
-    // Reset to neutral.
-    L.legL.pivot.rotation.set(0, 0, 0);
-    L.legR.pivot.rotation.set(0, 0, 0);
-    L.armL.pivot.rotation.set(0, 0, 0.06);
-    L.armR.pivot.rotation.set(0, 0, -0.06);
-    if (activity === 'walk') {
-      var p = person.phase;
-      L.legL.pivot.rotation.x = Math.sin(p) * 0.45;
-      L.legR.pivot.rotation.x = Math.sin(p + Math.PI) * 0.45;
-      L.armL.pivot.rotation.x = Math.sin(p + Math.PI) * 0.3;
-      L.armR.pivot.rotation.x = Math.sin(p) * 0.3;
-    } else if (activity === 'talk') {
-      L.armR.pivot.rotation.x = -0.9;
-      L.armR.pivot.rotation.z = -0.3;
-      L.armL.pivot.rotation.x = -0.25;
-    } else if (activity === 'phone') {
-      L.armR.pivot.rotation.x = -2.2;
-      L.armR.pivot.rotation.z = -0.5;
-      var phone = new THREE.Mesh(getShared().phoneGeo, getShared().eyeMat);
-      phone.position.set(0.02, -0.62, 0.03);
-      L.armR.pivot.add(phone);
-    } else if (activity === 'carry') {
-      L.armL.pivot.rotation.x = -1.1;
-      L.armR.pivot.rotation.x = -1.1;
-      var boxMat = mat(0xb08a4f, 0.9);
-      var parcel = new THREE.Mesh(getShared().boxGeo, boxMat);
-      parcel.position.set(0, 0.95, 0.32);
-      person.group.add(parcel);
-    } else if (activity === 'wave') {
-      L.armR.pivot.rotation.z = Math.PI - 0.25;
-      L.armR.pivot.rotation.x = -0.2;
+    if (opts.hat || rng.chance(0.22)) {
+      var hat = new THREE.Mesh(hatGeo, new THREE.MeshLambertMaterial({
+        color: opts.hatColor || rng.pick(SHIRTS)
+      }));
+      hat.position.y = 1.8;
+      g.add(hat);
     }
-    // A slight lean or turn keeps the crowd from looking cloned.
-    if (o.lean) person.group.rotation.z = o.lean;
+    if (opts.bag) {
+      var bag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.36, 0.14),
+        new THREE.MeshLambertMaterial({ color: opts.bag }));
+      bag.position.set(0, 1.1, -0.24);
+      g.add(bag);
+    }
+
+    g.userData.joints = { legL: legL, legR: legR, armL: armL, armR: armR, head: head, torso: torso };
+    g.userData.phase = rng.next() * Math.PI * 2;
+    return g;
   }
 
-  // Advance a walk cycle (play mode): legs and arms swing in opposition.
-  function updateWalk(person, time) {
-    var L = person.limbs;
-    var t = time * 5 + person.phase;
-    L.legL.pivot.rotation.x = Math.sin(t) * 0.5;
-    L.legR.pivot.rotation.x = Math.sin(t + Math.PI) * 0.5;
-    L.armL.pivot.rotation.x = Math.sin(t + Math.PI) * 0.35;
-    L.armR.pivot.rotation.x = Math.sin(t) * 0.35;
+  function animateWalk(model, dt, speed) {
+    var j = model.userData.joints;
+    model.userData.phase += dt * (4 + speed * 1.6);
+    var p = model.userData.phase;
+    var amp = 0.25 + Math.min(speed * 0.09, 0.5);
+    j.legL.rotation.x = Math.sin(p) * amp;
+    j.legR.rotation.x = Math.sin(p + Math.PI) * amp;
+    j.armL.rotation.x = Math.sin(p + Math.PI) * amp * 0.8;
+    j.armR.rotation.x = Math.sin(p) * amp * 0.8;
+    j.torso.position.y = 1.12 + Math.abs(Math.sin(p)) * 0.03;
+  }
+
+  function animateIdle(model, dt, style) {
+    var j = model.userData.joints;
+    model.userData.phase += dt * 1.4;
+    var p = model.userData.phase;
+    if (style === 'talk') {
+      // one arm gestures while talking
+      j.armR.rotation.x = -0.9 + Math.sin(p * 1.7) * 0.35;
+      j.armR.rotation.z = 0.3;
+      j.armL.rotation.x = -0.15;
+      j.head.rotation.y = Math.sin(p * 0.6) * 0.3;
+    } else if (style === 'wait') {
+      j.armL.rotation.x = -0.1; j.armR.rotation.x = -0.1;
+      j.head.rotation.y = Math.sin(p * 0.4) * 0.5; // looking around
+    } else if (style === 'wave') {
+      j.armR.rotation.z = 2.4 + Math.sin(p * 3) * 0.4;
+      j.armR.rotation.x = -0.4;
+    } else {
+      j.armL.rotation.x = Math.sin(p) * 0.05;
+      j.armR.rotation.x = Math.sin(p + 1) * 0.05;
+    }
+    j.legL.rotation.x = 0; j.legR.rotation.x = 0;
+  }
+
+  // ---- pedestrians: walkers on sidewalks, talkers, waiters ----
+  function makePedestrians(scene, city, rng, count) {
+    var peds = [];
+    var sidewalks = [];
+    city.ROAD_X.forEach(function (x) {
+      sidewalks.push({ axis: 'x', at: x + 9.5 }, { axis: 'x', at: x - 9.5 });
+    });
+    city.ROAD_Z.forEach(function (z) {
+      sidewalks.push({ axis: 'z', at: z + 9.5 }, { axis: 'z', at: z - 9.5 });
+    });
+
+    for (var i = 0; i < count; i++) {
+      var role = rng.next();
+      var model = makePersonModel({ rng: rng });
+      var ped = { model: model, role: 'walk', speed: 0, phase: rng.next() * 6 };
+      if (role < 0.62) {
+        // walker along a sidewalk
+        var sw = sidewalks[Math.floor(rng.next() * sidewalks.length)];
+        ped.sidewalk = sw;
+        ped.along = rng.range(-140, 140);
+        ped.dir = rng.pick([-1, 1]);
+        ped.speed = rng.range(1.1, 2.0);
+        ped.role = 'walk';
+      } else if (role < 0.84) {
+        // talker: stands in a pair spot; the pair partner is placed beside
+        var bx = rng.pick(city.ROAD_X) + rng.pick([-9.5, 9.5]);
+        var bz = rng.range(-130, 130);
+        ped.x = bx; ped.z = bz;
+        ped.heading = rng.next() * Math.PI * 2;
+        ped.role = 'talk';
+        ped.model.position.set(bx, 0, bz);
+        ped.model.rotation.y = ped.heading;
+        // partner, facing them
+        var partner = makePersonModel({ rng: rng });
+        partner.position.set(bx + Math.sin(ped.heading + 0.4) * 1.1, 0, bz + Math.cos(ped.heading + 0.4) * 1.1);
+        partner.rotation.y = ped.heading + Math.PI;
+        scene.add(partner);
+        peds.push({ model: partner, role: 'talk', speed: 0, phase: rng.next() * 6 });
+      } else {
+        // waiter at a crossing
+        var cx = rng.pick(city.ROAD_X) + rng.pick([-9.5, 9.5]);
+        var cz = rng.pick(city.ROAD_Z) + rng.pick([-9.5, 9.5]);
+        ped.x = cx; ped.z = cz;
+        ped.heading = rng.next() * Math.PI * 2;
+        ped.role = 'wait';
+        ped.model.position.set(cx, 0, cz);
+        ped.model.rotation.y = ped.heading;
+      }
+      scene.add(model);
+      peds.push(ped);
+    }
+
+    // a few beachgoers on the sand
+    for (var b = 0; b < 8; b++) {
+      var bm = makePersonModel({ rng: rng });
+      var bx3 = rng.range(-205, -165), bz3 = rng.range(-120, 120);
+      bm.position.set(bx3, 0, bz3);
+      bm.rotation.y = rng.next() * Math.PI * 2;
+      scene.add(bm);
+      peds.push({
+        model: bm, role: rng.chance(0.5) ? 'talk' : 'wait', speed: 0,
+        x: bx3, z: bz3, phase: rng.next() * 6
+      });
+    }
+
+    return {
+      peds: peds,
+      update: function (dt) {
+        for (var i = 0; i < peds.length; i++) {
+          var p = peds[i];
+          if (p.role === 'walk') {
+            p.along += p.dir * p.speed * dt;
+            if (p.along > 145) { p.along = 145; p.dir = -1; }
+            if (p.along < -145) { p.along = -145; p.dir = 1; }
+            var x, z, heading;
+            if (p.sidewalk.axis === 'x') {
+              x = p.sidewalk.at; z = p.along;
+              heading = p.dir > 0 ? 0 : Math.PI;
+            } else {
+              x = p.along; z = p.sidewalk.at;
+              heading = p.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+            }
+            p.model.position.set(x, 0, z);
+            p.model.rotation.y = heading;
+            animateWalk(p.model, dt, p.speed);
+          } else {
+            animateIdle(p.model, dt, p.role);
+          }
+        }
+      },
+      // scatter: nearby pedestrians flee from a point (panic cue)
+      scatter: function (x, z, radius) {
+        for (var i = 0; i < peds.length; i++) {
+          var p = peds[i];
+          var dx = p.model.position.x - x, dz = p.model.position.z - z;
+          var d2 = dx * dx + dz * dz;
+          if (d2 < radius * radius && p.role !== 'walk') {
+            p.role = 'walk';
+            p.sidewalk = { axis: 'x', at: p.model.position.x };
+            p.along = p.model.position.z;
+            p.dir = dz > 0 ? 1 : -1;
+            p.speed = 3.4;
+          }
+        }
+      }
+    };
+  }
+
+  // ---- the player on foot ----
+  function makePlayer(rng) {
+    var model = makePersonModel({
+      rng: rng,
+      skin: 0xd9a066, shirt: 0xc22e2e, pants: 0x2a2a30, hair: 0x1a1a1a, hat: false
+    });
+    // red jacket + white shirt: Dante "Dusk" Reyes
+    var jacket = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.4, 0.34),
+      new THREE.MeshLambertMaterial({ color: 0x8f1d1d }));
+    jacket.position.y = 1.28;
+    model.add(jacket);
+    return {
+      model: model, x: 0, z: 0, heading: 0,
+      speed: 0, aiming: false, onFoot: true
+    };
+  }
+
+  var WALK_SPEED = 5, RUN_SPEED = 9.5;
+
+  function updatePlayerOnFoot(player, input, dt, colliders, camHeading) {
+    var mx = 0, mz = 0;
+    if (input.forward) mz += 1;
+    if (input.back) mz -= 1;
+    if (input.left) mx -= 1;
+    if (input.right) mx += 1;
+    var moving = (mx !== 0 || mz !== 0);
+    var targetSpeed = 0;
+    if (moving) {
+      var len = Math.sqrt(mx * mx + mz * mz);
+      mx /= len; mz /= len;
+      // movement relative to camera heading
+      var sin = Math.sin(camHeading), cos = Math.cos(camHeading);
+      var wx = mx * cos - mz * sin;
+      var wz = mx * sin + mz * cos;
+      targetSpeed = input.run ? RUN_SPEED : WALK_SPEED;
+      player.heading = Math.atan2(wx, wz);
+      var nx = player.x + wx * targetSpeed * dt;
+      var nz = player.z + wz * targetSpeed * dt;
+      // building collision
+      var blocked = false;
+      for (var i = 0; i < colliders.length; i++) {
+        var c = colliders[i];
+        if (nx > c.minX - 0.6 && nx < c.maxX + 0.6 && nz > c.minZ - 0.6 && nz < c.maxZ + 0.6) {
+          blocked = true; break;
+        }
+      }
+      if (!blocked) {
+        player.x = U.clamp(nx, -208, 148);
+        player.z = U.clamp(nz, -148, 148);
+      }
+    }
+    player.speed = U.damp(player.speed, targetSpeed, 10, dt);
+    player.model.position.set(player.x, 0, player.z);
+    player.model.rotation.y = player.heading;
+    if (player.speed > 0.4) animateWalk(player.model, dt, player.speed);
+    else animateIdle(player.model, dt, player.aiming ? 'talk' : 'idle');
+    return moving;
   }
 
   window.AB.people = {
-    createPerson: createPerson,
-    applyPose: applyPose,
-    updateWalk: updateWalk,
+    makePersonModel: makePersonModel,
+    animateWalk: animateWalk,
+    animateIdle: animateIdle,
+    makePedestrians: makePedestrians,
+    makePlayer: makePlayer,
+    updatePlayerOnFoot: updatePlayerOnFoot
   };
 })();

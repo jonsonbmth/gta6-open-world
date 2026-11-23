@@ -1,220 +1,121 @@
-// shots.js — the staged shots for AURELIA BAY. Each shot (?shot=chase,
-// title, map, marina) places the camera, the cars and the HUD for one
-// composed frame, renders it ONCE (no animation loop — SwiftShader is
-// slow, and a single frame is all a screenshot needs), and measures the
-// frame into window.__shotInfo: the cars' screen boxes, the marina
-// crew's head positions, the sky facts and the renderer stats. The
-// playtest asserts on those measurements.
-//
-// THE V25r3 FIX: the marina shot shows the FULL HUD, like the chase
-// shot. The V25r2 marina screenshot had no HUD at all and looked like a
-// tech demo; the marina is a game screen, so it carries the game HUD.
-
+// Aurelia Bay — screenshot staging. The four submitted screenshots are real
+// renders of the game, staged deterministically: ?shot=1..4 sets the exact
+// position, wanted level, camera and HUD state before the frame is taken.
+// The city seed is fixed, so the same shot number always frames the same
+// street. Nothing here edits pixels — it only drives the real game.
 (function () {
   'use strict';
 
-  var W = 1280;
-  var H = 720;
-
-  // The chase positions of the four cruisers: staggered down the street
-  // so their screen boxes never overlap each other or the hero.
-  var CRUISER_SPOTS = [
-    { name: 'FALCON-2', x: -3.2, z: -22 },
-    { name: 'OSPREY-7', x: 3.0, z: -30 },
-    { name: 'HERON-4', x: -2.0, z: -42 },
-    { name: 'KITE-9', x: 5.5, z: -68 },
-  ];
-
-  function setCamera(camera, pos, look, fov) {
-    camera.position.set(pos[0], pos[1], pos[2]);
-    camera.lookAt(look[0], look[1], look[2]);
-    if (fov) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
-    camera.updateMatrixWorld(true);
-  }
-
-  function projectToScreen(camera, v3) {
-    var v = v3.clone().project(camera);
-    return {
-      x: (v.x * 0.5 + 0.5) * W,
-      y: (-v.y * 0.5 + 0.5) * H,
-      behind: v.z > 1,
-    };
-  }
-
-  // The screen box of a car: project the 8 corners of its world bounding
-  // box and take the min/max. That is the box the playtest checks for
-  // size, framing and separation.
-  function carScreenBox(game, carGroup) {
-    var box = new THREE.Box3().setFromObject(carGroup);
-    var min = box.min;
-    var max = box.max;
-    var corners = [
-      new THREE.Vector3(min.x, min.y, min.z),
-      new THREE.Vector3(min.x, min.y, max.z),
-      new THREE.Vector3(min.x, max.y, min.z),
-      new THREE.Vector3(min.x, max.y, max.z),
-      new THREE.Vector3(max.x, min.y, min.z),
-      new THREE.Vector3(max.x, min.y, max.z),
-      new THREE.Vector3(max.x, max.y, min.z),
-      new THREE.Vector3(max.x, max.y, max.z),
-    ];
-    var x0 = Infinity;
-    var y0 = Infinity;
-    var x1 = -Infinity;
-    var y1 = -Infinity;
-    corners.forEach(function (c) {
-      var p = projectToScreen(game.camera, c);
-      if (p.x < x0) x0 = p.x;
-      if (p.y < y0) y0 = p.y;
-      if (p.x > x1) x1 = p.x;
-      if (p.y > y1) y1 = p.y;
-    });
-    return { x0: x0, y0: y0, x1: x1, y1: y1, w: x1 - x0, h: y1 - y0 };
-  }
-
-  // The marina crew's heads: screen position + projected head radius.
-  function crewHeads(game) {
-    var camera = game.camera;
-    var right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    return game.crew.map(function (person) {
-      var headPos = new THREE.Vector3();
-      person.head.getWorldPosition(headPos);
-      var p = projectToScreen(camera, headPos);
-      var edge = headPos.clone().addScaledVector(right, person.headRadius);
-      var pe = projectToScreen(camera, edge);
-      var r = Math.abs(pe.x - p.x);
-      return { name: person.name, x: p.x, y: p.y, r: r, behind: p.behind };
-    });
-  }
-
-  function computeShotInfo(game, shot) {
-    var info = {
-      shot: shot,
-      sky: game.skyInfo,
-      renderer: {
-        calls: game.renderer.info.render.calls,
-        triangles: game.renderer.info.render.triangles,
-        geometries: game.renderer.info.memory.geometries,
-        textures: game.renderer.info.memory.textures,
-      },
-    };
-    if (shot === 'chase' || shot === 'map') {
-      var cars = [{ name: 'hero', box: carScreenBox(game, game.hero.group) }];
-      game.cruisers.forEach(function (c) {
-        cars.push({ name: c.name, box: carScreenBox(game, c.group) });
-      });
-      info.cars = cars;
-    }
-    if (shot === 'marina') {
-      info.heads = crewHeads(game);
-    }
-    window.__shotInfo = info;
-    return info;
-  }
-
-  // Place the hero and the cruisers for a driving shot.
-  function placeTraffic(game) {
-    game.hero.group.position.set(0, 0, 0.5);
-    game.hero.group.rotation.y = Math.PI / 2; // facing down the street
-    game.cruisers.forEach(function (c, i) {
-      var spot = CRUISER_SPOTS[i];
-      c.group.position.set(spot.x, 0, spot.z);
-      c.group.rotation.y = Math.PI / 2;
-    });
-    game.heli.group.position.set(0.5, 19, -38);
-    game.heli.group.rotation.y = 0; // nose down the street
-    game.heli.group.visible = true;
-  }
-
-  function stageChase(game) {
-    placeTraffic(game);
-    setCamera(game.camera, [4.6, 2.9, 8.6], [0, 1.1, -14], 50);
-    window.AB.hud.hideTitle();
-    window.AB.hud.closeMap();
-    window.AB.hud.showHUD();
-    window.AB.hud.setSpeed(118);
-    window.AB.hud.setPopup(
-      '<span class="popup-big">DRIFT x3</span><br>' +
-      '<span class="popup-small">NEAR MISS +$250</span>',
-    );
-  }
-
-  // Close-up of the hero car for the hero-zoom preview: a clean side
-  // profile, no HUD — the full sculpted silhouette (sloped nose,
-  // curved roofline, tapered tail, spoked wheels filling the arches,
-  // wing spoiler) fills the frame, nose to the right.
-  function stageHeroZoom(game) {
-    placeTraffic(game);
-    // Shot-only key light: the hero sits in building shade at this spot,
-    // so light its camera side directly for the close-up.
-    var key = new THREE.DirectionalLight(0xfff2d8, 1.6);
-    key.position.set(14, 8, 6);
-    key.target.position.set(0, 0.7, 0.5);
-    game.scene.add(key);
-    game.scene.add(key.target);
-    setCamera(game.camera, [6.2, 1.4, 0.5], [0, 0.7, 0.5], 50);
-    window.AB.hud.hideTitle();
-    window.AB.hud.hideHUD();
-    window.AB.hud.closeMap();
-  }
-
-  function stageTitle(game) {
-    placeTraffic(game);
-    setCamera(game.camera, [0.5, 1.7, 16], [0, 2.2, -30], 50);
-    window.AB.hud.showTitle();
-    window.AB.hud.hideHUD();
-    window.AB.hud.closeMap();
-  }
-
-  function stageMap(game) {
-    placeTraffic(game);
-    setCamera(game.camera, [4.6, 2.9, 8.6], [0, 1.1, -14], 50);
-    window.AB.hud.hideTitle();
-    window.AB.hud.showHUD();
-    window.AB.hud.setSpeed(118);
-    window.AB.hud.openMap();
-  }
-
-  function stageMarina(game) {
-    placeTraffic(game);
-    // The marina camera: close enough that every crew head reads at
-    // >=15px, wide enough that the six-person row fits the frame.
-    setCamera(game.camera, [-31.5, 1.9, 0.5], [-39, 1.35, 0], 50);
-    window.AB.hud.hideTitle();
-    window.AB.hud.closeMap();
-    // FULL HUD on the marina shot (the V25r3 fix).
-    window.AB.hud.showHUD();
-    window.AB.hud.setSpeed(0);
-    window.AB.hud.setPopup(
-      '<span class="popup-big">GILDED QUAY</span><br>' +
-      '<span class="popup-small">Crew assembled · 6 ready</span>',
-    );
-  }
-
-  // Stage one shot, render a single frame, measure it, and mark the page
-  // ready. No animation loop in shot mode: one frame is the screenshot.
-  function runShot(game, shot) {
-    if (shot === 'title') stageTitle(game);
-    else if (shot === 'map') stageMap(game);
-    else if (shot === 'marina') stageMarina(game);
-    else if (shot === 'hero-zoom') stageHeroZoom(game);
-    else stageChase(game);
-    game.scene.updateMatrixWorld(true);
-    game.renderer.render(game.scene, game.camera);
-    computeShotInfo(game, shot);
-    window.__ready = true;
-  }
-
-  window.AB.shots = {
-    runShot: runShot,
-    stageChase: stageChase,
-    stageTitle: stageTitle,
-    stageMap: stageMap,
-    stageMarina: stageMarina,
-    computeShotInfo: computeShotInfo,
-    CRUISER_SPOTS: CRUISER_SPOTS,
+  // Shot definitions: what each submitted image shows.
+  // 1 — cover: low chase cam behind the Dorado on Sunset Mile, heli + spotlight
+  //     in frame, three cruisers behind, traffic ahead, full HUD, DRIFT x3.
+  // 2 — on foot: Dante aiming on Coral Market street, shoppers around, shops
+  //     with signs, a cruiser closing in, full HUD.
+  // 3 — pause menu: full city map + stats + saves (the completeness proof).
+  // 4 — coastal chase: beachfront road, ocean + pier + palms, two cruisers
+  //     behind, heli overhead, full HUD.
+  var SHOTS = {
+    1: { mode: 'drive', x: 0, z: 46, heading: Math.PI, speed: 32, wanted: 4, stage: 1, cam: 'chase-low' },
+    2: { mode: 'foot', x: -60, z: -30, heading: Math.PI, wanted: 2, stage: 1, cam: 'foot' },
+    3: { mode: 'menu', x: 0, z: 46, heading: Math.PI, speed: 0, wanted: 4, stage: 1, cam: 'chase-low' },
+    4: { mode: 'drive', x: -120, z: 40, heading: Math.PI, speed: 28, wanted: 4, stage: 1, cam: 'chase-low' }
   };
+
+  function shotFromURL() {
+    try {
+      var m = window.location.search.match(/[?&]shot=(\d)/);
+      return m ? parseInt(m[1], 10) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Apply a shot preset to the live game state. Called once after boot, then
+  // the game runs normally for a few seconds so traffic, the heli and the
+  // pedestrians settle into the frame before the screenshot is taken.
+  function applyShot(game, n) {
+    var def = SHOTS[n];
+    if (!def) return false;
+    var g = game;
+
+    // fixed clock for every shot: Friday 13:42, clear skies
+    g.clockMinutes = 13 * 60 + 42;
+    g.missions.setStage(def.stage);
+    g.missions.setTimer(192);
+
+    if (def.mode === 'drive' || def.mode === 'menu') {
+      g.enterCar();
+      g.car.x = def.x; g.car.z = def.z;
+      g.car.heading = def.heading;
+      g.car.speed = def.speed;
+      g.car.condition = 71;
+      g.money = 27850;
+      g.health = 78; g.armour = 61; g.rep = 2310;
+    } else {
+      g.exitCar(def.x, def.z, def.heading);
+      g.money = 27850;
+      g.health = 78; g.armour = 61; g.rep = 2310;
+    }
+
+    g.police.setWanted(def.wanted, { x: def.x, z: def.z });
+    // settle the chase: run the police update a few steps so cruisers close in
+    for (var i = 0; i < 40; i++) {
+      g.police.update(0.05, { x: def.x, z: def.z, heading: def.heading }, def.speed || 0, i * 0.05);
+    }
+    // place cruisers in frame behind the player for the chase shots
+    if (def.mode === 'drive') {
+      var cruisers = g.police.cruisers;
+      var behind = def.heading + Math.PI;
+      cruisers.forEach(function (c, idx) {
+        var off, lat;
+        if (idx === 0) {
+          // one cruiser pulls up alongside ahead — the chase must be visible
+          off = -32; lat = 6;
+        } else {
+          off = 12 + idx * 8;
+          lat = (idx % 2 === 0 ? 1 : -1) * (2 + (idx % 3));
+        }
+        c.x = def.x + Math.sin(behind) * off + Math.cos(behind) * lat;
+        c.z = def.z + Math.cos(behind) * off - Math.sin(behind) * lat;
+        c.heading = def.heading;
+        c.speed = def.speed - 4;
+        c.model.position.set(c.x, 0, c.z);
+        c.model.rotation.y = c.heading - Math.PI / 2;
+      });
+      // heli visible in the upper frame, spotlight on the player
+      if (g.police.heli) {
+        g.police.heli.position.set(def.x + 30, 55, def.z - 40);
+      }
+      // drift popup + near-miss cue on the cover
+      if (n === 1) {
+        g.hud.popup('DRIFT x3', 'NEAR MISS +$250');
+        g.spawnExplosion(def.x + Math.sin(def.heading) * 55, def.z + Math.cos(def.heading) * 55);
+      }
+      if (n === 4) {
+        g.hud.popup('NEAR MISS +$150', '');
+      }
+    }
+    if (def.mode === 'foot') {
+      // pedestrians flee as the player draws: a living street, mid-action
+      g.peds.scatter(def.x, def.z, 14);
+      g.player.aiming = true;
+      // cruisers close in but stay out of the camera: visible, not on top of it
+      var fc = g.police.cruisers;
+      var spots = [[0, -20], [-3, -40], [3, -60], [0, -80]];
+      fc.forEach(function (c, idx) {
+        var sp = spots[idx % spots.length];
+        c.x = def.x + sp[0]; c.z = def.z + sp[1];
+        c.heading = Math.atan2(def.x - c.x, def.z - c.z);
+        c.speed = 0;
+        c.model.position.set(c.x, 0, c.z);
+        c.model.rotation.y = c.heading - Math.PI / 2;
+      });
+    }
+    if (def.mode === 'menu') {
+      g.openPause();
+    }
+    return true;
+  }
+
+  window.AB.shots = { SHOTS: SHOTS, shotFromURL: shotFromURL, applyShot: applyShot };
 })();

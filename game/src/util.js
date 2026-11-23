@@ -1,72 +1,73 @@
-// util.js — shared helpers for AURELIA BAY: a deterministic seeded RNG and
-// small math/color helpers. Everything the game builds is seeded, so two
-// runs of the game produce the same world (the dossier and the playtest
-// both rely on that determinism).
-
+// Aurelia Bay — shared utilities: seeded random numbers, math helpers, DOM helpers.
+// Everything deterministic: one fixed seed drives the whole city so every load
+// of the game builds the same streets, the same buildings, the same traffic.
 (function () {
   'use strict';
 
-  // mulberry32: a tiny fast seeded PRNG with a 32-bit state.
+  // mulberry32: small fast seeded PRNG. Same seed, same stream, every run.
   function mulberry32(seed) {
     var a = seed >>> 0;
     return function () {
-      a |= 0;
-      a = (a + 0x6d2b79f5) | 0;
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
       var t = Math.imul(a ^ (a >>> 15), 1 | a);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
 
-  function clamp(v, lo, hi) {
-    return v < lo ? lo : v > hi ? hi : v;
-  }
+  // The city's one fixed seed. Change it and the whole city re-rolls.
+  var CITY_SEED = 20261123;
 
-  function lerp(a, b, t) {
-    return a + (b - a) * t;
-  }
-
-  function pick(rng, list) {
-    return list[Math.floor(rng() * list.length)];
-  }
-
-  function range(rng, lo, hi) {
-    return lo + rng() * (hi - lo);
-  }
-
-  // Parse a #rrggbb hex string into {r, g, b} (0-255 each). Returns null
-  // for anything that is not a six-digit hex color.
-  function hexToRgb(hex) {
-    if (typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  function makeRng(seed) {
+    var next = mulberry32(seed);
     return {
-      r: parseInt(hex.slice(1, 3), 16),
-      g: parseInt(hex.slice(3, 5), 16),
-      b: parseInt(hex.slice(5, 7), 16),
+      next: next,
+      range: function (lo, hi) { return lo + next() * (hi - lo); },
+      int: function (lo, hi) { return Math.floor(lo + next() * (hi - lo + 1)); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      chance: function (p) { return next() < p; },
+      sign: function () { return next() < 0.5 ? -1 : 1; }
     };
   }
 
-  // Lighten (amount > 0) or darken (amount < 0) a hex color by a fraction.
-  function shade(hex, amount) {
-    var rgb = hexToRgb(hex);
-    if (!rgb) return hex;
-    var f = function (v) {
-      var n = amount >= 0 ? v + (255 - v) * amount : v * (1 + amount);
-      return Math.max(0, Math.min(255, Math.round(n)));
-    };
-    var toHex = function (v) {
-      return ('0' + v.toString(16)).slice(-2);
-    };
-    return '#' + toHex(f(rgb.r)) + toHex(f(rgb.g)) + toHex(f(rgb.b));
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function damp(current, target, lambda, dt) {
+    return lerp(current, target, 1 - Math.exp(-lambda * dt));
+  }
+  function angleLerp(a, b, t) {
+    var d = ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    return a + d * t;
+  }
+  function dist2(ax, az, bx, bz) {
+    var dx = ax - bx, dz = az - bz;
+    return dx * dx + dz * dz;
+  }
+  function formatMoney(n) {
+    return '$' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function formatClock(minutes) {
+    var h = Math.floor(minutes / 60) % 24;
+    var m = Math.floor(minutes % 60);
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  function el(id) { return document.getElementById(id); }
+  function show(node, on) {
+    if (node) node.style.display = on ? '' : 'none';
   }
 
   window.AB = window.AB || {};
   window.AB.util = {
-    mulberry32: mulberry32,
+    CITY_SEED: CITY_SEED,
+    makeRng: makeRng,
     clamp: clamp,
     lerp: lerp,
-    pick: pick,
-    range: range,
-    hexToRgb: hexToRgb,
-    shade: shade,
+    damp: damp,
+    angleLerp: angleLerp,
+    dist2: dist2,
+    formatMoney: formatMoney,
+    formatClock: formatClock,
+    el: el,
+    show: show
   };
 })();

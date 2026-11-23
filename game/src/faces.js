@@ -1,160 +1,124 @@
-// faces.js — cartoon portrait generator for the HUD. Each portrait is
-// drawn on a small canvas (face, hair, eyes, brows, nose, mouth on a
-// colored background) and returned as a data: URI, so the HUD needs no
-// image files at all. The portraits are what the dialog card, the crew
-// cards and the title screen show.
-
+// Aurelia Bay — character portraits. Each crew member gets a small canvas
+// portrait (face, hair, shirt, background wash) drawn in code, so the
+// dialogue box and the crew cards show real faces, not letter avatars.
+// The style is flat and warm: big eyes, a smile or a smirk, a signature
+// accessory (cap, shades, hoop earrings, a beard).
 (function () {
   'use strict';
 
-  // Draw one cartoon face on a 120x120 canvas. opts: bg, skin, hair,
-  // hairStyle ('crop' | 'bob' | 'ponytail' | 'beard' | 'bald' | 'cap'),
-  // shirt, smile (0..1).
-  function drawPortrait(opts) {
-    var o = opts || {};
-    var c = document.createElement('canvas');
-    c.width = 120;
-    c.height = 120;
-    var ctx = c.getContext('2d');
-
-    // Background.
-    ctx.fillStyle = o.bg || '#3a6ab0';
-    ctx.fillRect(0, 0, 120, 120);
-    // Soft backdrop circle.
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.beginPath();
-    ctx.arc(60, 58, 46, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Shoulders / shirt.
-    ctx.fillStyle = o.shirt || '#2a4a7a';
-    ctx.beginPath();
-    ctx.moveTo(18, 120);
-    ctx.quadraticCurveTo(22, 92, 60, 90);
-    ctx.quadraticCurveTo(98, 92, 102, 120);
-    ctx.closePath();
-    ctx.fill();
-
-    // Neck.
-    ctx.fillStyle = o.skin || '#c68e5e';
-    ctx.fillRect(52, 78, 16, 18);
-
-    // Head.
-    ctx.beginPath();
-    ctx.ellipse(60, 56, 30, 34, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Ears.
-    ctx.beginPath();
-    ctx.arc(30, 58, 7, 0, Math.PI * 2);
-    ctx.arc(90, 58, 7, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Hair.
-    ctx.fillStyle = o.hair || '#201510';
-    var style = o.hairStyle || 'crop';
-    if (style === 'crop') {
-      ctx.beginPath();
-      ctx.ellipse(60, 34, 30, 20, 0, Math.PI, 0);
-      ctx.fill();
-      ctx.fillRect(30, 30, 60, 8);
-    } else if (style === 'bob') {
-      ctx.beginPath();
-      ctx.ellipse(60, 36, 32, 24, 0, Math.PI, 0);
-      ctx.fill();
-      ctx.fillRect(26, 34, 10, 34);
-      ctx.fillRect(84, 34, 10, 34);
-    } else if (style === 'ponytail') {
-      ctx.beginPath();
-      ctx.ellipse(60, 34, 30, 20, 0, Math.PI, 0);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(88, 52, 9, 20, 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (style === 'cap') {
-      ctx.beginPath();
-      ctx.ellipse(60, 36, 31, 18, 0, Math.PI, 0);
-      ctx.fill();
-      ctx.fillRect(28, 36, 64, 8);
-      ctx.fillRect(56, 42, 40, 7); // brim
-    } else if (style === 'beard') {
-      ctx.beginPath();
-      ctx.ellipse(60, 34, 30, 18, 0, Math.PI, 0);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(60, 78, 24, 16, 0, 0, Math.PI);
-      ctx.fill();
-    }
-    // 'bald': no hair drawn.
-
-    // Eyes: white + dark pupil, looking at the viewer.
-    [-1, 1].forEach(function (side) {
-      var ex = 60 + side * 12;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.ellipse(ex, 56, 6, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#1a1210';
-      ctx.beginPath();
-      ctx.arc(ex, 57, 3, 0, Math.PI * 2);
-      ctx.fill();
-      // Brows.
-      ctx.strokeStyle = o.hair || '#201510';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(ex - 6, 45);
-      ctx.lineTo(ex + 6, 44);
-      ctx.stroke();
-    });
-
-    // Nose.
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(60, 58);
-    ctx.lineTo(58, 68);
-    ctx.lineTo(62, 68);
-    ctx.stroke();
-
-    // Mouth: a smile whose curve follows opts.smile.
-    var smile = o.smile === undefined ? 0.7 : o.smile;
-    ctx.strokeStyle = '#6b3226';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.arc(60, 72, 10, 0.15 * Math.PI, 0.85 * Math.PI);
-    ctx.stroke();
-    if (smile < 0.4) {
-      // A flat, serious mouth instead of a smile.
-      ctx.beginPath();
-      ctx.moveTo(52, 76);
-      ctx.lineTo(68, 76);
-      ctx.stroke();
-    }
-
-    return c.toDataURL('image/png');
-  }
-
-  // The cast, in one place: every portrait the HUD and the title screen
-  // use. Colors match the 3D crew's shirts so the HUD and the world agree.
-  var CAST = {
-    dante: { bg: '#7fb2e5', skin: '#c68e5e', hair: '#1c1410', hairStyle: 'crop', shirt: '#f0f0ea', smile: 0.8 },
-    vera: { bg: '#7a5aa8', skin: '#e8b48c', hair: '#2a1a2e', hairStyle: 'bob', shirt: '#4a2a5e', smile: 0.5 },
-    lena: { bg: '#3a9a5a', skin: '#d9a06a', hair: '#3a2410', hairStyle: 'ponytail', shirt: '#2a7a44', smile: 0.9 },
-    hugo: { bg: '#d08a3a', skin: '#8a5a34', hair: '#14100c', hairStyle: 'beard', shirt: '#7a4a21', smile: 0.6 },
-    nina: { bg: '#9a5ab0', skin: '#e8b48c', hair: '#a01818', hairStyle: 'bob', shirt: '#5a2a7a', smile: 0.7 },
+  var CREW = {
+    dante: { name: 'Dante "Dusk" Reyes', role: 'WHEELMAN · EMBER STRAND', skin: '#d9a066', hair: '#1a1a1a', hairStyle: 'short', shirt: '#c22e2e', bg: '#7fb8d9', accessory: 'none' },
+    vera: { name: 'Vera "The Velvet" Castillo', role: 'FIXER', skin: '#f2c89b', hair: '#a63a2e', hairStyle: 'long', shirt: '#6b4f9e', bg: '#b08fd9', accessory: 'earrings' },
+    lena: { name: 'Lena "Luz" Mora', role: 'DRIVER', skin: '#c98a5e', hair: '#1a1a1a', hairStyle: 'ponytail', shirt: '#2e6b4f', bg: '#8fd0a8', accessory: 'cap' },
+    hugo: { name: 'Hugo "Wrench" Salas', role: 'MECHANIC', skin: '#a06a3b', hair: '#4a2e18', hairStyle: 'buzz', shirt: '#c97b2d', bg: '#e8b06a', accessory: 'beard' },
+    nina: { name: 'Nina "Hawk" Duarte', role: 'LOOKOUT', skin: '#f7d7b0', hair: '#c9a227', hairStyle: 'bob', shirt: '#274b9f', bg: '#9db8e8', accessory: 'shades' },
+    kiki: { name: 'Kiki "Switch" Okafor', role: 'HACKER', skin: '#7a4a26', hair: '#1a1a1a', hairStyle: 'afro', shirt: '#2f8fa8', bg: '#7fc9d9', accessory: 'headset' },
+    marco: { name: 'Marco "The Tide" Reyes', role: 'SMUGGLER · WHEELMAN', skin: '#d9a066', hair: '#6e6e6e', hairStyle: 'slick', shirt: '#37505e', bg: '#a8bcc9', accessory: 'beard' }
   };
+
+  function drawPortrait(key, size) {
+    size = size || 96;
+    var c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    var x = c.getContext('2d');
+    var p = CREW[key] || CREW.dante;
+    var s = size / 96; // scale factor
+
+    // background wash
+    x.fillStyle = p.bg;
+    x.fillRect(0, 0, size, size);
+    x.fillStyle = 'rgba(255,255,255,0.18)';
+    x.beginPath(); x.arc(size * 0.78, size * 0.2, size * 0.3, 0, Math.PI * 2); x.fill();
+
+    var cx = size / 2, cy = size * 0.44, r = size * 0.26;
+    // shoulders / shirt
+    x.fillStyle = p.shirt;
+    x.beginPath();
+    x.moveTo(cx - r * 1.5, size);
+    x.quadraticCurveTo(cx - r * 1.3, cy + r * 1.15, cx, cy + r * 1.05);
+    x.quadraticCurveTo(cx + r * 1.3, cy + r * 1.15, cx + r * 1.5, size);
+    x.closePath(); x.fill();
+    // neck
+    x.fillStyle = p.skin;
+    x.fillRect(cx - r * 0.28, cy + r * 0.75, r * 0.56, r * 0.5);
+    // face
+    x.beginPath(); x.ellipse(cx, cy, r * 0.92, r * 1.05, 0, 0, Math.PI * 2); x.fill();
+    // ears
+    x.beginPath(); x.arc(cx - r * 0.95, cy + r * 0.1, r * 0.18, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.arc(cx + r * 0.95, cy + r * 0.1, r * 0.18, 0, Math.PI * 2); x.fill();
+
+    // hair by style
+    x.fillStyle = p.hair;
+    if (p.hairStyle === 'long') {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.25, r * 1.05, r * 1.15, 0, Math.PI, Math.PI * 2); x.fill();
+      x.fillRect(cx - r * 1.05, cy - r * 0.2, r * 0.35, r * 1.7);
+      x.fillRect(cx + r * 0.7, cy - r * 0.2, r * 0.35, r * 1.7);
+    } else if (p.hairStyle === 'afro') {
+      x.beginPath(); x.arc(cx, cy - r * 0.45, r * 1.15, 0, Math.PI * 2); x.fill();
+    } else if (p.hairStyle === 'ponytail') {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.3, r * 1.0, r * 0.9, 0, Math.PI, Math.PI * 2); x.fill();
+      x.beginPath(); x.ellipse(cx + r * 1.05, cy + r * 0.3, r * 0.3, r * 0.8, 0.4, 0, Math.PI * 2); x.fill();
+    } else if (p.hairStyle === 'bob') {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.2, r * 1.08, r * 1.0, 0, Math.PI, Math.PI * 2); x.fill();
+      x.fillRect(cx - r * 1.05, cy - r * 0.1, r * 0.3, r * 0.9);
+      x.fillRect(cx + r * 0.75, cy - r * 0.1, r * 0.3, r * 0.9);
+    } else if (p.hairStyle === 'slick') {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.42, r * 0.95, r * 0.6, 0, Math.PI, Math.PI * 2); x.fill();
+    } else if (p.hairStyle === 'buzz') {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.35, r * 0.95, r * 0.62, 0, Math.PI, Math.PI * 2); x.fill();
+    } else {
+      x.beginPath(); x.ellipse(cx, cy - r * 0.32, r * 0.98, r * 0.78, 0, Math.PI, Math.PI * 2); x.fill();
+    }
+
+    // eyebrows + eyes
+    x.strokeStyle = p.hair; x.lineWidth = 2.2 * s; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(cx - r * 0.55, cy - r * 0.28); x.lineTo(cx - r * 0.15, cy - r * 0.36); x.stroke();
+    x.beginPath(); x.moveTo(cx + r * 0.15, cy - r * 0.36); x.lineTo(cx + r * 0.55, cy - r * 0.28); x.stroke();
+    x.fillStyle = '#1a1a1a';
+    x.beginPath(); x.arc(cx - r * 0.36, cy - r * 0.05, r * 0.11, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.arc(cx + r * 0.36, cy - r * 0.05, r * 0.11, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#ffffff';
+    x.beginPath(); x.arc(cx - r * 0.33, cy - r * 0.09, r * 0.035, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.arc(cx + r * 0.39, cy - r * 0.09, r * 0.035, 0, Math.PI * 2); x.fill();
+    // nose + mouth (a small smirk)
+    x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 1.6 * s;
+    x.beginPath(); x.moveTo(cx, cy + r * 0.12); x.lineTo(cx + r * 0.06, cy + r * 0.32); x.stroke();
+    x.strokeStyle = '#7a3a2e'; x.lineWidth = 2.4 * s;
+    x.beginPath(); x.moveTo(cx - r * 0.3, cy + r * 0.52); x.quadraticCurveTo(cx, cy + r * 0.68, cx + r * 0.34, cy + r * 0.48); x.stroke();
+
+    // accessories
+    if (p.accessory === 'shades') {
+      x.fillStyle = '#14141c';
+      x.fillRect(cx - r * 0.62, cy - r * 0.2, r * 0.55, r * 0.32);
+      x.fillRect(cx + r * 0.07, cy - r * 0.2, r * 0.55, r * 0.32);
+      x.fillRect(cx - r * 0.08, cy - r * 0.12, r * 0.16, r * 0.08);
+    } else if (p.accessory === 'cap') {
+      x.fillStyle = '#c22e2e';
+      x.beginPath(); x.ellipse(cx, cy - r * 0.42, r * 1.0, r * 0.55, 0, Math.PI, Math.PI * 2); x.fill();
+      x.fillRect(cx - r * 1.0, cy - r * 0.48, r * 2.0, r * 0.22);
+    } else if (p.accessory === 'beard') {
+      x.fillStyle = p.hair;
+      x.beginPath(); x.ellipse(cx, cy + r * 0.55, r * 0.72, r * 0.55, 0, 0, Math.PI); x.fill();
+    } else if (p.accessory === 'earrings') {
+      x.fillStyle = '#ffd94d';
+      x.beginPath(); x.arc(cx - r * 0.98, cy + r * 0.32, r * 0.1, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.arc(cx + r * 0.98, cy + r * 0.32, r * 0.1, 0, Math.PI * 2); x.fill();
+    } else if (p.accessory === 'headset') {
+      x.strokeStyle = '#22222a'; x.lineWidth = 3 * s;
+      x.beginPath(); x.arc(cx, cy - r * 0.1, r * 1.05, Math.PI * 1.15, Math.PI * 1.85); x.stroke();
+      x.fillStyle = '#22222a';
+      x.beginPath(); x.arc(cx - r * 0.95, cy + r * 0.05, r * 0.16, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.arc(cx + r * 0.95, cy + r * 0.05, r * 0.16, 0, Math.PI * 2); x.fill();
+    }
+    return c;
+  }
 
   var cache = {};
-
-  function portrait(name) {
-    if (!cache[name]) cache[name] = drawPortrait(CAST[name] || CAST.dante);
-    return cache[name];
+  function portraitURL(key, size) {
+    var k = key + '@' + (size || 96);
+    if (!cache[k]) cache[k] = drawPortrait(key, size || 96).toDataURL();
+    return cache[k];
   }
 
-  window.AB.faces = {
-    drawPortrait: drawPortrait,
-    portrait: portrait,
-    CAST: CAST,
-  };
+  window.AB.faces = { CREW: CREW, drawPortrait: drawPortrait, portraitURL: portraitURL };
 })();

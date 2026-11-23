@@ -1,338 +1,229 @@
-// textures.js — the procedural texture library for AURELIA BAY. Every
-// surface in the city is a canvas-generated texture (GTA San Andreas PS2
-// style: grain, brick, pavers — never flat colors). All canvases are drawn
-// from a seeded RNG, so the textures are identical on every run.
-
+// Aurelia Bay — procedural canvas textures. Every surface in the city is
+// textured from a canvas drawn at load: no image files, no network, and the
+// same seed always paints the same walls. Flat colours are the enemy; even a
+// cheap speckle + mortar-line pass makes a facade read as brick, not plastic.
 (function () {
   'use strict';
+  var U = window.AB.util;
 
-  var util = window.AB.util;
-
-  function makeCanvas(w, h) {
+  function canvas(w, h) {
     var c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return { canvas: c, ctx: c.getContext('2d') };
+    c.width = w; c.height = h;
+    return c;
   }
 
-  function toTexture(canvas, repeatX, repeatY) {
-    var tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(repeatX || 1, repeatY || 1);
-    tex.anisotropy = 4;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
+  function toTexture(c, repeatX, repeatY) {
+    var t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    if (repeatX) t.repeat.set(repeatX, repeatY || repeatX);
+    t.anisotropy = 4;
+    return t;
   }
 
-  // Speckle noise over a base fill: the grain that keeps asphalt, sand and
-  // concrete from reading as flat color.
-  function speckle(ctx, w, h, rng, count, light, dark) {
-    for (var i = 0; i < count; i++) {
-      var x = rng() * w;
-      var y = rng() * h;
-      ctx.fillStyle = rng() < 0.5 ? light : dark;
-      ctx.globalAlpha = 0.05 + rng() * 0.12;
-      var s = 1 + rng() * 2.5;
-      ctx.fillRect(x, y, s, s);
+  function speckle(ctx, w, h, rng, n, colors, alpha) {
+    for (var i = 0; i < n; i++) {
+      ctx.fillStyle = colors[Math.floor(rng.next() * colors.length)];
+      ctx.globalAlpha = alpha * (0.4 + rng.next() * 0.6);
+      var s = 1 + rng.next() * 2.5;
+      ctx.fillRect(rng.next() * w, rng.next() * h, s, s);
     }
     ctx.globalAlpha = 1;
   }
 
-  // Asphalt tile: 14 m wide (the whole road) by 14 m long. The tile carries
-  // the center double yellow line and the lane dashes, so the road reads
-  // as a real street from the chase camera.
+  // Dark worn asphalt with speckle and faint patch rectangles.
   function asphaltTexture(seed) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(512, 512);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#3a3d42';
-    ctx.fillRect(0, 0, 512, 512);
-    speckle(ctx, 512, 512, rng, 9000, '#565a61', '#26282c');
-    // Patch repairs: darker rectangles, like real worn asphalt.
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = '#33343a'; x.fillRect(0, 0, 256, 256);
+    speckle(x, 256, 256, rng, 2600, ['#2a2b30', '#3d3e45', '#45464d', '#232428'], 0.9);
     for (var i = 0; i < 7; i++) {
-      ctx.fillStyle = '#33363b';
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(rng() * 512, rng() * 512, 40 + rng() * 90, 25 + rng() * 60);
+      x.fillStyle = rng.chance(0.5) ? '#2c2d33' : '#3a3b41';
+      x.globalAlpha = 0.5;
+      x.fillRect(rng.next() * 200, rng.next() * 200, 30 + rng.next() * 60, 20 + rng.next() * 40);
     }
-    ctx.globalAlpha = 1;
-    // Center double yellow.
-    ctx.fillStyle = '#d8b93a';
-    ctx.fillRect(250, 0, 5, 512);
-    ctx.fillRect(257, 0, 5, 512);
-    // Lane dashes (two lanes each side).
-    ctx.fillStyle = '#e8e8e8';
-    ctx.fillRect(124, 40, 5, 150);
-    ctx.fillRect(124, 322, 5, 150);
-    ctx.fillRect(383, 40, 5, 150);
-    ctx.fillRect(383, 322, 5, 150);
-    // Edge lines.
-    ctx.fillStyle = '#c9c9c9';
-    ctx.fillRect(8, 0, 4, 512);
-    ctx.fillRect(500, 0, 4, 512);
-    return toTexture(t.canvas);
+    x.globalAlpha = 1;
+    // faint cracks
+    x.strokeStyle = '#222327'; x.lineWidth = 1;
+    for (var j = 0; j < 5; j++) {
+      x.beginPath();
+      var px = rng.next() * 256, py = rng.next() * 256;
+      x.moveTo(px, py);
+      for (var k = 0; k < 5; k++) { px += rng.range(-28, 28); py += rng.range(-28, 28); x.lineTo(px, py); }
+      x.stroke();
+    }
+    return toTexture(c, 6, 6);
   }
 
-  // A building facade: base color, a window grid with varied lit/dark
-  // windows, floor banding and a darker base. The texture is drawn for one
-  // 6 m wide by 6 m tall patch and repeated per building (UV-scaled).
-  function facadeTexture(seed, base, trim) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, 256, 256);
-    speckle(ctx, 256, 256, rng, 2200, 'rgba(255,255,255,0.5)', 'rgba(0,0,0,0.35)');
-    // Subtle brick/concrete courses.
-    ctx.strokeStyle = 'rgba(0,0,0,0.10)';
-    ctx.lineWidth = 1;
-    for (var y = 0; y < 256; y += 16) {
-      ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(256, y + 0.5);
-      ctx.stroke();
-    }
-    // Window grid: 4 columns x 4 rows of tall windows.
-    for (var row = 0; row < 4; row++) {
-      for (var col = 0; col < 4; col++) {
-        var wx = 14 + col * 62;
-        var wy = 12 + row * 62;
-        var lit = rng();
-        if (lit < 0.28) {
-          ctx.fillStyle = '#f7e3ac'; // warm lit window
-        } else if (lit < 0.55) {
-          ctx.fillStyle = '#2e3a44'; // dark glass
-        } else {
-          ctx.fillStyle = '#5d707e'; // sky reflection
-        }
-        ctx.fillRect(wx, wy, 38, 44);
-        // Window frame + sill.
-        ctx.strokeStyle = trim;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(wx - 2, wy - 2, 42, 48);
-        ctx.fillStyle = trim;
-        ctx.fillRect(wx - 2, wy + 46, 42, 4);
-        // Mullion cross.
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.fillRect(wx + 17, wy, 3, 44);
-        ctx.fillRect(wx, wy + 20, 38, 3);
-      }
-    }
-    return toTexture(t.canvas);
-  }
-
-  // Striped awning canvas (red/white, teal/white, orange/white...).
-  function awningTexture(colorA, colorB) {
-    var t = makeCanvas(128, 64);
-    var ctx = t.ctx;
-    for (var i = 0; i < 8; i++) {
-      ctx.fillStyle = i % 2 === 0 ? colorA : colorB;
-      ctx.fillRect(i * 16, 0, 16, 64);
-    }
-    // Scalloped bottom edge.
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    for (var j = 0; j < 8; j++) {
-      ctx.beginPath();
-      ctx.arc(j * 16 + 8, 64, 8, Math.PI, 0);
-      ctx.fill();
-    }
-    return toTexture(t.canvas);
-  }
-
-  // Sidewalk pavers: a grid of large slabs with grout lines and wear.
+  // Pale concrete sidewalk with expansion joints and stains.
   function sidewalkTexture(seed) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#9a938a';
-    ctx.fillRect(0, 0, 256, 256);
-    speckle(ctx, 256, 256, rng, 3000, '#b5aea4', '#7d766c');
-    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-    ctx.lineWidth = 3;
-    for (var i = 0; i <= 4; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * 64 + 0.5, 0);
-      ctx.lineTo(i * 64 + 0.5, 256);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * 64 + 0.5);
-      ctx.lineTo(256, i * 64 + 0.5);
-      ctx.stroke();
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = '#b8b0a0'; x.fillRect(0, 0, 256, 256);
+    speckle(x, 256, 256, rng, 1500, ['#a89f8d', '#c4bcae', '#9d9484'], 0.7);
+    x.strokeStyle = '#8f8674'; x.lineWidth = 3;
+    x.strokeRect(1, 1, 254, 254);
+    x.beginPath(); x.moveTo(128, 0); x.lineTo(128, 256); x.moveTo(0, 128); x.lineTo(256, 128); x.stroke();
+    for (var i = 0; i < 6; i++) {
+      x.fillStyle = '#8a8272'; x.globalAlpha = 0.25;
+      x.beginPath(); x.ellipse(rng.next() * 256, rng.next() * 256, 12 + rng.next() * 22, 8 + rng.next() * 14, rng.next() * 3, 0, Math.PI * 2); x.fill();
     }
-    return toTexture(t.canvas);
+    x.globalAlpha = 1;
+    return toTexture(c, 8, 8);
   }
 
-  // Beach sand: pale tan with fine grain and a few shells/pebbles.
+  // Warm sand with speckle and a few shells.
   function sandTexture(seed) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#e6d3a8';
-    ctx.fillRect(0, 0, 256, 256);
-    speckle(ctx, 256, 256, rng, 5000, '#f4e6c2', '#c9ae7e');
-    for (var i = 0; i < 24; i++) {
-      ctx.fillStyle = rng() < 0.5 ? '#ffffff' : '#b89a6a';
-      ctx.globalAlpha = 0.7;
-      ctx.beginPath();
-      ctx.arc(rng() * 256, rng() * 256, 1 + rng() * 2, 0, Math.PI * 2);
-      ctx.fill();
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = '#e6d3a3'; x.fillRect(0, 0, 256, 256);
+    speckle(x, 256, 256, rng, 2200, ['#dcc793', '#f0e0b4', '#cbb57e'], 0.8);
+    for (var i = 0; i < 14; i++) {
+      x.fillStyle = rng.pick(['#f5ead0', '#c9a86a', '#e8b4b8']);
+      x.beginPath(); x.ellipse(rng.next() * 256, rng.next() * 256, 2 + rng.next() * 3, 1.5 + rng.next() * 2, rng.next() * 3, 0, Math.PI * 2); x.fill();
     }
-    ctx.globalAlpha = 1;
-    return toTexture(t.canvas);
+    return toTexture(c, 10, 10);
   }
 
-  // Water: deep blue with lighter streaks (gentle, static — shots render
-  // a single frame, so the water reads through its color and streaks).
+  // Ocean surface: deep teal with lighter wave streaks.
   function waterTexture(seed) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#1d6fa8';
-    ctx.fillRect(0, 0, 256, 256);
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    var g = x.createLinearGradient(0, 0, 256, 256);
+    g.addColorStop(0, '#1d7f9e'); g.addColorStop(0.5, '#2793b5'); g.addColorStop(1, '#166b8c');
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
     for (var i = 0; i < 90; i++) {
-      ctx.strokeStyle = rng() < 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(0,40,80,0.18)';
-      ctx.lineWidth = 1 + rng() * 2;
-      var y = rng() * 256;
-      ctx.beginPath();
-      ctx.moveTo(rng() * 256, y);
-      ctx.lineTo(rng() * 256 + 40, y + (rng() - 0.5) * 8);
-      ctx.stroke();
+      x.strokeStyle = 'rgba(255,255,255,' + (0.05 + rng.next() * 0.12) + ')';
+      x.lineWidth = 1 + rng.next() * 2;
+      x.beginPath();
+      var px = rng.next() * 256, py = rng.next() * 256, len = 12 + rng.next() * 30;
+      x.moveTo(px, py); x.lineTo(px + len, py + rng.range(-4, 4)); x.stroke();
     }
-    return toTexture(t.canvas);
+    return toTexture(c, 12, 12);
   }
 
-  // Pier planks: weathered wood boards with gaps and grain.
-  function pierTexture(seed) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#8a6b48';
-    ctx.fillRect(0, 0, 256, 256);
-    for (var p = 0; p < 8; p++) {
-      var tone = 0.85 + rng() * 0.3;
-      ctx.fillStyle = 'rgb(' + Math.round(138 * tone) + ',' + Math.round(107 * tone) + ',' + Math.round(72 * tone) + ')';
-      ctx.fillRect(0, p * 32, 256, 30);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(0, p * 32 + 30, 256, 2);
-      // Grain streaks.
-      ctx.strokeStyle = 'rgba(60,40,20,0.35)';
-      ctx.lineWidth = 1;
-      for (var g = 0; g < 6; g++) {
-        var gy = p * 32 + 4 + rng() * 24;
-        ctx.beginPath();
-        ctx.moveTo(0, gy);
-        ctx.lineTo(256, gy + (rng() - 0.5) * 4);
-        ctx.stroke();
+  // A building facade: base wall colour, brick or panel courses, a grid of
+  // windows (some lit warm, some dark glass, a few with blinds), a darker
+  // ground-floor band. floors/cols tune the density per building.
+  function facadeTexture(seed, base, style, floors, cols) {
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = base; x.fillRect(0, 0, 256, 256);
+    if (style === 'brick') {
+      // brick courses
+      x.strokeStyle = 'rgba(0,0,0,0.16)'; x.lineWidth = 1;
+      for (var by = 0; by < 256; by += 8) {
+        x.beginPath(); x.moveTo(0, by); x.lineTo(256, by); x.stroke();
+      }
+      for (var bx = 0; bx < 256; bx += 16) {
+        for (var yy = 0; yy < 256; yy += 16) {
+          x.beginPath(); x.moveTo(bx + ((yy / 8) % 2 ? 8 : 0), yy); x.lineTo(bx + ((yy / 8) % 2 ? 8 : 0), yy + 8); x.stroke();
+        }
+      }
+      speckle(x, 256, 256, rng, 900, ['rgba(0,0,0,0.10)', 'rgba(255,255,255,0.08)'], 0.8);
+    } else if (style === 'panel') {
+      x.strokeStyle = 'rgba(0,0,0,0.18)'; x.lineWidth = 2;
+      for (var py = 0; py <= 256; py += 64) { x.beginPath(); x.moveTo(0, py); x.lineTo(256, py); x.stroke(); }
+      for (var px = 0; px <= 256; px += 64) { x.beginPath(); x.moveTo(px, 0); x.lineTo(px, 256); x.stroke(); }
+      speckle(x, 256, 256, rng, 700, ['rgba(0,0,0,0.08)', 'rgba(255,255,255,0.10)'], 0.8);
+    } else {
+      // stucco: soft blotches
+      for (var s = 0; s < 40; s++) {
+        x.fillStyle = rng.chance(0.5) ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.07)';
+        x.beginPath(); x.ellipse(rng.next() * 256, rng.next() * 256, 14 + rng.next() * 30, 10 + rng.next() * 22, rng.next() * 3, 0, Math.PI * 2); x.fill();
       }
     }
-    return toTexture(t.canvas);
-  }
-
-  // A shop sign: bold text on a colored board with a thin border.
-  function signTexture(text, bg, fg) {
-    var t = makeCanvas(512, 128);
-    var ctx = t.ctx;
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 512, 128);
-    ctx.strokeStyle = fg;
-    ctx.lineWidth = 6;
-    ctx.strokeRect(6, 6, 500, 116);
-    ctx.fillStyle = fg;
-    ctx.font = 'bold 64px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 256, 68);
-    var tex = toTexture(t.canvas);
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    return tex;
-  }
-
-  // A billboard: a big simple ad (sun + skyline + tagline) on a board.
-  function billboardTexture(seed, headline, sub) {
-    var rng = util.mulberry32(seed);
-    var t = makeCanvas(512, 256);
-    var ctx = t.ctx;
-    var grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, '#2f7fd0');
-    grad.addColorStop(1, '#bfe3f7');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 512, 256);
-    // Sun.
-    ctx.fillStyle = '#ffd94a';
-    ctx.beginPath();
-    ctx.arc(420, 56, 34, 0, Math.PI * 2);
-    ctx.fill();
-    // Skyline blocks.
-    ctx.fillStyle = '#1f3a52';
-    for (var i = 0; i < 9; i++) {
-      var bw = 30 + rng() * 40;
-      var bh = 40 + rng() * 90;
-      ctx.fillRect(10 + i * 55, 256 - bh - 40, bw, bh + 40);
+    // window grid
+    var top = 14, bottom = 216;
+    var cellW = 256 / cols, cellH = (bottom - top) / floors;
+    for (var f = 0; f < floors; f++) {
+      for (var ci = 0; ci < cols; ci++) {
+        var wx = ci * cellW + cellW * 0.22, wy = top + f * cellH + cellH * 0.18;
+        var ww = cellW * 0.56, wh = cellH * 0.62;
+        var roll = rng.next();
+        var glass = roll < 0.18 ? '#ffd98a' : (roll < 0.55 ? '#2c3e50' : (roll < 0.8 ? '#5b7d99' : '#1f2c3a'));
+        x.fillStyle = 'rgba(0,0,0,0.35)';
+        x.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
+        x.fillStyle = glass;
+        x.fillRect(wx, wy, ww, wh);
+        // sky glint on glass
+        x.fillStyle = 'rgba(255,255,255,0.28)';
+        x.beginPath(); x.moveTo(wx, wy + wh); x.lineTo(wx + ww * 0.45, wy); x.lineTo(wx + ww * 0.7, wy); x.lineTo(wx + ww * 0.25, wy + wh); x.closePath(); x.fill();
+        if (rng.chance(0.25)) {
+          // blinds: horizontal slats
+          x.fillStyle = 'rgba(255,255,255,0.35)';
+          for (var sl = 0; sl < 3; sl++) x.fillRect(wx, wy + wh * (0.25 + sl * 0.22), ww, 1.5);
+        }
+      }
     }
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 52px Arial, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(headline, 24, 96);
-    ctx.font = '28px Arial, sans-serif';
-    ctx.fillStyle = '#ffe9a8';
-    ctx.fillText(sub, 24, 140);
-    var tex = toTexture(t.canvas);
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    return tex;
+    // ground floor band: darker shopfront strip
+    x.fillStyle = 'rgba(0,0,0,0.28)'; x.fillRect(0, 216, 256, 40);
+    x.fillStyle = 'rgba(255,255,255,0.10)'; x.fillRect(0, 216, 256, 3);
+    return toTexture(c, 1, 1);
   }
 
-  // A soft round cloud puff (radial gradient) for billboarded clouds.
-  function cloudTexture() {
-    var t = makeCanvas(256, 128);
-    var ctx = t.ctx;
-    ctx.clearRect(0, 0, 256, 128);
-    var blobs = [
-      [70, 80, 42], [120, 62, 52], [180, 80, 44], [100, 88, 36], [150, 90, 34],
-    ];
-    blobs.forEach(function (b) {
-      var g = ctx.createRadialGradient(b[0], b[1], 4, b[0], b[1], b[2]);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.7, 'rgba(255,255,255,0.75)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(b[0], b[1], b[2], 0, Math.PI * 2);
-      ctx.fill();
-    });
-    var tex = toTexture(t.canvas);
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    return tex;
-  }
-
-  // Crosswalk stripes live as geometry, but the zebra tile (white bands
-  // on asphalt) is handy for the wide crossing at the marina end.
-  function zebraTexture() {
-    var t = makeCanvas(256, 256);
-    var ctx = t.ctx;
-    ctx.fillStyle = '#3a3d42';
-    ctx.fillRect(0, 0, 256, 256);
-    ctx.fillStyle = '#e8e8e8';
-    for (var i = 0; i < 6; i++) {
-      ctx.fillRect(8 + i * 42, 0, 26, 256);
+  // A shop sign: coloured board, bold name, small subtitle.
+  function signTexture(text, sub, bg, fg) {
+    var c = canvas(512, 128), x = c.getContext('2d');
+    x.fillStyle = bg; x.fillRect(0, 0, 512, 128);
+    x.strokeStyle = 'rgba(255,255,255,0.55)'; x.lineWidth = 4; x.strokeRect(6, 6, 500, 116);
+    x.fillStyle = fg;
+    x.font = 'bold 54px Arial, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(text, 256, sub ? 52 : 64);
+    if (sub) {
+      x.font = 'bold 26px Arial, sans-serif';
+      x.globalAlpha = 0.85;
+      x.fillText(sub, 256, 98);
+      x.globalAlpha = 1;
     }
-    return toTexture(t.canvas);
+    return toTexture(c, 1, 1);
+  }
+
+  // Striped canvas awning.
+  function awningTexture(c1, c2) {
+    var c = canvas(128, 64), x = c.getContext('2d');
+    for (var i = 0; i < 8; i++) {
+      x.fillStyle = i % 2 ? c1 : c2;
+      x.fillRect(i * 16, 0, 16, 64);
+    }
+    x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(0, 52, 128, 12);
+    return toTexture(c, 2, 1);
+  }
+
+  // Weathered wooden planks for the pier.
+  function woodTexture(seed) {
+    var rng = U.makeRng(seed);
+    var c = canvas(256, 256), x = c.getContext('2d');
+    x.fillStyle = '#8a6b45'; x.fillRect(0, 0, 256, 256);
+    for (var p = 0; p < 8; p++) {
+      x.fillStyle = p % 2 ? '#7d5f3c' : '#93755290';
+      x.fillRect(0, p * 32, 256, 32);
+      x.fillStyle = 'rgba(0,0,0,0.35)'; x.fillRect(0, p * 32, 256, 2);
+    }
+    speckle(x, 256, 256, rng, 800, ['rgba(0,0,0,0.15)', 'rgba(255,255,255,0.06)'], 0.8);
+    return toTexture(c, 4, 4);
+  }
+
+  // Zebra crossing stripes.
+  function crosswalkTexture() {
+    var c = canvas(128, 128), x = c.getContext('2d');
+    x.fillStyle = '#33343a'; x.fillRect(0, 0, 128, 128);
+    x.fillStyle = '#e8e6df';
+    for (var i = 0; i < 5; i++) x.fillRect(8 + i * 24, 10, 14, 108);
+    return toTexture(c, 1, 1);
   }
 
   window.AB.textures = {
     asphalt: asphaltTexture,
-    facade: facadeTexture,
-    awning: awningTexture,
     sidewalk: sidewalkTexture,
     sand: sandTexture,
     water: waterTexture,
-    pier: pierTexture,
+    facade: facadeTexture,
     sign: signTexture,
-    billboard: billboardTexture,
-    cloud: cloudTexture,
-    zebra: zebraTexture,
-    toTexture: toTexture,
+    awning: awningTexture,
+    wood: woodTexture,
+    crosswalk: crosswalkTexture
   };
 })();

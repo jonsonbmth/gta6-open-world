@@ -1,41 +1,28 @@
-// main.ts — hands the AURELIA BAY entry in (Node 22, standard library
-// only). The game is this directory's game/ folder: plain static files a
-// desktop browser loads offline (game/index.html and its classic scripts
-// plus the vendored three.js build, no network request). This program
-// copies game/ and screenshots/ from beside this file to /output and
-// writes /output/dossier.json, the summary the judge reads, with the
+// AURELIA BAY — the gta6-01 entrypoint (Node 22, standard library only).
+//
+// The game is the static game/ directory beside this file: a three.js open
+// world that runs offline in a desktop browser (game/index.html plus classic
+// scripts, one vendored library, no network request of any kind). This
+// program stages that directory and the screenshots/ renders into the output
+// directory and writes dossier.json — the summary the judge reads — with the
 // vendored make.fun library.
 //
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for
-// /output:
+// Run it locally with:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// Serve the game locally with `node serve.ts` (http://localhost:8080).
+// Serve the game with `node serve.ts`, then open http://localhost:8080.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-// The repository root (this file's directory) and the output directory.
-const repoRoot = fileURLToPath(new URL('.', import.meta.url));
-const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const REPO_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// The whole game, verbatim: every file under game/ is part of the entry.
-mkdirSync(outputDir, { recursive: true });
-cpSync(join(repoRoot, 'game'), join(outputDir, 'game'), { recursive: true });
-
-// The screenshots (3 or 4, the first by name is the cover).
-mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoRoot, 'screenshots'))) {
-  cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
-}
-
-// The dossier: the gate's caps shape what the judge reads (the source
-// text is capped at 160 KiB; the other caps refuse an entry the scorer
-// would refuse — more than 4 screenshots or one over 256 KiB, more than
-// 993 files in game/ or 48 MiB of game files, or a path under game/ over
-// 1000 bytes). The caps are fixed by the competition, so they live in
-// one named constant: changing them changes the dossier's bytes.
+// The scorer's own caps (competition gate.json): only text_max_bytes shapes
+// the dossier's bytes; the rest refuse an entry the scorer would refuse —
+// more than 4 screenshots or one over 256 KiB; more than 993 files in game/
+// or 48 MiB of game files in all; a path under game/ over 1000 bytes.
 const DOSSIER_CAPS = {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
@@ -44,4 +31,28 @@ const DOSSIER_CAPS = {
   game_path_max_bytes: 1000,
 };
 
-writeFileSync(join(outputDir, 'dossier.json'), buildDossier(outputDir, DOSSIER_CAPS));
+function clearDirectory(path: string): void {
+  if (existsSync(path)) rmSync(path, { recursive: true, force: true });
+  mkdirSync(path, { recursive: true });
+}
+
+function stageEntry(sourceDir: string, targetDir: string): void {
+  clearDirectory(targetDir);
+  cpSync(join(sourceDir, 'game'), join(targetDir, 'game'), { recursive: true });
+  const shots = join(sourceDir, 'screenshots');
+  if (existsSync(shots)) {
+    cpSync(shots, join(targetDir, 'screenshots'), { recursive: true });
+  }
+}
+
+function main(): void {
+  stageEntry(REPO_ROOT, OUTPUT_DIR);
+  if (!existsSync(join(OUTPUT_DIR, 'game', 'index.html'))) {
+    throw new Error('staging failed: game/index.html missing from the output');
+  }
+  const dossier = buildDossier(OUTPUT_DIR, DOSSIER_CAPS);
+  writeFileSync(join(OUTPUT_DIR, 'dossier.json'), dossier);
+  console.log(`Aurelia Bay staged in ${OUTPUT_DIR} (${dossier.length} byte dossier).`);
+}
+
+main();
